@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Next.js & Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environmental Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.pydevproject
+
+# Operating System
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary / Output Files
+tmp/
+temp/
+artifacts/
+
+# Large Datasets and Caches
+# Ignores large raw MATLAB & NumPy tensors to keep git repository size small
+workload_classifier/data/stew/dataset.mat
+workload_classifier/data/stew/clean_dataset.npy
+workload_classifier/data/stew/X_feats.npy
+workload_classifier/data/stew/y_bin_feats.npy
+workload_classifier/data/stew/y_thr_feats.npy
+workload_classifier/data/stew/subj_feats.npy
+workload_classifier/data/stew/anova_feature_ranking.csv
+workload_classifier/data/stew/optimization_results.json
+workload_classifier/data/stew/best_model_binary.joblib
+workload_classifier/data/stew/best_model_3class.joblib
+workload_classifier/data/stew/evaluation_metrics.json
+
+# Model outputs / plots
+plots/preprocessing/
+workload_classifier/plots/preprocessing/
+workload_classifier/plots/features/
+workload_classifier/plots/optimization/
+workload_classifier/plots/evaluation/

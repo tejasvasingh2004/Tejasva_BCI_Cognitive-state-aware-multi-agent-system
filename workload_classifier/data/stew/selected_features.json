@@ -1,0 +1,15 @@
+{
+    "method": "PCA",
+    "k_features": 5,
+    "selected_indices": [],
+    "selected_names": [
+        "PC_1",
+        "PC_2",
+        "PC_3",
+        "PC_4",
+        "PC_5"
+    ],
+    "accuracy": 0.49042145593869735,
+    "macro_f1": 0.47132310076654155,
+    "inference_time_ms": 0.12478298851970397
+}
