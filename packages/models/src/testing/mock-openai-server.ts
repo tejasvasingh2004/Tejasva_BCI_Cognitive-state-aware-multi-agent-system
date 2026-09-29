@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 
 /**
  * Test double for an OpenAI-compatible provider (used by unit, integration and E2E tests only).
@@ -32,7 +32,7 @@ export type MockOpenAIServer = {
 export async function startMockOpenAIServer(script: MockScript = defaultScript, port = 0): Promise<MockOpenAIServer> {
   let current = script;
   const requests: MockRequestBody[] = [];
-  const sockets = new Set<import('node:net').Socket>();
+  const sockets = new Set<Socket>();
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'GET' && req.url?.endsWith('/models')) {

@@ -13,7 +13,9 @@ import {
   type Redis,
 } from '../src';
 
-const redisProbe = createRedis(undefined, { lazyConnect: true, maxRetriesPerRequest: 1, retryStrategy: () => null });
+// Isolated Redis DB so tests never interact with a locally running worker.
+const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://127.0.0.1:6380/3';
+const redisProbe = createRedis(TEST_REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1, retryStrategy: () => null });
 const reachable = (await isPostgresReachable()) && (await redisProbe.connect().then(() => pingRedis(redisProbe), () => false));
 redisProbe.disconnect();
 
@@ -26,9 +28,9 @@ describe.skipIf(!reachable)('bus (Redis + Postgres)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
-    redis = createRedis();
-    sub = createRedis();
-    sub2 = createRedis();
+    redis = createRedis(TEST_REDIS_URL);
+    sub = createRedis(TEST_REDIS_URL);
+    sub2 = createRedis(TEST_REDIS_URL);
     ids = await seedDev(db.pool);
   });
   afterAll(async () => {
@@ -45,6 +47,7 @@ describe.skipIf(!reachable)('bus (Redis + Postgres)', () => {
       conversationId: conv.id,
       request: RunRequest.parse({ messages: [{ role: 'user', content: 'x' }] }),
       source: 'workspace',
+      scopes: [],
     });
     return run;
   }

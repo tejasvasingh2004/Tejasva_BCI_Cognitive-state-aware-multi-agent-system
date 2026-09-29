@@ -9,6 +9,7 @@ import type {
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { ModelGateway } from '@neuroflow/models';
 import type { EmitFn, ToolRuntime } from '@neuroflow/tools';
+import type { AgentDefinition } from './agents/definitions';
 
 /** Persistence port. The worker implements it with PostgreSQL; tests use an in-memory version. */
 export interface RunStore {
@@ -49,7 +50,7 @@ export type OrchestratorDeps = {
   store: RunStore;
   cognitive?: CognitiveStateProvider;
   /** Workspace-defined agents merged over the built-ins. */
-  agents?: import('./agents/definitions').AgentDefinition[];
+  agents?: AgentDefinition[];
 };
 
 export type RunIdentity = {
