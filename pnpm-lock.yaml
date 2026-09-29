@@ -51,6 +51,12 @@ importers:
         specifier: ^5.6.1
         version: 5.11.1
 
+  packages/cognitive:
+    dependencies:
+      '@neuroflow/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/contracts:
     dependencies:
       zod:
@@ -69,6 +75,21 @@ importers:
       '@types/pg':
         specifier: ^8.15.0
         version: 8.23.1
+
+  packages/memory:
+    dependencies:
+      '@neuroflow/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@neuroflow/db':
+        specifier: workspace:*
+        version: link:../db
+      '@neuroflow/tools':
+        specifier: workspace:*
+        version: link:../tools
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
 
   packages/models:
     dependencies:
