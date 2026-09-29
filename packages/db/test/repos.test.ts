@@ -45,8 +45,8 @@ describe.skipIf(!reachable)('db repositories (Postgres)', () => {
   it('creates runs idempotently and enforces status transitions', async () => {
     const conv = await conversationsRepo.create(pool, ids);
     const request = RunRequest.parse({ messages: [{ role: 'user', content: 'hello' }] });
-    const a = await runsRepo.create(pool, { ...ids, conversationId: conv.id, request, source: 'api', idempotencyKey: 'k1' });
-    const b = await runsRepo.create(pool, { ...ids, conversationId: conv.id, request, source: 'api', idempotencyKey: 'k1' });
+    const a = await runsRepo.create(pool, { ...ids, conversationId: conv.id, request, source: 'api', scopes: ['runs:write'], idempotencyKey: 'k1' });
+    const b = await runsRepo.create(pool, { ...ids, conversationId: conv.id, request, source: 'api', scopes: ['runs:write'], idempotencyKey: 'k1' });
     expect(a.created).toBe(true);
     expect(b.created).toBe(false);
     expect(b.run.id).toBe(a.run.id);
@@ -75,7 +75,7 @@ describe.skipIf(!reachable)('db repositories (Postgres)', () => {
       ...ids,
       conversationId: conv.id,
       request: RunRequest.parse({ messages: [{ role: 'user', content: 'x' }] }),
-      source: 'workspace',
+      source: 'workspace', scopes: ['runs:write'],
     });
     expect(await runsRepo.get(pool, run.id, other.workspaceId)).toBeNull();
     expect(await conversationsRepo.get(pool, other.workspaceId, conv.id)).toBeNull();
@@ -88,7 +88,7 @@ describe.skipIf(!reachable)('db repositories (Postgres)', () => {
       ...ids,
       conversationId: conv.id,
       request: RunRequest.parse({ messages: [{ role: 'user', content: 'x' }] }),
-      source: 'workspace',
+      source: 'workspace', scopes: ['runs:write'],
     });
     await runsRepo.requestCancel(pool, run.id, ids.workspaceId);
     expect(await runsRepo.markStarted(pool, run.id)).toBeNull();
@@ -111,7 +111,7 @@ describe.skipIf(!reachable)('db repositories (Postgres)', () => {
       ...ids,
       conversationId: conv.id,
       request: RunRequest.parse({ messages: [{ role: 'user', content: 'x' }] }),
-      source: 'workspace',
+      source: 'workspace', scopes: ['runs:write'],
     });
     const ts = new Date().toISOString();
     await runEventsRepo.append(pool, [

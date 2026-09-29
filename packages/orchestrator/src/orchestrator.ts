@@ -33,6 +33,7 @@ export class Orchestrator {
   async execute(input: ExecuteRunInput): Promise<RunOutcome> {
     const response = new ResponseChannel(input.emit);
     let stage = 'routing';
+    let ctxRef: RunContext | undefined;
     try {
       return await withSpan('run.orchestrate', { 'run.id': input.run.id, 'run.mode': input.run.mode }, async (span) => {
         throwIfCancelled(input.signal);
@@ -73,7 +74,9 @@ export class Orchestrator {
           usage: {},
           toolFailures: 0,
           stage: 'execution',
+          appendOnly: input.request.metadata?.['neuroflow.appendOnly'] === true,
         };
+        ctxRef = ctx;
         const strategyResult = await STRATEGIES[plan.agentStrategy](ctx, lastUser);
         stage = ctx.stage;
 
@@ -100,7 +103,7 @@ export class Orchestrator {
         return { output: response.text, usage: ctx.usage.total, plan };
       });
     } catch (err) {
-      throw new StageError(stage, err, response.text);
+      throw new StageError(ctxRef && stage === 'routing' ? ctxRef.stage : stage, err, response.text);
     }
   }
 

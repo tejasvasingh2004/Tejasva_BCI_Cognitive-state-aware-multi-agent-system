@@ -1,0 +1,155 @@
+import type { Pool } from '@neuroflow/db';
+import type { ChatMessage } from '@neuroflow/contracts';
+import { RunEventEmitter, type RunJobData, type Redis } from '@neuroflow/bus';
+import { conversationsRepo, messagesRepo, runEventsRepo, runsRepo } from '@neuroflow/db';
+import { runtimeMetrics, withExtractedContext, withSpan, type Logger } from '@neuroflow/observability';
+import { RunCancelledError, StageError, toRunError } from '@neuroflow/orchestrator';
+import type { WorkerRuntime } from './runtime';
+
+export class WorkerShutdownError extends Error {
+  constructor() {
+    super('Worker shutting down; the run will be retried by another worker');
+    this.name = 'WorkerShutdownError';
+  }
+}
+
+export type ProcessorDeps = {
+  pool: Pool;
+  redis: Redis;
+  runtime: WorkerRuntime;
+  logger: Logger;
+  /** Aborted when the worker is shutting down (distinct from user cancellation). */
+  shutdownSignal: AbortSignal;
+};
+
+/**
+ * Executes one run end-to-end. Orchestration failures are persisted as run failures (and not
+ * re-thrown), so model/tool work is never blindly repeated. Only infrastructure failures and
+ * worker shutdown propagate, letting BullMQ retry the job on another worker.
+ */
+export async function processRun(job: RunJobData, deps: ProcessorDeps): Promise<void> {
+  return withExtractedContext(job.trace, () =>
+    withSpan('run.process', { 'run.id': job.runId, 'workspace.id': job.workspaceId }, () => processInner(job, deps)),
+  );
+}
+
+async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void> {
+  const { pool, redis, runtime, logger } = deps;
+  const log = logger.child({ runId: job.runId, workspaceId: job.workspaceId });
+
+  const existing = await runsRepo.get(pool, job.runId);
+  if (!existing || existing.status === 'completed' || existing.status === 'failed' || existing.status === 'cancelled') {
+    log.info({ status: existing?.status }, 'run already finished; skipping');
+    return;
+  }
+
+  const emitter = new RunEventEmitter({
+    db: pool,
+    redis,
+    runId: job.runId,
+    startSeq: await runEventsRepo.maxSeq(pool, job.runId),
+    onError: (err) => log.error({ err }, 'failed to persist/publish run event'),
+  });
+
+  const run = await runsRepo.markStarted(pool, job.runId);
+  if (!run) {
+    // Cancelled while queued.
+    if (await runsRepo.markCancelled(pool, job.runId)) {
+      emitter.emit('run.cancelled', { reason: 'Cancelled before execution started' });
+      await emitter.flush();
+    }
+    return;
+  }
+
+  const queueLatencyMs = Math.max(0, Date.now() - job.enqueuedAt);
+  runtimeMetrics.queueLatency.record(queueLatencyMs);
+  if (run.attempt > 1) {
+    // Recovered after a worker crash/shutdown: the previous partial answer is discarded.
+    emitter.emit('response.reset', { reason: 'Execution restarted after a worker interruption' });
+  }
+  emitter.emit('run.started', { attempt: run.attempt, queueLatencyMs });
+  log.info({ attempt: run.attempt, queueLatencyMs }, 'run started');
+
+  const controller = new AbortController();
+  const offControl = runtime.control.on(job.runId, (msg) => {
+    if (msg.type === 'cancel') controller.abort(new RunCancelledError(msg.reason));
+  });
+  // Backup for lost pub/sub messages: poll the durable cancellation flag.
+  const poll = setInterval(() => {
+    void runsRepo.isCancelRequested(pool, job.runId).then(
+      (yes) => yes && controller.abort(new RunCancelledError()),
+      () => {},
+    );
+  }, 2_000);
+  const onShutdown = () => controller.abort(new WorkerShutdownError());
+  deps.shutdownSignal.addEventListener('abort', onShutdown, { once: true });
+
+  const started = Date.now();
+  try {
+    const history = await loadHistory(pool, run.conversationId);
+    const outcome = await runtime.orchestrator.execute({
+      run: {
+        id: run.id,
+        workspaceId: run.workspaceId,
+        userId: run.userId,
+        conversationId: run.conversationId,
+        mode: run.mode,
+      },
+      request: run.request,
+      history,
+      scopes: run.scopes,
+      signal: controller.signal,
+      emit: (type, data) => emitter.emit(type, data),
+    });
+
+    if (run.conversationId) {
+      await messagesRepo.append(pool, run.conversationId, [{ role: 'assistant', content: outcome.output }], run.id);
+      await conversationsRepo.touch(pool, run.conversationId);
+    }
+    await runsRepo.complete(pool, run.id, outcome.output, outcome.usage);
+    const durationMs = Date.now() - started;
+    emitter.emit('run.completed', { durationMs, ...(outcome.usage ? { usage: outcome.usage } : {}) });
+    runtimeMetrics.runDuration.record(durationMs, { status: 'completed', strategy: outcome.plan.agentStrategy });
+    runtimeMetrics.runsTotal.add(1, { status: 'completed' });
+    log.info({ durationMs, strategy: outcome.plan.agentStrategy }, 'run completed');
+  } catch (err) {
+    const cause = err instanceof StageError ? err.cause : err;
+    const partial = err instanceof StageError ? err.partialOutput : '';
+    const reason = controller.signal.reason;
+
+    if (reason instanceof WorkerShutdownError) {
+      log.warn('run interrupted by worker shutdown; releasing for retry');
+      await emitter.flush();
+      throw reason;
+    }
+
+    if (cause instanceof RunCancelledError || reason instanceof RunCancelledError) {
+      if (partial && run.conversationId) {
+        await messagesRepo.append(pool, run.conversationId, [{ role: 'assistant', content: partial }], run.id);
+      }
+      await runsRepo.markCancelled(pool, run.id, partial);
+      emitter.emit('run.cancelled', { reason: 'Cancelled by user' });
+      runtimeMetrics.runsTotal.add(1, { status: 'cancelled' });
+      log.info('run cancelled');
+    } else {
+      const error = toRunError(cause, err instanceof StageError ? err.stage : undefined);
+      await runsRepo.fail(pool, run.id, error, partial);
+      emitter.emit('run.failed', { error });
+      runtimeMetrics.runsTotal.add(1, { status: 'failed' });
+      log.warn({ err: cause, code: error.code, stage: error.stage }, 'run failed');
+    }
+  } finally {
+    clearInterval(poll);
+    offControl();
+    deps.shutdownSignal.removeEventListener('abort', onShutdown);
+    await emitter.flush();
+  }
+}
+
+async function loadHistory(pool: Pool, conversationId: string | null): Promise<ChatMessage[]> {
+  if (!conversationId) return [];
+  const messages = await messagesRepo.listByConversation(pool, conversationId, 200);
+  return messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+    .map(({ role, content }) => ({ role, content }));
+}

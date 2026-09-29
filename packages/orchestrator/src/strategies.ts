@@ -114,29 +114,33 @@ const supervisor: Strategy = async (ctx, task) => {
 
 /** EVALUATOR_OPTIMIZER: generate → evaluate → refine (bounded iterations). */
 const evaluatorOptimizer: Strategy = async (ctx, task) => {
-  await runAgent(ctx, { agent: ctx.agents.get('assistant'), streamToUser: true });
+  // Workspace clients see the draft stream live and a reset before refinement. Append-only
+  // clients (OpenAI protocol) receive only the final answer once evaluation is done.
+  const live = !ctx.appendOnly;
+  let current = (await runAgent(ctx, { agent: ctx.agents.get('assistant'), streamToUser: live })).text;
   const max = ctx.plan.evaluationPolicy.maxIterations;
   for (let iteration = 0; iteration <= max; iteration++) {
     throwIfCancelled(ctx.signal);
     ctx.stage = 'evaluation';
     ctx.emit('evaluation.started', { kind: 'model', iteration });
-    const heuristic = heuristicEvaluation(ctx, ctx.response.text);
-    const verdict =
-      heuristic.verdict === 'failed' ? heuristic : await modelEvaluation(ctx, task, ctx.response.text);
+    const heuristic = heuristicEvaluation(ctx, current);
+    const verdict = heuristic.verdict === 'failed' ? heuristic : await modelEvaluation(ctx, task, current);
     await recordEvaluation(ctx, verdict, iteration);
     if (verdict.verdict === 'passed' || iteration === max) break;
 
-    const previous = ctx.response.text;
-    ctx.response.reset(`Refining after evaluation: ${verdict.issues.slice(0, 2).join('; ') || verdict.verdict}`);
-    await runAgent(ctx, {
-      agent: ctx.agents.get('refiner'),
-      notes: [
-        { role: 'user', content: `[Previous answer]\n${previous}` },
-        { role: 'user', content: `[Evaluator feedback]\n${verdict.issues.map((i) => `- ${i}`).join('\n') || '- Improve accuracy and completeness.'}` },
-      ],
-      streamToUser: true,
-    });
+    if (live) ctx.response.reset(`Refining after evaluation: ${verdict.issues.slice(0, 2).join('; ') || verdict.verdict}`);
+    current = (
+      await runAgent(ctx, {
+        agent: ctx.agents.get('refiner'),
+        notes: [
+          { role: 'user', content: `[Previous answer]\n${current}` },
+          { role: 'user', content: `[Evaluator feedback]\n${verdict.issues.map((i) => `- ${i}`).join('\n') || '- Improve accuracy and completeness.'}` },
+        ],
+        streamToUser: live,
+      })
+    ).text;
   }
+  if (!live) ctx.response.write(current);
   return { evaluated: true };
 };
 

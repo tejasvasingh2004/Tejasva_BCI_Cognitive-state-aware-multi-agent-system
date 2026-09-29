@@ -45,6 +45,9 @@ export function buildContext(input: ContextInput): BuiltContext {
 
   const systemParts = [BASE_INSTRUCTIONS, `Current date: ${now.toISOString().slice(0, 10)}.`];
   if (input.instructions) systemParts.push(input.instructions);
+  // System messages supplied by API clients are honoured as additional (bounded) instructions.
+  const clientSystem = input.history.filter((m) => m.role === 'system').map((m) => m.content.trim()).filter(Boolean);
+  if (clientSystem.length) systemParts.push(`Client instructions:\n${clientSystem.join('\n').slice(0, 4000)}`);
   if (plan.cognitive) systemParts.push(plan.cognitive.presentationInstructions);
   const system: ChatMessage = { role: 'system', content: systemParts.join('\n\n') };
 

@@ -76,6 +76,8 @@ export type RunContext = {
   lastFinishReason?: FinishReason;
   toolFailures: number;
   stage: string;
+  /** Clients that cannot retract streamed text (OpenAI protocol) need append-only output. */
+  appendOnly: boolean;
 };
 
 export function modelFor(ctx: RunContext, role: ModelRole): { model: string; fallbacks: string[] } {

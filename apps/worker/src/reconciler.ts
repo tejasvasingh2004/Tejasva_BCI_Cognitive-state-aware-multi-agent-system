@@ -1,0 +1,45 @@
+import type { Pool } from '@neuroflow/db';
+import { RunEventEmitter, type Redis, type RunQueue } from '@neuroflow/bus';
+import { runEventsRepo, runsRepo } from '@neuroflow/db';
+import type { Logger } from '@neuroflow/observability';
+
+/**
+ * Repairs runs whose queue job disappeared (e.g. Redis data loss, enqueue failure after commit,
+ * or a job that exhausted its retries). Queued runs are re-enqueued; running runs are failed.
+ */
+export async function reconcileRuns(deps: {
+  pool: Pool;
+  redis: Redis;
+  queue: RunQueue;
+  logger: Logger;
+  staleAfterMs?: number;
+}): Promise<{ requeued: number; failed: number }> {
+  const stale = await runsRepo.findStale(deps.pool, deps.staleAfterMs ?? 15 * 60_000);
+  let requeued = 0;
+  let failed = 0;
+  for (const run of stale) {
+    if (await deps.queue.isActive(run.id)) continue;
+    if (run.status === 'queued' && !run.cancelRequestedAt) {
+      await deps.queue.enqueue({ runId: run.id, workspaceId: run.workspaceId });
+      requeued++;
+      continue;
+    }
+    const error = { code: 'worker_lost', message: 'The run was interrupted and could not be recovered.', stage: 'worker' };
+    const cancelled = Boolean(run.cancelRequestedAt);
+    const changed = cancelled ? await runsRepo.markCancelled(deps.pool, run.id) : await runsRepo.fail(deps.pool, run.id, error);
+    if (changed) {
+      const emitter = new RunEventEmitter({
+        db: deps.pool,
+        redis: deps.redis,
+        runId: run.id,
+        startSeq: await runEventsRepo.maxSeq(deps.pool, run.id),
+      });
+      if (cancelled) emitter.emit('run.cancelled', { reason: 'Cancelled' });
+      else emitter.emit('run.failed', { error });
+      await emitter.flush();
+      failed++;
+    }
+  }
+  if (requeued || failed) deps.logger.warn({ requeued, failed }, 'reconciled stale runs');
+  return { requeued, failed };
+}

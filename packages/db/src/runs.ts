@@ -3,7 +3,7 @@ import { iso, type Queryable } from './client';
 
 export type RunSource = 'workspace' | 'api' | 'openai';
 
-export type RunRow = Run & { userId: string; source: RunSource };
+export type RunRow = Run & { userId: string; source: RunSource; scopes: string[] };
 
 const toRun = (r: Record<string, unknown>): RunRow => {
   const opts = (r.request_options ?? {}) as Record<string, unknown>;
@@ -28,6 +28,7 @@ const toRun = (r: Record<string, unknown>): RunRow => {
     conversationId: (r.conversation_id as string | null) ?? null,
     userId: r.user_id as string,
     source: r.source as RunSource,
+    scopes: (r.principal_scopes as string[]) ?? [],
     mode: r.mode as Run['mode'],
     status: r.status as Run['status'],
     request: {
@@ -55,6 +56,7 @@ export type CreateRunInput = {
   conversationId: string;
   request: RunRequest;
   source: RunSource;
+  scopes: string[];
   idempotencyKey?: string;
 };
 
@@ -68,8 +70,8 @@ export const runsRepo = {
       input.request;
     const { rows } = await db.query(
       `INSERT INTO runs (workspace_id, conversation_id, user_id, mode, status, requested_agent_strategy,
-                         requested_model_strategy, selected_model, request_options, idempotency_key, source, queued_at)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, now())
+                         requested_model_strategy, selected_model, request_options, idempotency_key, source, principal_scopes, queued_at)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, $11, now())
        ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
        RETURNING *`,
       [
@@ -83,6 +85,7 @@ export const runsRepo = {
         JSON.stringify(options),
         input.idempotencyKey ?? null,
         input.source,
+        input.scopes,
       ],
     );
     if (rows[0]) return { run: toRun(rows[0]), created: true };

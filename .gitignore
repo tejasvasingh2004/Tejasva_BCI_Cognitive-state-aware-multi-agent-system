@@ -79,3 +79,7 @@ workload_classifier/plots/evaluation/
 playwright-report/
 test-results/
 *.tsbuildinfo
+
+# local dev logs
+.api-dev.log
+.worker-dev.log

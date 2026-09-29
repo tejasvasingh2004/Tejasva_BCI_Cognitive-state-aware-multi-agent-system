@@ -1,0 +1,42 @@
+{
+  "name": "@neuroflow/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsup src/main.ts --format esm --target node22 --out-dir dist --clean --no-splitting --noExternal @neuroflow/",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run test/unit",
+    "test:integration": "vitest run test/integration"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.0.1",
+    "@fastify/rate-limit": "^11.0.0",
+    "@fastify/websocket": "^11.0.2",
+    "@neuroflow/bus": "workspace:*",
+    "@neuroflow/cognitive": "workspace:*",
+    "@neuroflow/contracts": "workspace:*",
+    "@neuroflow/db": "workspace:*",
+    "@neuroflow/memory": "workspace:*",
+    "@neuroflow/models": "workspace:*",
+    "@neuroflow/observability": "workspace:*",
+    "@neuroflow/tools": "workspace:*",
+    "fastify": "^5.4.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@neuroflow/worker": "workspace:*",
+    "@types/ws": "^8.18.0",
+    "tsup": "^8.5.0",
+    "ws": "^8.18.0",
+    "bullmq": "^5.56.0"
+  }
+}
