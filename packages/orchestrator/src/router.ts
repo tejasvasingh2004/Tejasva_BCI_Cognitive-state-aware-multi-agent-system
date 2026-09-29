@@ -25,7 +25,7 @@ const RE = {
   conversational: /^(hi|hello|hey|thanks|thank you|ok|okay|cool|great|good (morning|evening|night))\b[\s!.?]*$/i,
   memory: /\b(remember|recall|forget|what did i|did i (say|decide|mention|tell)|my (preferences?|decisions?)|last time|previously|we decided|i decided|i told you)\b/i,
   tool: /\b(calculate|compute|how much is|what time|current time|today'?s date|what day)\b|\d+\s*[-+*/^%]\s*\d+/i,
-  code: /```|\b(function|class|interface|bug|stack trace|exception|refactor|typescript|javascript|python|sql|regex|compile|api endpoint)\b/i,
+  code: /```|\b(function|class|bug|stack trace|exception|refactor|typescript|javascript|python|sql|regex|compile|api endpoint)\b/i,
   analysis: /\b(analy[sz]e|analysis|compare|comparison|evaluate|assess|pros and cons|trade-?offs?|review|investigate|diagnose|root cause)\b/i,
   creative: /\b(write|draft|compose|brainstorm)\b.*\b(story|poem|email|post|essay|tweet|letter|slogan|ideas?)\b/i,
   depth: /\b(in[- ]depth|comprehensive|thorough|detailed|step[- ]by[- ]step|end[- ]to[- ]end|full plan|strategy|roadmap|architecture)\b/i,
