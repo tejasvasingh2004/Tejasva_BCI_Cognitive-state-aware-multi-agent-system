@@ -1,31 +1,96 @@
-version: '3.8'
+name: neuroflow
 
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: adaptive-agent-backend
-    ports:
-      - "8000:8000"
+  postgres:
+    image: postgres:17-alpine
     environment:
-      - OLLAMA_HOST=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen3:8b
-      - HOST=0.0.0.0
-      - PORT=8000
+      POSTGRES_USER: neuroflow
+      POSTGRES_PASSWORD: neuroflow
+      POSTGRES_DB: neuroflow
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuroflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+      args:
+        APP: api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://neuroflow:neuroflow@postgres:5432/neuroflow
+      REDIS_URL: redis://redis:6379
+      QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
+      HOST: 0.0.0.0
+      PORT: "8080"
+    ports:
+      - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    restart: always
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: adaptive-agent-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - backend
-    restart: always
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    profiles: ["app"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+      args:
+        APP: worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://neuroflow:neuroflow@postgres:5432/neuroflow
+      REDIS_URL: redis://redis:6379
+      QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
+      BCI_SERVICE_URL: http://bci:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 60s
+    profiles: ["app"]
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    profiles: ["app"]
+
+  # Optional EEG cognitive-state service (existing Python classifier), used by Cognitive Mode.
+  bci:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    profiles: ["bci"]
+
+volumes:
+  pgdata:
+  redisdata:
