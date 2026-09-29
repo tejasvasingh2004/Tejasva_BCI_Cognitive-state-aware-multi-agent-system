@@ -73,3 +73,9 @@ workload_classifier/plots/preprocessing/
 workload_classifier/plots/features/
 workload_classifier/plots/optimization/
 workload_classifier/plots/evaluation/
+
+# NeuroFlow monorepo
+.turbo/
+playwright-report/
+test-results/
+*.tsbuildinfo
