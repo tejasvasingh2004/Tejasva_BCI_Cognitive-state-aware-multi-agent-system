@@ -106,7 +106,7 @@ Tests: 93 unit/integration tests (real Postgres/Redis for integration) + 7 Playw
 - [x] OpenTelemetry SDK bootstrap (OTLP, auto-instrumentation), run-scoped spans
 - [x] Metrics: queue latency, run duration, model latency/first token, retries, fallbacks, tokens, tool latency, evaluations
 - [x] Structured logs with secret redaction · run-level correlation (trace context API → worker)
-- [~] Verified with no-op exporter only — not yet exercised against a live collector (Jaeger/Tempo)
+- [x] Verified against a live Jaeger collector (OTLP/HTTP): HTTP, run.create, Postgres and Redis spans exported
 
 ## Phase 12 — Testing
 
@@ -131,13 +131,13 @@ Tests: 93 unit/integration tests (real Postgres/Redis for integration) + 7 Playw
 | UI feels like a workspace, not a dashboard | ✅ |
 | OpenAI-compatible API works | ✅ |
 | PostgreSQL and Redis are reliable | ✅ |
-| Observability is available | 🟡 instrumented; live collector check pending |
+| Observability is available | ✅ verified with Jaeger |
 | Critical flows have automated tests | ✅ |
 
 ## Next up
 
 1. Live Groq verification (add `GROQ_API_KEY`).
-2. OpenTelemetry against a local collector (Jaeger) and a small latency dashboard.
+2. Latency/usage dashboard on top of the exported OpenTelemetry metrics.
 3. Production identity provider (OIDC) for the workspace.
 4. Conversation summaries for long histories; pgvector semantic memory.
 5. Custom workspace agents (API + UI) and a web search tool.
