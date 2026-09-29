@@ -1,0 +1,67 @@
+import type { CatalogEntry, ReasoningStyle } from './types';
+import type { ModelTier } from '@neuroflow/contracts';
+
+type KnownModel = Omit<CatalogEntry, 'model'>;
+
+/**
+ * Metadata for well-known models. Unknown models are still usable; they get conservative
+ * defaults. Which models are enabled is purely configuration (env), never code.
+ */
+const KNOWN: Record<string, KnownModel> = {
+  // Qwen via Ollama tags
+  'qwen3:0.6b': km('Qwen3 0.6B', 'fast', 32_768, true, 'toggle'),
+  'qwen3:1.7b': km('Qwen3 1.7B', 'fast', 32_768, true, 'toggle'),
+  'qwen3:4b': km('Qwen3 4B', 'fast', 32_768, true, 'toggle'),
+  'qwen3:8b': km('Qwen3 8B', 'balanced', 32_768, true, 'toggle'),
+  'qwen3:14b': km('Qwen3 14B', 'balanced', 32_768, true, 'toggle'),
+  'qwen3:32b': km('Qwen3 32B', 'strong', 32_768, true, 'toggle'),
+  'qwen2.5:7b': km('Qwen2.5 7B', 'balanced', 32_768, true, 'none'),
+  // Qwen via DashScope (Alibaba Cloud Model Studio)
+  'qwen-flash': km('Qwen Flash', 'fast', 131_072, true, 'toggle'),
+  'qwen-turbo': km('Qwen Turbo', 'fast', 131_072, true, 'toggle'),
+  'qwen-plus': km('Qwen Plus', 'balanced', 131_072, true, 'toggle'),
+  'qwen-max': km('Qwen Max', 'strong', 32_768, true, 'none'),
+  // Groq
+  'llama-3.1-8b-instant': km('Llama 3.1 8B Instant', 'fast', 131_072, true, 'none'),
+  'llama-3.3-70b-versatile': km('Llama 3.3 70B', 'strong', 131_072, true, 'none'),
+  'qwen/qwen3-32b': km('Qwen3 32B (Groq)', 'strong', 131_072, true, 'toggle'),
+  'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort'),
+  'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort'),
+};
+
+function km(
+  displayName: string,
+  tier: ModelTier,
+  contextWindow: number,
+  tools: boolean,
+  reasoning: ReasoningStyle,
+): KnownModel {
+  return { displayName, tier, contextWindow, tools, reasoning };
+}
+
+/**
+ * Builds catalog entries from a comma separated list. Each item may override metadata:
+ * `model[|tier][|contextWindow]`, e.g. `qwen3:8b,my-finetune|strong|65536`.
+ */
+export function buildCatalog(spec: string | undefined, fallbackReasoning: ReasoningStyle = 'none'): CatalogEntry[] {
+  if (!spec) return [];
+  return spec
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [model = '', tier, ctx] = item.split('|').map((p) => p.trim());
+      const known = KNOWN[model];
+      const base: KnownModel = known ?? km(model, 'balanced', 32_768, true, fallbackReasoning);
+      return {
+        model,
+        ...base,
+        tier: isTier(tier) ? tier : base.tier,
+        contextWindow: ctx && Number(ctx) > 0 ? Number(ctx) : base.contextWindow,
+      };
+    });
+}
+
+function isTier(v: string | undefined): v is ModelTier {
+  return v === 'fast' || v === 'balanced' || v === 'strong';
+}
