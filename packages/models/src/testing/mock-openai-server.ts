@@ -159,6 +159,9 @@ export const defaultScript: MockScript = (body) => {
   if (last?.role === 'tool') {
     return textReply(`Based on the tool result: ${String(last.content).slice(0, 200)}`, { chunkDelayMs: 5 });
   }
+  if (/\btrigger provider failure\b/i.test(prompt)) {
+    return { kind: 'error', status: 503, message: 'mock provider outage' };
+  }
   if (/\bslow\b/i.test(prompt)) {
     return textReply('This is a deliberately slow streamed answer that keeps going for a while so it can be cancelled.', {
       chunkSize: 3,

@@ -148,6 +148,24 @@ importers:
         specifier: ^5.0.6
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)
     devDependencies:
+      '@neuroflow/api':
+        specifier: workspace:*
+        version: link:../api
+      '@neuroflow/bus':
+        specifier: workspace:*
+        version: link:../../packages/bus
+      '@neuroflow/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@neuroflow/models':
+        specifier: workspace:*
+        version: link:../../packages/models
+      '@neuroflow/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@neuroflow/worker':
+        specifier: workspace:*
+        version: link:../worker
       '@playwright/test':
         specifier: ^1.54.0
         version: 1.63.0
@@ -163,9 +181,15 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.2.0(vite@7.3.6(@types/node@22.20.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+      bullmq:
+        specifier: ^5.56.0
+        version: 5.81.5
       tailwindcss:
         specifier: ^4.1.11
         version: 4.3.3
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.15
       vite:
         specifier: ^7.0.4
         version: 7.3.6(@types/node@22.20.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)

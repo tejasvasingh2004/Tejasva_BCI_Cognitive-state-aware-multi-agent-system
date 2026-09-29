@@ -36,6 +36,14 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.1.11",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "@neuroflow/api": "workspace:*",
+    "@neuroflow/worker": "workspace:*",
+    "@neuroflow/bus": "workspace:*",
+    "@neuroflow/db": "workspace:*",
+    "@neuroflow/models": "workspace:*",
+    "@neuroflow/observability": "workspace:*",
+    "bullmq": "^5.56.0",
+    "tsx": "^4.20.0"
   }
 }
