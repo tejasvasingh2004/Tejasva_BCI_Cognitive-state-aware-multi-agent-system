@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.turbo
+**/test-results
+**/playwright-report
+.git
+.env
+*.log
+frontend
+reports
+plots
+workload_classifier/data/stew/*.npy

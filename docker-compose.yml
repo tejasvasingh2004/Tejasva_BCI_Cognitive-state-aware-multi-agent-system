@@ -43,6 +43,8 @@ services:
       QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
       HOST: 0.0.0.0
       PORT: "8080"
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     ports:
       - "8080:8080"
     extra_hosts:
@@ -86,7 +88,7 @@ services:
   bci:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: infra/docker/bci.Dockerfile
     ports:
       - "8000:8000"
     profiles: ["bci"]
