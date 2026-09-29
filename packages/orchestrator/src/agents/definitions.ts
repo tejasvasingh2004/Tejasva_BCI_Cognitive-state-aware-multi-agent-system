@@ -1,0 +1,111 @@
+import type { ModelRole } from '@neuroflow/contracts';
+
+/**
+ * Agents are execution roles, not models. Which model an agent uses is decided per run by the
+ * router (via `modelRole`), so agent topology and model topology stay independent.
+ */
+export type AgentDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  /** Tools this agent may request (intersected with the run's tool policy). `*` = all allowed. */
+  tools: string[] | '*';
+  modelRole: ModelRole;
+  maxIterations: number;
+};
+
+export const BUILTIN_AGENTS: AgentDefinition[] = [
+  {
+    id: 'assistant',
+    name: 'Assistant',
+    description: 'General purpose agent that answers directly and uses tools when they help.',
+    instructions:
+      'Solve the user\'s task. Use a tool only when it clearly helps (for example to recall something the user told you before, do exact arithmetic, or get the current time). Never invent tool results. When you have enough information, answer the user directly.',
+    tools: '*',
+    modelRole: 'agent',
+    maxIterations: 6,
+  },
+  {
+    id: 'researcher',
+    name: 'Researcher',
+    description: 'Gathers the facts, context and prior decisions relevant to the task.',
+    instructions:
+      'You are the research stage of a team. Collect the facts, definitions, constraints and relevant prior user decisions needed for the task. Use tools where useful. Output concise bullet-point notes and clearly mark anything uncertain. Do not write the final answer.',
+    tools: ['search_memory', 'get_current_time', 'calculator'],
+    modelRole: 'research',
+    maxIterations: 4,
+  },
+  {
+    id: 'analyst',
+    name: 'Analyst',
+    description: 'Reasons about trade-offs, risks and implications.',
+    instructions:
+      'You are the analysis stage of a team. Using the task and any notes provided, analyse options, trade-offs, risks and implications. Check any numbers with the calculator. Output a compact structured analysis. Do not write the final answer.',
+    tools: ['calculator'],
+    modelRole: 'analysis',
+    maxIterations: 3,
+  },
+  {
+    id: 'writer',
+    name: 'Writer',
+    description: 'Synthesises the final user-facing answer from prior stages.',
+    instructions:
+      'You write the final answer for the user using the notes and analysis provided by your team. Be accurate and well organised. Do not mention the team, stages or notes; just answer.',
+    tools: [],
+    modelRole: 'synthesis',
+    maxIterations: 1,
+  },
+  {
+    id: 'supervisor',
+    name: 'Supervisor',
+    description: 'Decomposes complex tasks, delegates to specialists and synthesises the result.',
+    instructions:
+      'You coordinate specialist agents. Break the task into at most four independent subtasks and assign each to the most suitable specialist.',
+    tools: [],
+    modelRole: 'supervisor',
+    maxIterations: 1,
+  },
+  {
+    id: 'critic',
+    name: 'Critic',
+    description: 'Evaluates answers for correctness, completeness and instruction following.',
+    instructions: 'You evaluate an answer written by another assistant.',
+    tools: [],
+    modelRole: 'evaluator',
+    maxIterations: 1,
+  },
+  {
+    id: 'refiner',
+    name: 'Refiner',
+    description: 'Improves an answer using evaluator feedback.',
+    instructions:
+      'Rewrite the previous answer so it fully addresses the feedback while keeping everything that was already correct. Output only the improved answer.',
+    tools: [],
+    modelRole: 'refiner',
+    maxIterations: 1,
+  },
+];
+
+export class AgentCatalog {
+  private readonly agents = new Map<string, AgentDefinition>();
+
+  constructor(custom: AgentDefinition[] = []) {
+    for (const a of [...BUILTIN_AGENTS, ...custom]) this.agents.set(a.id, a);
+  }
+
+  get(id: string): AgentDefinition {
+    const a = this.agents.get(id);
+    if (!a) throw new Error(`Unknown agent "${id}"`);
+    return a;
+  }
+
+  has(id: string): boolean {
+    return this.agents.has(id);
+  }
+
+  /** Specialists the supervisor may delegate to. */
+  specialists(): AgentDefinition[] {
+    return [...this.agents.values()].filter((a) => !['supervisor', 'critic', 'refiner', 'writer'].includes(a.id));
+  }
+}
