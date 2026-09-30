@@ -13,5 +13,7 @@ const Env = z.object({
 export type WorkerConfig = z.infer<typeof Env>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
-  return Env.parse(env);
+  // Empty values (e.g. `SESSION_SECRET=` copied from .env.example) mean "unset" so defaults apply.
+  const defined = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));
+  return Env.parse(defined);
 }

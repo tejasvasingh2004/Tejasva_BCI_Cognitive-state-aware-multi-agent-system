@@ -21,7 +21,9 @@ const Env = z.object({
 export type ApiConfig = z.infer<typeof Env>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
-  const config = Env.parse(env);
+  // Empty values (e.g. `SESSION_SECRET=` copied from .env.example) mean "unset" so defaults apply.
+  const defined = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));
+  const config = Env.parse(defined);
   if (config.NODE_ENV === 'production' && config.SESSION_SECRET.startsWith('dev-only')) {
     throw new Error('SESSION_SECRET must be set in production');
   }

@@ -83,3 +83,6 @@ test-results/
 # local dev logs
 .api-dev.log
 .worker-dev.log
+
+# local env backups
+.env.*.bak
