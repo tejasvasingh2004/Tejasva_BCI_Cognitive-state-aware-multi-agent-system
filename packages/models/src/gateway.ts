@@ -3,6 +3,7 @@ import {
   parseModelRef,
   type ModelInfo,
   type ModelPricing,
+  type ProviderInfo,
   type ToolCall,
   type Usage,
 } from '@neuroflow/contracts';
@@ -133,6 +134,13 @@ export class DefaultModelGateway implements ModelGateway {
           tier: entry.tier,
           contextWindow: entry.contextWindow,
           capabilities: { tools: entry.tools, reasoning: entry.reasoning !== 'none', streaming: true },
+          supportedParameters: [
+            'temperature' as const,
+            'maxOutputTokens' as const,
+            'jsonMode' as const,
+            ...(entry.reasoning !== 'none' ? (['reasoningBudget'] as const) : []),
+            ...(entry.tools ? (['tools'] as const) : []),
+          ],
           available: adapter.isAvailable(),
           ...(this.pricingFor(`${adapter.id}/${entry.model}`, entry)
             ? { pricing: this.pricingFor(`${adapter.id}/${entry.model}`, entry) }
@@ -141,6 +149,28 @@ export class DefaultModelGateway implements ModelGateway {
       }
     }
     return out;
+  }
+
+  /** Providers with configuration, health and capability facts (no secrets). */
+  listProviders(): ProviderInfo[] {
+    return [...this.adapters.values()].map((a) => {
+      const d = a.describe?.() ?? {
+        kind: a.displayName,
+        endpoint: '',
+        configured: a.isAvailable(),
+        fineTuning: { status: 'not_available' as const, reason: 'Fine-tuning capability unknown for this provider.' },
+      };
+      return {
+        id: a.id,
+        displayName: a.displayName,
+        configured: d.configured,
+        available: a.isAvailable(),
+        kind: d.kind,
+        endpoint: d.endpoint,
+        models: a.catalog().length,
+        fineTuning: d.fineTuning,
+      };
+    });
   }
 
   defaultModel(): string | undefined {

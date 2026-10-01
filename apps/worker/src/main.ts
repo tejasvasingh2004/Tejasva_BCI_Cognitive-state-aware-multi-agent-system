@@ -46,7 +46,7 @@ const worker = new Worker(
   (job) =>
     job.name === 'run'
       ? processRun(job.data as RunJobData, { pool, redis, runtime, logger, shutdownSignal: shutdown.signal })
-      : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis, logger, signal: shutdown.signal }),
+      : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis, logger, signal: shutdown.signal, pool }),
   {
     connection: bullConnection,
     concurrency: config.WORKER_CONCURRENCY,

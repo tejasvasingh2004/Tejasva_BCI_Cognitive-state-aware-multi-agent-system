@@ -32,6 +32,28 @@ export function estimateCostUsd(
   return Math.round(cost * 1e6) / 1e6;
 }
 
+export const ModelParameter = z.enum(['temperature', 'maxOutputTokens', 'reasoningBudget', 'tools', 'jsonMode']);
+export type ModelParameter = z.infer<typeof ModelParameter>;
+
+/** Provider-dependent fine-tuning availability (PRD §56.31). Never implied when unsupported. */
+export const FineTuningStatus = z.enum(['available', 'not_available', 'requires_provider_access', 'coming_soon']);
+export type FineTuningStatus = z.infer<typeof FineTuningStatus>;
+
+export const ProviderInfo = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  /** Credentials / endpoint configured. */
+  configured: z.boolean(),
+  /** Configured and (last health check) reachable. */
+  available: z.boolean(),
+  kind: z.string(),
+  /** Endpoint host only — never full URLs with credentials. */
+  endpoint: z.string(),
+  models: z.number().int(),
+  fineTuning: z.object({ status: FineTuningStatus, reason: z.string() }),
+});
+export type ProviderInfo = z.infer<typeof ProviderInfo>;
+
 export const ModelInfo = z.object({
   ref: ModelRef,
   provider: z.string(),
@@ -47,6 +69,8 @@ export const ModelInfo = z.object({
   available: z.boolean(),
   /** USD per million tokens, when known. Local models are free. */
   pricing: ModelPricing.optional(),
+  /** Request parameters this model honours; unsupported controls must not be offered. */
+  supportedParameters: z.array(ModelParameter).optional(),
 });
 export type ModelInfo = z.infer<typeof ModelInfo>;
 

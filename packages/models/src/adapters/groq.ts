@@ -1,4 +1,4 @@
-import { probeOpenAICompatible, streamOpenAICompatible } from '../openai-compatible';
+import { probeOpenAICompatible, safeHost, streamOpenAICompatible } from '../openai-compatible';
 import type { CatalogEntry, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
 
 export type GroqAdapterConfig = {
@@ -23,6 +23,15 @@ export class GroqAdapter implements ProviderAdapter {
 
   isAvailable(): boolean {
     return Boolean(this.config.apiKey) && this.config.models.length > 0 && this.healthy;
+  }
+
+  describe() {
+    return {
+      kind: 'Groq Cloud',
+      endpoint: safeHost(this.config.baseUrl ?? GROQ_BASE_URL),
+      configured: Boolean(this.config.apiKey),
+      fineTuning: { status: 'not_available' as const, reason: 'Groq does not offer a public fine-tuning API.' },
+    };
   }
 
   async checkHealth(signal?: AbortSignal): Promise<boolean> {

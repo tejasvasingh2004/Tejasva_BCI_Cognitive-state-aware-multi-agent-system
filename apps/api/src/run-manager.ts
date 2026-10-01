@@ -3,6 +3,7 @@ import { RunEventEmitter, runPriority } from '@neuroflow/bus';
 import {
   auditRepo,
   codeApprovalsRepo,
+  modelLabRepo,
   patchesRepo,
   conversationsRepo,
   deriveTitle,
@@ -33,6 +34,7 @@ export class RunManager {
   ): Promise<CreateRunResult> {
     return withSpan('run.create', { 'workspace.id': principal.workspaceId, 'run.source': opts.source }, async (span) => {
       await this.admit(principal);
+      request = await this.applyModelLab(principal, request);
 
       const result = await withTransaction(this.deps.pool, async (tx) => {
         let conversationId = request.conversationId;
@@ -168,6 +170,36 @@ export class RunManager {
         metadata,
       })
       .catch((err) => this.deps.logger.error({ err, action }, 'failed to write audit event'));
+  }
+
+  /**
+   * Model Lab configuration: per-surface defaults (fill only what the request leaves unset) and
+   * deployments ("deployment/<name>" → model + parameters + system prompt).
+   */
+  private async applyModelLab(principal: Principal, request: RunRequest): Promise<RunRequest> {
+    const scope = request.workspaceContext ? 'code_agent' : 'default';
+    const config = await modelLabRepo.getConfig(this.deps.pool, principal.workspaceId, scope);
+    const r: RunRequest = { ...request };
+    if (config) {
+      if (!r.selectedModel && config.model && config.model !== 'auto') r.selectedModel = config.model;
+      if (r.temperature === undefined && config.temperature !== undefined) r.temperature = config.temperature;
+      if (r.maxOutputTokens === undefined && config.maxOutputTokens !== undefined) r.maxOutputTokens = config.maxOutputTokens;
+      if (r.reasoningBudget === undefined && config.reasoningBudget) r.reasoningBudget = config.reasoningBudget;
+      if (r.agentStrategy === 'auto' && config.agentStrategy && config.agentStrategy !== 'auto' && !r.workspaceContext) r.agentStrategy = config.agentStrategy;
+      if (r.tools === undefined && config.tools) r.tools = config.tools;
+    }
+    if (r.selectedModel?.startsWith('deployment/')) {
+      const name = r.selectedModel.slice('deployment/'.length);
+      const d = await modelLabRepo.getDeployment(this.deps.pool, principal.workspaceId, name);
+      if (!d || d.status !== 'active') throw new HttpError('not_found', `Deployment "${name}" does not exist or is disabled`);
+      r.selectedModel = d.model;
+      if (r.temperature === undefined && d.parameters.temperature !== undefined) r.temperature = d.parameters.temperature;
+      if (r.maxOutputTokens === undefined && d.parameters.maxOutputTokens !== undefined) r.maxOutputTokens = d.parameters.maxOutputTokens;
+      if (r.reasoningBudget === undefined && d.parameters.reasoningBudget) r.reasoningBudget = d.parameters.reasoningBudget;
+      if (d.parameters.systemPrompt) r.messages = [{ role: 'system', content: d.parameters.systemPrompt }, ...r.messages];
+      r.metadata = { ...(r.metadata ?? {}), 'neuroflow.deployment': d.name };
+    }
+    return r;
   }
 
   /** Backpressure: bounded active runs per workspace and per user, and bounded queue backlog. */

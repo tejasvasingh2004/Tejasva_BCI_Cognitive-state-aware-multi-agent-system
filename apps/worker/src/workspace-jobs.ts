@@ -1,14 +1,23 @@
 import { classifyCommand, runInSandbox } from '@neuroflow/code';
 import { publishWorkspaceEvent, type Redis, type WorkspaceJobData } from '@neuroflow/bus';
 import type { Logger } from '@neuroflow/observability';
+import type { Pool } from '@neuroflow/db';
+import { runModelEvaluation } from './model-eval';
 import type { WorkerRuntime } from './runtime';
 
 /**
  * Code-workspace background tasks: repository clone/sync and user terminal commands. Commands run
  * only in the sandbox, re-checked against the command policy (the API already checked once).
  */
-export async function processWorkspaceJob(job: WorkspaceJobData, deps: { runtime: WorkerRuntime; redis: Redis; logger: Logger; signal: AbortSignal }) {
+export async function processWorkspaceJob(
+  job: WorkspaceJobData,
+  deps: { runtime: WorkerRuntime; redis: Redis; logger: Logger; signal: AbortSignal; pool: Pool },
+) {
   const { runtime, redis, logger } = deps;
+  if (job.kind === 'model.evaluate') {
+    await runModelEvaluation({ pool: deps.pool, gateway: runtime.gateway, logger, signal: deps.signal }, job.evaluationId);
+    return;
+  }
   const log = logger.child({ codeWorkspaceId: job.codeWorkspaceId, job: job.kind });
   if (job.kind === 'workspace.sync') {
     await runtime.code.sync(job.codeWorkspaceId, job.workspaceId).catch((err) => {

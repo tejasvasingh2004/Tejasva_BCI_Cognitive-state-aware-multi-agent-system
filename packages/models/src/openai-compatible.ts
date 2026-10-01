@@ -195,3 +195,12 @@ export async function probeOpenAICompatible(
     return false;
   }
 }
+
+/** Host (and port) of an endpoint, for display — never credentials, paths or query strings. */
+export function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}

@@ -92,9 +92,18 @@ export type ProviderRequest = Omit<ModelRequest, 'model' | 'fallbacks' | 'signal
   entry: CatalogEntry;
 };
 
+export type ProviderDescription = {
+  kind: string;
+  endpoint: string;
+  configured: boolean;
+  fineTuning: { status: 'available' | 'not_available' | 'requires_provider_access' | 'coming_soon'; reason: string };
+};
+
 export interface ProviderAdapter {
   readonly id: string;
   readonly displayName: string;
+  /** Static facts for Model Lab (endpoint host, configuration, fine-tuning capability). */
+  describe?(): ProviderDescription;
   catalog(): CatalogEntry[];
   /** Whether the provider is configured and (as far as we know) reachable. */
   isAvailable(): boolean;

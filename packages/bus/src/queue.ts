@@ -13,6 +13,7 @@ export function runPriority(source: 'workspace' | 'api' | 'openai'): number {
 /** Code-workspace background tasks share the run queue and worker pool (job name = task kind). */
 export type WorkspaceJobData =
   | { kind: 'workspace.sync'; codeWorkspaceId: string; workspaceId: string; enqueuedAt: number }
+  | { kind: 'model.evaluate'; evaluationId: string; workspaceId: string; enqueuedAt: number }
   | {
       kind: 'workspace.command';
       codeWorkspaceId: string;

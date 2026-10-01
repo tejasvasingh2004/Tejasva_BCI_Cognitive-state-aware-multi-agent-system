@@ -86,7 +86,7 @@ export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<H
       (job) =>
         job.name === 'run'
           ? processRun(job.data as RunJobData, { pool: db.pool, redis: workerRedis[0]!, runtime, logger, shutdownSignal: shutdown.signal })
-          : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis: workerRedis[0]!, logger, signal: shutdown.signal }),
+          : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis: workerRedis[0]!, logger, signal: shutdown.signal, pool: db.pool }),
       { connection: mk(), concurrency: 4, lockDuration: 30_000 },
     );
 

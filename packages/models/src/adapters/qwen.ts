@@ -1,5 +1,5 @@
 import type { ReasoningBudget } from '@neuroflow/contracts';
-import { probeOpenAICompatible, streamOpenAICompatible } from '../openai-compatible';
+import { probeOpenAICompatible, safeHost, streamOpenAICompatible } from '../openai-compatible';
 import type { CatalogEntry, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
 
 /**
@@ -40,6 +40,21 @@ export class QwenAdapter implements ProviderAdapter {
 
   isAvailable(): boolean {
     return this.config.models.length > 0 && this.healthy;
+  }
+
+  describe() {
+    const local = this.config.flavor === 'ollama';
+    return {
+      kind: local ? 'Ollama (local)' : 'DashScope (Alibaba Cloud Model Studio)',
+      endpoint: safeHost(this.config.baseUrl),
+      configured: local ? true : Boolean(this.config.apiKey),
+      fineTuning: local
+        ? { status: 'not_available' as const, reason: 'Local Ollama models cannot be fine-tuned through an API. Train elsewhere and import the result into Ollama.' }
+        : {
+            status: 'coming_soon' as const,
+            reason: 'DashScope offers fine-tuning for some Qwen models; the NeuroFlow integration is not implemented yet (adapter boundary: FineTuningAdapter).',
+          },
+    };
   }
 
   async checkHealth(signal?: AbortSignal): Promise<boolean> {
