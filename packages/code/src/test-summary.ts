@@ -1,6 +1,9 @@
+// Strips terminal colour codes (ESC [ … m) from runner output.
+const ANSI = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
+
 /** Extracts pass/fail counts from common test runner output (vitest, jest, mocha, pytest, go, cargo). */
 export function parseTestSummary(output: string): { passed?: number; failed?: number; total?: number } {
-  const clean = output.replace(/\x1b\[[0-9;]*m/g, '');
+  const clean = output.replace(ANSI, '');
   let m: RegExpExecArray | null;
   // vitest:  "Tests  1 failed | 4 passed (5)"
   if ((m = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed(?:\s*\|\s*\d+\s+\w+)*\s*\((\d+)\)/.exec(clean))) {
@@ -40,7 +43,7 @@ export function parseTestSummary(output: string): { passed?: number; failed?: nu
 
 /** Keeps the informative parts of long command output for the model: head, failures and tail. */
 export function condenseOutput(output: string, maxChars = 6_000): string {
-  const clean = output.replace(/\x1b\[[0-9;]*m/g, '');
+  const clean = output.replace(ANSI, '');
   if (clean.length <= maxChars) return clean;
   const lines = clean.split('\n');
   const failureLines = lines.filter((l) => /(fail|error|✗|×|assert|expected|exception|traceback)/i.test(l)).slice(0, 60);

@@ -29,7 +29,21 @@ export type ContextInput = {
   summary?: string;
   /** Output requirements (response format / agent output contract). */
   outputInstructions?: string;
+  /** Repository context of code runs (bounded; never the whole repository). */
+  code?: CodeContext;
   now?: Date;
+};
+
+/** Bounded code context assembled by the worker for code runs (Product Phase 2). */
+export type CodeContext = {
+  /** Repository map: structure, languages, manifests, commands, approval mode. */
+  repository: string;
+  /** `.neuroflow/instructions.md` — controlled repository instructions. */
+  instructions?: string;
+  /** Active file excerpt and selection from the editor, with line numbers. */
+  editor?: string;
+  /** Files the user pinned as context. */
+  pinned?: string;
 };
 
 export type BuiltContext = {
@@ -58,6 +72,21 @@ export function buildContext(input: ContextInput): BuiltContext {
   if (clientSystem.length) systemParts.push(`Client instructions:\n${clientSystem.join('\n').slice(0, 4000)}`);
   if (plan.cognitive) systemParts.push(plan.cognitive.presentationInstructions);
   if (input.outputInstructions) systemParts.push(input.outputInstructions);
+  const code = input.code;
+  const codeParts: Array<{ kind: string; text: string }> = [];
+  if (code) {
+    codeParts.push({ kind: 'repository', text: `Repository context:
+${clampText(code.repository, Math.floor(budget * 0.1))}` });
+    if (code.instructions?.trim()) {
+      codeParts.push({ kind: 'repository_instructions', text: `Repository instructions (.neuroflow/instructions.md — follow them):
+${clampText(code.instructions.trim(), Math.floor(budget * 0.1))}` });
+    }
+    if (code.editor?.trim()) codeParts.push({ kind: 'editor', text: `Editor context:
+${clampText(code.editor, Math.floor(budget * 0.2))}` });
+    if (code.pinned?.trim()) codeParts.push({ kind: 'pinned_files', text: `Pinned files:
+${clampText(code.pinned, Math.floor(budget * 0.2))}` });
+    systemParts.push(...codeParts.map((p) => p.text));
+  }
   const summaryText = input.summary?.trim() ? clampText(input.summary.trim(), Math.floor(budget * 0.15)) : '';
   if (summaryText) systemParts.push(`Summary of the earlier conversation (older messages are not shown):\n${summaryText}`);
   const system: ChatMessage = { role: 'system', content: systemParts.join('\n\n') };
@@ -113,6 +142,7 @@ export function buildContext(input: ContextInput): BuiltContext {
         { kind: 'system', items: 1, tokens: messageTokens(system) },
         ...(workspace ? [{ kind: 'workspace', items: 1, tokens: estimateTokens(workspace.slice(0, 4000)) }] : []),
         ...(summaryText ? [{ kind: 'summary', items: 1, tokens: estimateTokens(summaryText) }] : []),
+        ...codeParts.map((p) => ({ kind: p.kind, items: 1, tokens: estimateTokens(p.text) })),
         { kind: 'history', items: kept.length, tokens: kept.reduce((n, m) => n + messageTokens(m), 0) },
         { kind: 'task_notes', items: notes.length, tokens: notes.reduce((n, m) => n + messageTokens(m), 0) },
         { kind: 'tool_results', items: scratch.length, tokens: scratch.reduce((n, m) => n + messageTokens(m), 0) },

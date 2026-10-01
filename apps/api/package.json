@@ -22,6 +22,7 @@
     "@fastify/rate-limit": "^11.0.0",
     "@fastify/websocket": "^11.0.2",
     "@neuroflow/bus": "workspace:*",
+    "@neuroflow/code": "workspace:*",
     "@neuroflow/cognitive": "workspace:*",
     "@neuroflow/contracts": "workspace:*",
     "@neuroflow/db": "workspace:*",

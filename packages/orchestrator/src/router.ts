@@ -67,7 +67,15 @@ export type RouterInput = {
   mode: RunMode;
   request: Pick<
     RunRequest,
-    'agentStrategy' | 'modelStrategy' | 'selectedModel' | 'reasoningBudget' | 'tools' | 'agent' | 'budget' | 'clientTools'
+    | 'agentStrategy'
+    | 'modelStrategy'
+    | 'selectedModel'
+    | 'reasoningBudget'
+    | 'tools'
+    | 'agent'
+    | 'budget'
+    | 'clientTools'
+    | 'workspaceContext'
   >;
   lastUserMessage: string;
   models: ModelInfo[];
@@ -79,6 +87,8 @@ export type RouterInput = {
 };
 
 const DEFAULT_MAX_DURATION_MS = 10 * 60_000;
+/** Code runs (understand → edit → test → repair) get larger, still bounded, budgets. */
+export const CODE_RUN_BUDGETS = { maxDurationMs: 30 * 60_000, maxModelCalls: 60, maxToolCalls: 80, perAgentToolCalls: 60 };
 /** Below this latency budget the router avoids multi-agent graphs. */
 const TIGHT_LATENCY_MS = 60_000;
 
@@ -130,7 +140,9 @@ export function planExecution(input: RouterInput): ExecutionPlan {
     throw new RoutingError('No model provider is configured or reachable. Configure Qwen or Groq and try again.');
   }
   const budget = input.request.budget;
-  const maxDurationMs = Math.min(budget?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS, DEFAULT_MAX_DURATION_MS);
+  const code = input.request.workspaceContext;
+  const durationCap = code ? CODE_RUN_BUDGETS.maxDurationMs : DEFAULT_MAX_DURATION_MS;
+  const maxDurationMs = Math.min(budget?.maxDurationMs ?? durationCap, durationCap);
   const tightLatency = maxDurationMs < TIGHT_LATENCY_MS;
 
   // Cost budget: only models with known pricing can be held to it.
@@ -163,7 +175,13 @@ export function planExecution(input: RouterInput): ExecutionPlan {
   // --- agent strategy ---
   let agentStrategy: AgentStrategy;
   const clientTools = (input.request.clientTools?.length ?? 0) > 0;
-  if (clientTools) {
+  if (code) {
+    // A code run is a specialised run: one Code Agent (or a named agent) with repository tools.
+    agentStrategy = 'single_agent';
+    rationale.push(
+      `Code run (${code.approvalMode} mode): ${input.request.agent ?? 'Code Agent'} with repository tools${code.approvalMode === 'restricted' ? ' (read-only)' : ''}`,
+    );
+  } else if (clientTools) {
     agentStrategy = 'direct';
     rationale.push('Client-defined tools: one model call; tool calls are returned to the client');
   } else if (input.request.agent && input.request.agentStrategy === 'auto') {
@@ -216,7 +234,7 @@ export function planExecution(input: RouterInput): ExecutionPlan {
 
   const density = input.cognitive?.contextDensity ?? 'medium';
   const recentMessages = density === 'low' ? 8 : density === 'high' ? 40 : 20;
-  const maxInputTokens = Math.max(2_000, Math.min(Math.floor(primary.contextWindow * 0.6), 24_000));
+  const maxInputTokens = Math.max(2_000, Math.min(Math.floor(primary.contextWindow * (code ? 0.75 : 0.6)), code ? 48_000 : 24_000));
 
   const wantsModelEval =
     agentStrategy === 'evaluator_optimizer' ||
@@ -228,7 +246,11 @@ export function planExecution(input: RouterInput): ExecutionPlan {
   };
 
   const agents =
-    agentStrategy === 'single_agent' && input.request.agent ? [input.request.agent] : AGENTS_BY_STRATEGY[agentStrategy];
+    agentStrategy === 'single_agent' && input.request.agent
+      ? [input.request.agent]
+      : code
+        ? ['code']
+        : AGENTS_BY_STRATEGY[agentStrategy];
   return {
     mode: input.mode,
     taskClass: signals.taskClass,
@@ -239,14 +261,14 @@ export function planExecution(input: RouterInput): ExecutionPlan {
     agents,
     toolPolicy: {
       allowed: agentStrategy === 'direct' ? [] : allowedTools,
-      maxToolCalls: agentStrategy === 'direct' ? 0 : agentStrategy === 'single_agent' ? 6 : 4,
+      maxToolCalls: agentStrategy === 'direct' ? 0 : code ? CODE_RUN_BUDGETS.perAgentToolCalls : agentStrategy === 'single_agent' ? 6 : 4,
     },
     contextPolicy: { maxInputTokens, recentMessages, density },
     reasoningBudget,
     evaluationPolicy,
     budgets: {
-      maxModelCalls: MODEL_CALL_BUDGET[agentStrategy],
-      maxToolCalls: TOOL_CALL_BUDGET[agentStrategy],
+      maxModelCalls: code ? CODE_RUN_BUDGETS.maxModelCalls : MODEL_CALL_BUDGET[agentStrategy],
+      maxToolCalls: code ? CODE_RUN_BUDGETS.maxToolCalls : TOOL_CALL_BUDGET[agentStrategy],
       maxDurationMs,
       ...(budget?.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd } : {}),
     },

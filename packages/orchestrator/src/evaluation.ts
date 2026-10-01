@@ -94,6 +94,20 @@ export function policyIssues(ctx: RunContext): string[] {
   return issues;
 }
 
+/** Coding signals from real tool events: test results, validation, user decisions on patches. */
+export function codeIssues(ctx: RunContext): string[] {
+  const s = ctx.code;
+  if (!s) return [];
+  const issues: string[] = [];
+  if (s.lastTestPassed === false) issues.push('Tests are failing after the changes.');
+  if (s.filesModified > 0 && s.testsRun === 0 && ctx.plan.toolPolicy.allowed.includes('run_tests')) {
+    issues.push('The changes were not validated by tests.');
+  }
+  if (s.patchesRejected > 0) issues.push(`${s.patchesRejected} proposed change(s) were rejected by the user.`);
+  if (s.patchesInvalid > 0) issues.push(`${s.patchesInvalid} generated patch(es) did not apply cleanly.`);
+  return issues;
+}
+
 /** Always-on, zero-cost checks. Evaluation does not automatically mean another model call. */
 export function heuristicEvaluation(ctx: RunContext, output: string): EvaluationVerdict {
   const issues: string[] = [];
@@ -103,7 +117,7 @@ export function heuristicEvaluation(ctx: RunContext, output: string): Evaluation
   if (ctx.lastFinishReason === 'content_filter') issues.push('The provider filtered part of the response.');
   if (ctx.toolFailures > 0) issues.push(`${ctx.toolFailures} tool call(s) did not succeed.`);
   const structured = structuredOutputIssues(ctx, output);
-  issues.push(...structured, ...trajectoryIssues(ctx), ...policyIssues(ctx));
+  issues.push(...structured, ...trajectoryIssues(ctx), ...policyIssues(ctx), ...codeIssues(ctx));
   return {
     kind: 'heuristic',
     verdict: empty ? 'failed' : issues.length > 0 ? 'needs_refinement' : 'passed',

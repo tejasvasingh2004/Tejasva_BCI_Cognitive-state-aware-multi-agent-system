@@ -30,6 +30,14 @@ export class ToolRegistry {
     return [...this.tools.keys()];
   }
 
+  /** Tools for an ordinary run (no repository) or a code run, optionally read-only (no side effects). */
+  namesFor(opts: { code: boolean; readOnly?: boolean }): string[] {
+    return [...this.tools.values()]
+      .filter(({ def }) => (opts.code ? true : !def.requiresWorkspace))
+      .filter(({ def }) => (opts.readOnly ? !def.sideEffects : true))
+      .map(({ def }) => def.name);
+  }
+
   describe(): ToolDescriptor[] {
     return [...this.tools.values()].map(({ def, schema }) => ({
       name: def.name,
@@ -40,6 +48,7 @@ export class ToolRegistry {
       sideEffects: def.sideEffects,
       permissions: def.permissions,
       timeoutMs: def.timeoutMs,
+      ...(def.requiresWorkspace ? { requiresWorkspace: true } : {}),
     }));
   }
 

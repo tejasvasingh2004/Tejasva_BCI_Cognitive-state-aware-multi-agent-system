@@ -1,4 +1,5 @@
-import { createRedis, RunControlPublisher, RunEventHub, RunQueue } from '@neuroflow/bus';
+import { createRedis, RunControlPublisher, RunEventHub, RunQueue, WorkspaceEventHub } from '@neuroflow/bus';
+import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox } from '@neuroflow/code';
 import { BciHttpProvider } from '@neuroflow/cognitive';
 import { createPool, migrate, seedDev } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
@@ -21,7 +22,18 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
   await gateway.refreshHealth();
   const healthTimer = setInterval(() => void gateway.refreshHealth(), 30_000);
   const memory = new PgMemoryService(pool);
-  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory)]);
+  const secrets = SecretBox.fromEnv(config.SECRETS_KEY, config.SESSION_SECRET);
+  const code = new CodeWorkspaceService({
+    pool,
+    redis,
+    dataDir: config.CODE_DATA_DIR ?? defaultCodeDataDir(),
+    secrets,
+    // The API never executes commands; the sandbox instance is only used for availability checks.
+    sandbox: new DockerSandbox(),
+    githubApiUrl: config.GITHUB_API_URL,
+  });
+  const workspaceSubscriber = createRedis(config.REDIS_URL);
+  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory), ...createCodeTools(code.toolServices())]);
   const search = webSearchProviderFromEnv(env);
   if (search) registry.register(createWebSearchTool(search));
 
@@ -36,6 +48,9 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     gateway,
     tools: registry,
     memory,
+    code,
+    secrets,
+    workspaceHub: new WorkspaceEventHub(workspaceSubscriber),
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };
 
@@ -46,6 +61,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
       await queue.close().catch(() => {});
       redis.disconnect();
       subscriber.disconnect();
+      workspaceSubscriber.disconnect();
       await pool.end().catch(() => {});
     },
   };

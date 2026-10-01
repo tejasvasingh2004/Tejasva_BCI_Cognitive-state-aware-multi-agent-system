@@ -6,6 +6,8 @@ import type { MemoryService } from '@neuroflow/memory';
 import type { DefaultModelGateway } from '@neuroflow/models';
 import type { Logger } from '@neuroflow/observability';
 import type { ToolRegistry } from '@neuroflow/tools';
+import type { WorkspaceEventHub } from '@neuroflow/bus';
+import type { CodeWorkspaceService, SecretBox } from '@neuroflow/code';
 import type { ApiConfig } from './config';
 
 /** Everything the HTTP layer needs. The API never calls model providers for runs. */
@@ -22,6 +24,10 @@ export type AppDeps = {
   tools: ToolRegistry;
   memory: MemoryService;
   bci?: CognitiveStateProvider;
+  /** Code workspaces (Product Phase 2). File/git reads happen here; commands only in the worker sandbox. */
+  code: CodeWorkspaceService;
+  workspaceHub: WorkspaceEventHub;
+  secrets: SecretBox;
 };
 
 declare module 'fastify' {

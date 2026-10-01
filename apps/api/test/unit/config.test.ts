@@ -7,6 +7,7 @@ const prod = {
   SESSION_SECRET: 'a'.repeat(40),
   DATABASE_URL: 'postgres://app:s3cret@db:5432/neuroflow',
   REDIS_URL: 'redis://redis:6379',
+  SECRETS_KEY: Buffer.alloc(32, 1).toString('base64'),
 };
 
 describe('loadConfig', () => {

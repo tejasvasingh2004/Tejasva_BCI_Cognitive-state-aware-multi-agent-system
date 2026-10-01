@@ -26,6 +26,18 @@ const Env = z.object({
   MAX_QUEUE_BACKLOG: z.coerce.number().int().positive().default(1000),
   BCI_SERVICE_URL: z.string().optional(),
   RUN_WAIT_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  // ---- Product Phase 2: code workspaces & GitHub ----
+  /** Code workspaces (checkouts + sandbox caches); must be the same directory as the worker's. */
+  CODE_DATA_DIR: z.string().optional(),
+  /** Encryption key for stored credentials (base64, 32 bytes): `openssl rand -base64 32`. */
+  SECRETS_KEY: z.string().optional(),
+  GITHUB_API_URL: z.string().optional(),
+  /** OAuth App (optional): enables "Connect with GitHub". Token connections work without it. */
+  GITHUB_OAUTH_CLIENT_ID: z.string().optional(),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GITHUB_OAUTH_URL: z.string().default('https://github.com'),
+  /** Public URL of the web app (OAuth redirects). Defaults to the first CORS origin. */
+  PUBLIC_WEB_URL: z.string().optional(),
 });
 
 export type ApiConfig = z.infer<typeof Env>;
@@ -43,6 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       config.DATABASE_URL.includes('neuroflow:neuroflow@') && 'DATABASE_URL uses the development password',
       config.AUTH_MODE !== 'production' && 'AUTH_MODE must be "production"',
       config.DEV_API_KEY && 'DEV_API_KEY must not be set in production',
+      !config.SECRETS_KEY && 'SECRETS_KEY must be set (encrypts stored GitHub credentials)',
     ].filter(Boolean);
     if (problems.length) throw new Error(`Invalid production configuration: ${problems.join('; ')}`);
   }

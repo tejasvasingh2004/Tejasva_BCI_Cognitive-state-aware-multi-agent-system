@@ -11,6 +11,7 @@ import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { ModelGateway } from '@neuroflow/models';
 import type { EmitFn, ToolRuntime } from '@neuroflow/tools';
 import type { AgentDefinition } from './agents/definitions';
+import type { CodeContext } from './context';
 
 /** Persistence port. The worker implements it with PostgreSQL; tests use an in-memory version. */
 export interface RunStore {
@@ -77,6 +78,8 @@ export type ExecuteRunInput = {
     workspaceInstructions?: string;
     /** Rolling summary of conversation turns older than `history`. */
     conversationSummary?: string;
+    /** Repository context of a code run. */
+    code?: CodeContext;
   };
 };
 

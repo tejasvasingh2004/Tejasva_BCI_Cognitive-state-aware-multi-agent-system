@@ -45,6 +45,8 @@ export type ToolDefinition<I extends z.ZodType = z.ZodType, O = unknown> = {
   maxRetries?: number;
   /** Upper bound on the serialised result placed into model context. */
   maxResultChars?: number;
+  /** Only meaningful inside a code-workspace run (Product Phase 2 repository tools). */
+  requiresWorkspace?: boolean;
   /** Optional two-phase tools: compute the proposal (no side effects) and decide on approval. */
   prepare?(args: z.infer<I>, ctx: ToolContext): Promise<Prepared>;
   /** Called after a human decision on a prepared approval (e.g. to record patch status). */

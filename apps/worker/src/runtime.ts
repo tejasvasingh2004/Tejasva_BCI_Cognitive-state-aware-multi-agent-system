@@ -5,6 +5,7 @@ import { agentsRepo, cognitiveRepo, executionRepo, runsRepo } from '@neuroflow/d
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import type { ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
+import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox, type Sandbox } from '@neuroflow/code';
 import {
   builtinTools,
   createWebSearchTool,
@@ -19,6 +20,8 @@ export type WorkerRuntime = {
   control: RunControlListener;
   gateway: ModelGateway;
   memory: PgMemoryService;
+  /** Code workspaces: checkouts, sandbox, git/GitHub operations (Product Phase 2). */
+  code: CodeWorkspaceService;
 };
 
 export type RuntimeOptions = {
@@ -30,6 +33,7 @@ export type RuntimeOptions = {
   approvalTimeoutMs?: number;
   /** Source of optional integrations (web search provider keys). */
   env?: NodeJS.ProcessEnv;
+  code?: { dataDir?: string; secretsKey?: string; sessionSecret?: string; githubApiUrl?: string; sandbox?: Sandbox };
 };
 
 /** Wires the orchestrator to PostgreSQL, Redis and the configured providers. */
@@ -39,7 +43,15 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   await control.start();
 
   const memory = new PgMemoryService(pool);
-  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory)]);
+  const code = new CodeWorkspaceService({
+    pool,
+    redis: opts.redis,
+    dataDir: opts.code?.dataDir ?? defaultCodeDataDir(),
+    secrets: SecretBox.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'),
+    sandbox: opts.code?.sandbox ?? new DockerSandbox(),
+    githubApiUrl: opts.code?.githubApiUrl,
+  });
+  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory), ...createCodeTools(code.toolServices())]);
   const search = webSearchProviderFromEnv(opts.env ?? process.env);
   if (search) registry.register(createWebSearchTool(search));
 
@@ -76,5 +88,5 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     cognitive: new ChainedProvider(providers),
     loadAgents: async (workspaceId) => (await agentsRepo.listForWorkspace(pool, workspaceId)).map(agentFromSpec),
   });
-  return { orchestrator, control, gateway: opts.gateway, memory };
+  return { orchestrator, control, gateway: opts.gateway, memory, code };
 }

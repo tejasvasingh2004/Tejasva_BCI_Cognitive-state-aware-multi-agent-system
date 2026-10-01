@@ -185,6 +185,15 @@ export const AuditAction = z.enum([
   'workspace.settings_updated',
   'agent.upserted',
   'agent.deleted',
+  'github.connected',
+  'github.disconnected',
+  'code.workspace_created',
+  'code.file_saved',
+  'code.command_run',
+  'code.commit',
+  'code.push',
+  'code.pull_request',
+  'code.patch_decided',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 

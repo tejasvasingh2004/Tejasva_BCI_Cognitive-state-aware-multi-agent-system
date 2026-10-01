@@ -4,7 +4,7 @@ import { withSpan } from '@neuroflow/observability';
 import { AgentCatalog, type AgentDefinition } from './agents/definitions';
 import { BudgetExceededError, RunCancelledError } from './errors';
 import { evaluate, recordEvaluation } from './evaluation';
-import { ResponseChannel, RunBudget, throwIfCancelled, type RunContext } from './execution';
+import { newCodeRunState, observeCodeEvent, ResponseChannel, RunBudget, throwIfCancelled, type RunContext } from './execution';
 import { planExecution } from './router';
 import { STRATEGIES } from './strategies';
 import type { ExecuteRunInput, OrchestratorDeps, RunOutcome } from './types';
@@ -52,7 +52,11 @@ export class Orchestrator {
             lastUserMessage: lastUser,
             models: this.deps.gateway.listModels(),
             defaultModel: this.deps.gateway.defaultModel(),
-            availableTools: this.deps.tools.registry.names(),
+            // Repository tools exist only in code runs; Restricted mode only gets side-effect-free tools.
+            availableTools: this.deps.tools.registry.namesFor({
+              code: Boolean(input.request.workspaceContext),
+              readOnly: input.request.workspaceContext?.approvalMode === 'restricted',
+            }),
             availableAgents: catalog.ids(),
             ...(cognitive ? { cognitive } : {}),
           });
@@ -75,6 +79,14 @@ export class Orchestrator {
           plan.budgets.maxDurationMs,
         );
         const signal = AbortSignal.any([input.signal, budgetController.signal]);
+        const codeState = input.request.workspaceContext ? newCodeRunState() : undefined;
+        // Observe real tool events to drive the code test/repair loop and evaluation.
+        const emit: typeof input.emit = codeState
+          ? (type, data) => {
+              observeCodeEvent(codeState, type, data);
+              input.emit(type, data);
+            }
+          : input.emit;
 
         const ctx: RunContext = {
           run: input.run,
@@ -83,7 +95,7 @@ export class Orchestrator {
           history: input.history,
           scopes: input.scopes,
           signal,
-          emit: input.emit,
+          emit,
           deps: this.deps,
           agents: catalog,
           budget: new RunBudget(plan),
@@ -99,7 +111,9 @@ export class Orchestrator {
           extras: {
             ...(input.context?.workspaceInstructions ? { workspaceInstructions: input.context.workspaceInstructions } : {}),
             ...(input.context?.conversationSummary ? { summary: input.context.conversationSummary } : {}),
+            ...(input.context?.code ? { code: input.context.code } : {}),
           },
+          ...(codeState ? { code: codeState } : {}),
         };
         ctxRef = ctx;
         const strategyResult = await STRATEGIES[plan.agentStrategy](ctx, lastUser);

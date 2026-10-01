@@ -46,5 +46,8 @@ export const READ_ONLY_CODE_TOOLS: string[] = [
 
 /** All Code Agent tools, registered in the shared Tool Registry like any other capability. */
 export function createCodeTools(services: CodeServices): ToolDefinition[] {
-  return [...repositoryTools(services), ...editingTools(services), ...executionTools(services), ...gitTools(services), ...githubTools(services)];
+  return [...repositoryTools(services), ...editingTools(services), ...executionTools(services), ...gitTools(services), ...githubTools(services)].map(
+    (t) => ({ ...t, requiresWorkspace: true }),
+  );
 }
+export * from './db-services';

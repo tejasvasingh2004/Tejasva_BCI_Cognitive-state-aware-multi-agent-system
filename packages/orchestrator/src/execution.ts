@@ -13,7 +13,7 @@ import { ModelError, type FinishReason, type ModelResponse, type ToolChoice } fr
 import { runtimeMetrics, withSpan } from '@neuroflow/observability';
 import { toolResultContent, type EmitFn } from '@neuroflow/tools';
 import { outputContractInstructions, type AgentCatalog, type AgentDefinition } from './agents/definitions';
-import { buildContext } from './context';
+import { buildContext, type CodeContext } from './context';
 import { BudgetExceededError, RunCancelledError } from './errors';
 import type { OrchestratorDeps, RunIdentity } from './types';
 
@@ -120,10 +120,43 @@ export type RunContext = {
   /** True when a tool-call limit cut an agent loop short. */
   toolLimitHit: boolean;
   /** Bounded extra context sources (workspace instructions, conversation summary). */
-  extras: { workspaceInstructions?: string; summary?: string };
+  extras: { workspaceInstructions?: string; summary?: string; code?: CodeContext };
+  /** Observed code-run activity (from real tool events), used by repair and evaluation. */
+  code?: CodeRunState;
   /** Client-defined tool calls returned to the API client (direct strategy only). */
   clientToolCalls?: ToolCall[];
 };
+
+export type CodeRunState = {
+  filesModified: number;
+  /** File modifications since the last test run (drives the automatic validation step). */
+  modifiedSinceTest: number;
+  testsRun: number;
+  lastTestPassed: boolean | null;
+  patchesApplied: number;
+  patchesRejected: number;
+  patchesInvalid: number;
+  repairIterations: number;
+};
+
+export function newCodeRunState(): CodeRunState {
+  return { filesModified: 0, modifiedSinceTest: 0, testsRun: 0, lastTestPassed: null, patchesApplied: 0, patchesRejected: 0, patchesInvalid: 0, repairIterations: 0 };
+}
+
+/** Updates code-run state from real tool events (never from model claims). */
+export function observeCodeEvent(s: CodeRunState, type: string, data: unknown) {
+  const d = data as Record<string, unknown>;
+  if (type === 'file.modified') {
+    s.filesModified++;
+    s.modifiedSinceTest++;
+  } else if (type === 'test.completed') {
+    s.testsRun++;
+    s.lastTestPassed = Boolean(d.passed);
+    s.modifiedSinceTest = 0;
+  } else if (type === 'patch.rejected') s.patchesRejected++;
+  else if (type === 'patch.generated' && d.valid === false) s.patchesInvalid++;
+  else if (type === 'patch.approved') s.patchesApplied++;
+}
 
 /** Output requirements for the user-facing generation: request format + agent contract. */
 export function outputInstructions(ctx: RunContext, agent?: AgentDefinition): string | undefined {
@@ -403,6 +436,7 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
             emit: ctx.emit,
             allowedTools: allowed,
             agentExecutionId,
+            ...(ctx.request.workspaceContext ? { workspaceContext: ctx.request.workspaceContext } : {}),
           });
           if (result.status === 'cancelled') {
             throwIfCancelled(ctx.signal);

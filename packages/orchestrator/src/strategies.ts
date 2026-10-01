@@ -51,11 +51,105 @@ const direct: Strategy = async (ctx) => {
 };
 
 /** SINGLE_AGENT: one agent owns the task and may call tools (a named agent when requested). */
-const singleAgent: Strategy = async (ctx) => {
+const singleAgent: Strategy = async (ctx, task) => {
+  if (ctx.request.workspaceContext) return codeAgent(ctx, task);
   const id = ctx.plan.agents[0] && ctx.agents.has(ctx.plan.agents[0]) ? ctx.plan.agents[0] : 'assistant';
   await runAgent(ctx, { agent: ctx.agents.get(id), streamToUser: true });
   return {};
 };
+
+/** Maximum automatic test → fix iterations after the agent's own work (bounded repair loop). */
+export const MAX_REPAIR_ITERATIONS = 2;
+
+const CodePlan = z.object({ summary: z.string().max(500).optional(), steps: z.array(z.string().min(3).max(300)).min(1).max(8) });
+
+const PLAN_PROMPT = `You plan a coding task for an engineer who will use repository tools (search, read, edit, run tests).
+Write 2-7 concrete steps (which files/symbols to inspect, what to change, how to validate). Do not write code.
+Respond with only JSON: {"summary":"one sentence","steps":["..."]}`;
+
+/**
+ * Code runs: repository understanding (context) → plan → Code Agent with tools (search, read,
+ * patch, validate) → bounded validation/repair loop driven by real test results.
+ */
+async function codeAgent(ctx: RunContext, task: string): Promise<StrategyResult> {
+  const wc = ctx.request.workspaceContext!;
+  const id = ctx.plan.agents[0] && ctx.agents.has(ctx.plan.agents[0]) ? ctx.plan.agents[0] : 'code';
+  const agent = ctx.agents.get(id);
+  const notes: ChatMessage[] = [];
+
+  const informational = wc.action === 'explain' || wc.action === 'search' || ctx.plan.taskClass === 'conversational';
+  if (!informational && wc.approvalMode !== 'restricted') {
+    ctx.stage = 'planning';
+    const code = ctx.extras.code;
+    const res = await callModel(ctx, {
+      role: 'agent',
+      streamToUser: false,
+      responseFormat: 'json',
+      maxOutputTokens: 600,
+      messages: [
+        { role: 'system', content: [PLAN_PROMPT, code?.repository, code?.instructions && `Repository instructions:
+${code.instructions.slice(0, 3000)}`, code?.editor && `Editor context:
+${code.editor.slice(0, 4000)}`].filter(Boolean).join('\n\n') },
+        { role: 'user', content: task.slice(0, 8000) },
+      ],
+    });
+    const parsed = CodePlan.safeParse(parseJsonObject(res.text));
+    if (parsed.success) {
+      ctx.emit('agent.plan.created', { steps: parsed.data.steps, ...(parsed.data.summary ? { summary: parsed.data.summary } : {}) });
+      notes.push({ role: 'user', content: `[Plan]
+${parsed.data.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` });
+    }
+  }
+
+  const first = await runAgent(ctx, { agent, notes, streamToUser: true });
+
+  // Validation and bounded repair: only after real file modifications, never in Suggest/Restricted.
+  const state = ctx.code;
+  const canExecute = wc.approvalMode === 'review' || wc.approvalMode === 'auto';
+  let previous = first.text;
+  while (state && canExecute && state.modifiedSinceTest > 0 && ctx.plan.toolPolicy.allowed.includes('run_tests')) {
+    throwIfCancelled(ctx.signal);
+    ctx.stage = 'validation';
+    const result = await ctx.deps.tools.execute(
+      { id: `auto_validate_${state.repairIterations + 1}`, name: 'run_tests', arguments: '{}' },
+      {
+        runId: ctx.run.id,
+        workspaceId: ctx.run.workspaceId,
+        userId: ctx.run.userId,
+        scopes: ctx.scopes,
+        signal: ctx.signal,
+        emit: ctx.emit,
+        allowedTools: ctx.plan.toolPolicy.allowed,
+        workspaceContext: wc,
+      },
+    );
+    throwIfCancelled(ctx.signal);
+    // No test command, sandbox unavailable or approval declined: stop validating, do not loop.
+    if (result.status !== 'success') break;
+    const data = result.data as { passed?: boolean; output?: string };
+    if (data.passed || state.repairIterations >= MAX_REPAIR_ITERATIONS) break;
+    state.repairIterations++;
+    ctx.response.write('\n\n');
+    const repair = await runAgent(ctx, {
+      agent,
+      notes: [
+        ...notes,
+        { role: 'user', content: `[Your previous summary]
+${previous.slice(0, 4000)}` },
+        {
+          role: 'user',
+          content: `[Validation failed — repair attempt ${state.repairIterations} of ${MAX_REPAIR_ITERATIONS}]
+The tests fail after your changes. Output:
+${(data.output ?? '').slice(0, 8000)}
+Find the cause, fix it with targeted edits, run the tests again, then summarize what you changed.`,
+        },
+      ],
+      streamToUser: true,
+    });
+    previous = repair.text;
+  }
+  return {};
+}
 
 /** SEQUENTIAL: research → analysis → synthesis; each stage receives earlier outputs. */
 const sequential: Strategy = async (ctx) => {

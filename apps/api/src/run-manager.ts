@@ -2,6 +2,8 @@ import type { AuditAction, Principal, RunRequest } from '@neuroflow/contracts';
 import { RunEventEmitter, runPriority } from '@neuroflow/bus';
 import {
   auditRepo,
+  codeApprovalsRepo,
+  patchesRepo,
   conversationsRepo,
   deriveTitle,
   messagesRepo,
@@ -119,6 +121,39 @@ export class RunManager {
     if (run.userId !== principal.userId) throw new HttpError('forbidden', 'Only the run owner can approve actions');
     await this.deps.control.approval(runId, toolCallId, approved, reason);
     void this.audit(principal, 'tool.approval_decided', runId, { toolCallId, approved });
+    if (run.request.workspaceContext) void this.recordCodeApproval(principal, runId, toolCallId, approved, reason);
+  }
+
+  /** Explicit record of a human decision on a Code Agent action (patch, command, git, PR). */
+  private async recordCodeApproval(principal: Principal, runId: string, toolCallId: string, approved: boolean, reason?: string) {
+    try {
+      const { rows } = await this.deps.pool.query('SELECT name FROM tool_calls WHERE run_id = $1 AND tool_call_id = $2', [runId, toolCallId]);
+      const tool = (rows[0]?.name as string | undefined) ?? '';
+      const patch = await patchesRepo.findByToolCall(this.deps.pool, runId, toolCallId);
+      const subjectType = patch
+        ? tool === 'delete_file'
+          ? 'delete'
+          : 'patch'
+        : tool.startsWith('run_')
+          ? 'command'
+          : tool === 'commit' || tool === 'push'
+            ? tool
+            : tool === 'create_pull_request'
+              ? 'pull_request'
+              : 'other';
+      await codeApprovalsRepo.record(this.deps.pool, {
+        workspaceId: principal.workspaceId,
+        runId,
+        subjectType,
+        subjectId: patch?.id,
+        toolCallId,
+        decision: approved ? 'approved' : 'rejected',
+        decidedBy: principal.userId,
+        reason,
+      });
+    } catch (err) {
+      this.deps.logger.error({ err, runId }, 'failed to record code approval');
+    }
   }
 
   private audit(principal: Principal, action: AuditAction, runId: string, metadata: Record<string, unknown> = {}) {

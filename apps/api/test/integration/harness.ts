@@ -1,12 +1,12 @@
 import { Worker } from 'bullmq';
 import type { FastifyInstance } from 'fastify';
 import type { RunEvent } from '@neuroflow/contracts';
-import { createRedis, RUN_QUEUE_NAME, type Redis, type RunJobData } from '@neuroflow/bus';
+import { createRedis, RUN_QUEUE_NAME, type Redis, type RunJobData, type WorkspaceJobData } from '@neuroflow/bus';
 import { createTestDatabase } from '@neuroflow/db/testing';
 import { createGatewayFromEnv } from '@neuroflow/models';
 import { startMockOpenAIServer, type MockOpenAIServer } from '@neuroflow/models/testing';
 import { createLogger } from '@neuroflow/observability';
-import { createWorkerRuntime, processRun } from '@neuroflow/worker';
+import { createWorkerRuntime, processRun, processWorkspaceJob } from '@neuroflow/worker';
 import { buildApp, createDeps, loadConfig } from '../../src';
 
 export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://127.0.0.1:6380/1';
@@ -19,7 +19,7 @@ export type Harness = {
   groq: MockOpenAIServer;
   db: Awaited<ReturnType<typeof createTestDatabase>>;
   shutdown: AbortController;
-  worker: Worker<RunJobData>;
+  worker: Worker<RunJobData | WorkspaceJobData>;
   runtime: Awaited<ReturnType<typeof createWorkerRuntime>>;
   redisUrl: string;
   restartWorker(): Promise<void>;
@@ -74,15 +74,19 @@ export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<H
     redis: mk(),
     controlSubscriber: mk(),
     gateway,
-    approvalTimeoutMs: 3_000,
+    approvalTimeoutMs: env.TOOL_APPROVAL_TIMEOUT_MS ? Number(env.TOOL_APPROVAL_TIMEOUT_MS) : 3_000,
     env,
+    code: { dataDir: env.CODE_DATA_DIR, githubApiUrl: env.GITHUB_API_URL, secretsKey: env.SECRETS_KEY },
   });
 
   let shutdown = new AbortController();
   const newWorker = () =>
-    new Worker<RunJobData>(
+    new Worker<RunJobData | WorkspaceJobData>(
       RUN_QUEUE_NAME,
-      (job) => processRun(job.data, { pool: db.pool, redis: workerRedis[0]!, runtime, logger, shutdownSignal: shutdown.signal }),
+      (job) =>
+        job.name === 'run'
+          ? processRun(job.data as RunJobData, { pool: db.pool, redis: workerRedis[0]!, runtime, logger, shutdownSignal: shutdown.signal })
+          : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis: workerRedis[0]!, logger, signal: shutdown.signal }),
       { connection: mk(), concurrency: 4, lockDuration: 30_000 },
     );
 

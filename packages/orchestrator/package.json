@@ -20,5 +20,8 @@
     "@neuroflow/tools": "workspace:*",
     "zod": "^4.1.0",
     "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@neuroflow/code": "workspace:*"
   }
 }

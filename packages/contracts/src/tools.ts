@@ -16,6 +16,7 @@ export const ToolDescriptor = z.object({
   sideEffects: z.boolean(),
   permissions: z.array(z.string()),
   timeoutMs: z.number().int().positive(),
+  requiresWorkspace: z.boolean().optional(),
 });
 export type ToolDescriptor = z.infer<typeof ToolDescriptor>;
 

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@neuroflow/bus": "workspace:*",
+    "@neuroflow/code": "workspace:*",
     "@neuroflow/cognitive": "workspace:*",
     "@neuroflow/contracts": "workspace:*",
     "@neuroflow/db": "workspace:*",

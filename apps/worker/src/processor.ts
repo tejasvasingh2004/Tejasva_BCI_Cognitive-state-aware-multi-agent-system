@@ -11,6 +11,8 @@ import {
   summaryModel,
   toRunError,
 } from '@neuroflow/orchestrator';
+import { CodeWorkspaceError } from '@neuroflow/code';
+import { finishCodeRun, prepareCodeRun } from './code-run';
 import type { WorkerRuntime } from './runtime';
 
 export class WorkerShutdownError extends Error {
@@ -98,10 +100,15 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
       workspaceRepo.getSettings(pool, run.workspaceId),
     ]);
     const history = await loadHistory(pool, run.conversationId, summary?.uptoPosition ?? null);
+    const wc = run.request.workspaceContext;
+    const codeContext = wc
+      ? await prepareCodeRun({ pool, code: runtime.code, runId: run.id, workspaceId: run.workspaceId, wc, emit: (t, d) => emitter.emit(t, d) })
+      : undefined;
     const outcome = await runtime.orchestrator.execute({
       context: {
         ...(settings?.instructions ? { workspaceInstructions: settings.instructions } : {}),
         ...(summary?.summary ? { conversationSummary: summary.summary } : {}),
+        ...(codeContext ? { code: codeContext } : {}),
       },
       run: {
         id: run.id,
@@ -127,6 +134,7 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
       await conversationsRepo.touch(pool, run.conversationId);
     }
     await runsRepo.complete(pool, run.id, outcome.output, outcome.usage, outcome.toolCalls);
+    if (wc) await finishCodeRun({ pool, code: runtime.code, runId: run.id, workspaceId: run.workspaceId, wc, status: 'completed', emit: (t, d) => emitter.emit(t, d) }).catch((err) => log.warn({ err }, 'code run summary failed'));
     const durationMs = Date.now() - started;
     emitter.emit('run.completed', {
       durationMs,
@@ -157,12 +165,21 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
         await messagesRepo.append(pool, run.conversationId, [{ role: 'assistant', content: partial }], run.id);
       }
       await runsRepo.markCancelled(pool, run.id, partial);
+      if (run.request.workspaceContext) {
+        await finishCodeRun({ pool, code: runtime.code, runId: run.id, workspaceId: run.workspaceId, wc: run.request.workspaceContext, status: 'cancelled', emit: (t, d) => emitter.emit(t, d) }).catch(() => {});
+      }
       emitter.emit('run.cancelled', { reason: 'Cancelled by user' });
       runtimeMetrics.runsTotal.add(1, { status: 'cancelled' });
       log.info('run cancelled');
     } else {
-      const error = toRunError(cause, err instanceof StageError ? err.stage : undefined);
+      const error =
+        cause instanceof CodeWorkspaceError
+          ? { code: 'code_workspace_unavailable', message: cause.message, stage: 'repository' }
+          : toRunError(cause, err instanceof StageError ? err.stage : undefined);
       await runsRepo.fail(pool, run.id, error, partial);
+      if (run.request.workspaceContext) {
+        await finishCodeRun({ pool, code: runtime.code, runId: run.id, workspaceId: run.workspaceId, wc: run.request.workspaceContext, status: 'failed', emit: (t, d) => emitter.emit(t, d) }).catch(() => {});
+      }
       emitter.emit('run.failed', { error });
       runtimeMetrics.runsTotal.add(1, { status: 'failed' });
       log.warn({ err: cause, code: error.code, stage: error.stage }, 'run failed');

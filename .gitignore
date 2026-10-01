@@ -86,3 +86,6 @@ test-results/
 
 # local env backups
 .env.*.bak
+
+# code workspaces (checkouts, sandbox caches)
+.data/

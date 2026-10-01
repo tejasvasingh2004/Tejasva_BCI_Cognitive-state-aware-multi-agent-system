@@ -10,6 +10,21 @@ export function runPriority(source: 'workspace' | 'api' | 'openai'): number {
   return source === 'workspace' ? 1 : 5;
 }
 
+/** Code-workspace background tasks share the run queue and worker pool (job name = task kind). */
+export type WorkspaceJobData =
+  | { kind: 'workspace.sync'; codeWorkspaceId: string; workspaceId: string; enqueuedAt: number }
+  | {
+      kind: 'workspace.command';
+      codeWorkspaceId: string;
+      workspaceId: string;
+      userId: string;
+      executionId: string;
+      command: string;
+      commandKind: 'command' | 'test' | 'lint' | 'build' | 'install';
+      network: 'none' | 'bridge';
+      enqueuedAt: number;
+    };
+
 export type RunJobData = {
   runId: string;
   workspaceId: string;
@@ -44,6 +59,11 @@ export class RunQueue {
       { ...data, enqueuedAt: Date.now() },
       { jobId: data.runId, ...(opts.priority ? { priority: opts.priority } : {}) },
     );
+  }
+
+  /** Enqueues a code-workspace task (clone/sync or a user terminal command). */
+  async enqueueWorkspaceJob(data: WorkspaceJobData extends infer T ? (T extends { enqueuedAt: number } ? Omit<T, 'enqueuedAt'> : never) : never, jobId: string): Promise<void> {
+    await (this.queue as unknown as Queue<WorkspaceJobData>).add(data.kind, { ...data, enqueuedAt: Date.now() } as WorkspaceJobData, { jobId, priority: 1 });
   }
 
   /** Removes a job that has not started yet. Returns true if it was removed. */

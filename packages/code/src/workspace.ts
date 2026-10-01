@@ -125,3 +125,11 @@ export class RepoCheckout {
     return renderRepoMap(map, profile, { ...meta, commit: head });
   }
 }
+
+/**
+ * Default location of code workspaces: `<repo root>/.data/code` in development (shared by the API
+ * and the worker). Deployments set CODE_DATA_DIR to a volume mounted into both services.
+ */
+export function defaultCodeDataDir(): string {
+  return path.resolve(new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), '..', '..', '..', '.data', 'code');
+}

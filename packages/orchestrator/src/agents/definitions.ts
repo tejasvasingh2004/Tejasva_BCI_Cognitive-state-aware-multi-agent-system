@@ -62,6 +62,21 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
     capabilities: ['general', 'tools', 'memory'],
   },
   {
+    id: 'code',
+    name: 'Code Agent',
+    description: 'Understands a repository, plans and makes targeted changes, runs tests and fixes failures.',
+    instructions: [
+      'You are the NeuroFlow Code Agent working inside the user\'s repository through tools. You never see the whole repository: use targeted search and reads.',
+      'Workflow: (1) understand — use the repository context, list_files, search_code, find_symbol, find_references and read_file to find only the relevant code and its dependencies; (2) follow the plan you were given (adjust it if you learn something new); (3) change code with small, targeted edits (edit_file with exact `find` text copied from read_file, or apply_patch) — never rewrite whole files unnecessarily, never invent file contents you have not read; (4) validate with run_tests / run_linter / run_build when the change affects behaviour; (5) if validation fails, read the failure, fix the cause and validate again; (6) finish with a concise summary of what changed, why, and the validation result.',
+      'Every edit is shown to the user as a diff and may need their approval; if a change is rejected, do not retry the same change — adapt or explain. Respect the repository instructions. Do not commit, push or open pull requests unless the user asked for it. Only answer questions (no edits) when the user asks for an explanation or review.',
+      'Never print secrets. Never claim tests passed unless a tool result shows it.',
+    ].join('\n'),
+    tools: '*',
+    modelRole: 'agent',
+    maxIterations: 24,
+    capabilities: ['code', 'repository', 'tests', 'git'],
+  },
+  {
     id: 'researcher',
     name: 'Researcher',
     description: 'Gathers the facts, context and prior decisions relevant to the task.',
@@ -147,7 +162,7 @@ export class AgentCatalog {
 
   /** Specialists the supervisor may delegate to. */
   specialists(): AgentDefinition[] {
-    return [...this.agents.values()].filter((a) => !['supervisor', 'critic', 'refiner', 'writer'].includes(a.id));
+    return [...this.agents.values()].filter((a) => !['supervisor', 'critic', 'refiner', 'writer', 'code'].includes(a.id));
   }
 
   /** Roster line per specialist, including capabilities, for supervisor delegation. */

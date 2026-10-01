@@ -1,4 +1,5 @@
 import { initTelemetry, shutdownTelemetry, createLogger } from '@neuroflow/observability';
+import type { RunJobData, WorkspaceJobData } from '@neuroflow/bus';
 
 // Telemetry must start before instrumented libraries (pg, ioredis, http) are imported.
 await initTelemetry('neuroflow-worker');
@@ -11,6 +12,7 @@ const { loadConfig } = await import('./config');
 const { createWorkerRuntime } = await import('./runtime');
 const { processRun, WorkerShutdownError } = await import('./processor');
 const { purgeExpiredMemories, reconcileRuns } = await import('./reconciler');
+const { processWorkspaceJob } = await import('./workspace-jobs');
 
 const logger = createLogger('neuroflow-worker');
 const config = loadConfig();
@@ -35,12 +37,16 @@ const runtime = await createWorkerRuntime({
   gateway,
   bciServiceUrl: config.BCI_SERVICE_URL,
   approvalTimeoutMs: config.TOOL_APPROVAL_TIMEOUT_MS,
+  code: { dataDir: config.CODE_DATA_DIR, secretsKey: config.SECRETS_KEY, sessionSecret: config.SESSION_SECRET, githubApiUrl: config.GITHUB_API_URL },
 });
 
 const shutdown = new AbortController();
 const worker = new Worker(
   RUN_QUEUE_NAME,
-  (job) => processRun(job.data, { pool, redis, runtime, logger, shutdownSignal: shutdown.signal }),
+  (job) =>
+    job.name === 'run'
+      ? processRun(job.data as RunJobData, { pool, redis, runtime, logger, shutdownSignal: shutdown.signal })
+      : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis, logger, signal: shutdown.signal }),
   {
     connection: bullConnection,
     concurrency: config.WORKER_CONCURRENCY,

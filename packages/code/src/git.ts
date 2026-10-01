@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -48,7 +48,10 @@ export class Git {
     private readonly opts: { timeoutMs?: number; author?: { name: string; email: string } } = {},
   ) {}
 
-  async run(args: string[], options: { auth?: GitAuth; timeoutMs?: number; input?: string; allowFail?: boolean } = {}) {
+  async run(
+    args: string[],
+    options: { auth?: GitAuth; timeoutMs?: number; input?: string; allowFail?: boolean; env?: Record<string, string> } = {},
+  ) {
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,
       SYSTEMROOT: process.env.SYSTEMROOT,
@@ -59,6 +62,7 @@ export class Git {
       GIT_CONFIG_GLOBAL: EMPTY_GLOBAL_CONFIG,
       GCM_INTERACTIVE: 'never',
       LC_ALL: 'C',
+      ...options.env,
     };
     const config: Array<[string, string]> = [
       ['core.autocrlf', 'false'],
@@ -132,14 +136,27 @@ export class Git {
     return out;
   }
 
-  /** Unified diff of the working tree against HEAD (including untracked files), optionally per path. */
+  /**
+   * Unified diff of the working tree against HEAD, including untracked files, optionally per path.
+   * New files are shown via intent-to-add on a temporary copy of the index, so the real index (and
+   * therefore `git status`) is never modified by viewing a diff.
+   */
   async diff(paths: string[] = []): Promise<string> {
-    // Intent-to-add makes untracked files show up in `git diff` without staging their content.
     const untracked = (await this.status()).filter((s) => s.kind === 'untracked').map((s) => s.path);
     const scoped = paths.length ? untracked.filter((u) => paths.includes(u)) : untracked;
-    if (scoped.length) await this.run(['add', '--intent-to-add', '--', ...scoped]);
-    const { stdout } = await this.run(['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', ...paths]);
-    return stdout;
+    if (scoped.length === 0) {
+      return (await this.run(['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', ...paths])).stdout;
+    }
+    const gitDir = (await this.run(['rev-parse', '--absolute-git-dir'])).stdout.trim();
+    const tempIndex = path.join(os.tmpdir(), `nf-index-${randomUUID()}`);
+    await copyFile(path.join(gitDir, 'index'), tempIndex).catch(() => {});
+    try {
+      const env = { GIT_INDEX_FILE: tempIndex };
+      await this.run(['add', '--intent-to-add', '--', ...scoped], { env });
+      return (await this.run(['diff', 'HEAD', '--no-color', '--no-ext-diff', '--', ...paths], { env })).stdout;
+    } finally {
+      await rm(tempIndex, { force: true });
+    }
   }
 
   async log(limit = 20, ref = 'HEAD'): Promise<GitCommit[]> {

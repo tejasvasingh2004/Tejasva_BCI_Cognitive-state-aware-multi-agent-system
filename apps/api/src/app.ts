@@ -13,6 +13,8 @@ import { RunManager } from './run-manager';
 import { openaiRoutes } from './routes/openai';
 import { runRoutes } from './routes/runs';
 import { adminRoutes } from './routes/admin';
+import { codeRoutes } from './routes/code';
+import { githubRoutes } from './routes/github';
 import { systemRoutes } from './routes/system';
 import { workspaceRoutes } from './routes/workspace';
 
@@ -24,6 +26,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     trustProxy: true,
     bodyLimit: 1024 * 1024,
     requestIdHeader: 'x-request-id',
+    // Long-lived SSE streams must not block shutdown; clients reconnect and resume.
+    forceCloseConnections: true,
     disableRequestLogging: false,
   });
 
@@ -84,6 +88,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     await adminRoutes(scope, deps);
     await runRoutes(scope, deps, runs);
     await workspaceRoutes(scope, deps, runs);
+    await githubRoutes(scope, deps);
+    await codeRoutes(scope, deps, runs);
     await openaiRoutes(scope, deps, runs);
   });
   return app;

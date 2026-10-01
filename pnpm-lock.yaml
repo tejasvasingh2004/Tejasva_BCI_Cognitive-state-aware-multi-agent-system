@@ -53,6 +53,9 @@ importers:
       '@neuroflow/bus':
         specifier: workspace:*
         version: link:../../packages/bus
+      '@neuroflow/code':
+        specifier: workspace:*
+        version: link:../../packages/code
       '@neuroflow/cognitive':
         specifier: workspace:*
         version: link:../../packages/cognitive
@@ -202,6 +205,9 @@ importers:
       '@neuroflow/bus':
         specifier: workspace:*
         version: link:../../packages/bus
+      '@neuroflow/code':
+        specifier: workspace:*
+        version: link:../../packages/code
       '@neuroflow/cognitive':
         specifier: workspace:*
         version: link:../../packages/cognitive
@@ -254,9 +260,15 @@ importers:
 
   packages/code:
     dependencies:
+      '@neuroflow/bus':
+        specifier: workspace:*
+        version: link:../bus
       '@neuroflow/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@neuroflow/db':
+        specifier: workspace:*
+        version: link:../db
       '@neuroflow/tools':
         specifier: workspace:*
         version: link:../tools
@@ -364,6 +376,10 @@ importers:
       zod:
         specifier: ^4.1.0
         version: 4.6.5
+    devDependencies:
+      '@neuroflow/code':
+        specifier: workspace:*
+        version: link:../code
 
   packages/tools:
     dependencies:

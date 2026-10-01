@@ -8,6 +8,13 @@ const Env = z.object({
   RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   BCI_SERVICE_URL: z.string().optional(),
   TOOL_APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
+  /** Code workspaces (checkouts + sandbox caches); must be the same directory as the API's. */
+  CODE_DATA_DIR: z.string().optional(),
+  /** Encryption key for stored credentials (base64, 32 bytes). Must match the API. */
+  SECRETS_KEY: z.string().optional(),
+  /** Used only to derive a development encryption key when SECRETS_KEY is unset (matches the API default). */
+  SESSION_SECRET: z.string().default('dev-only-session-secret-change-me-please-0123456789'),
+  GITHUB_API_URL: z.string().optional(),
 });
 
 export type WorkerConfig = z.infer<typeof Env>;
