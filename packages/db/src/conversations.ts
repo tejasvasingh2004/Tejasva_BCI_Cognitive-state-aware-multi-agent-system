@@ -123,12 +123,18 @@ export const messagesRepo = {
     return out;
   },
 
-  async listByConversation(db: Queryable, conversationId: string, limit = 500): Promise<StoredMessage[]> {
+  /** Latest `limit` messages (oldest first), optionally only those after `afterPosition`. */
+  async listByConversation(
+    db: Queryable,
+    conversationId: string,
+    limit = 500,
+    afterPosition: number | null = null,
+  ): Promise<StoredMessage[]> {
     const { rows } = await db.query(
       `SELECT * FROM (
-         SELECT * FROM messages WHERE conversation_id = $1 ORDER BY position DESC LIMIT $2
+         SELECT * FROM messages WHERE conversation_id = $1 AND position > $3 ORDER BY position DESC LIMIT $2
        ) m ORDER BY position ASC`,
-      [conversationId, limit],
+      [conversationId, limit, afterPosition ?? 0],
     );
     return rows.map(toMessage);
   },

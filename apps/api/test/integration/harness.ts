@@ -20,6 +20,8 @@ export type Harness = {
   db: Awaited<ReturnType<typeof createTestDatabase>>;
   shutdown: AbortController;
   worker: Worker<RunJobData>;
+  runtime: Awaited<ReturnType<typeof createWorkerRuntime>>;
+  redisUrl: string;
   restartWorker(): Promise<void>;
   close(): Promise<void>;
 };
@@ -28,7 +30,7 @@ export type Harness = {
  * Full vertical slice: Fastify API + BullMQ worker + orchestrator + Model Gateway, with
  * PostgreSQL (isolated database), Redis (isolated DB index) and mock OpenAI-compatible providers.
  */
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<Harness> {
   const flush = createRedis(TEST_REDIS_URL);
   await flush.flushdb();
   flush.disconnect();
@@ -51,6 +53,7 @@ export async function startHarness(): Promise<Harness> {
     MAX_ACTIVE_RUNS_PER_WORKSPACE: '50',
     RATE_LIMIT_PER_MINUTE: '10000',
     LOG_LEVEL: 'warn',
+    ...overrides,
   } as NodeJS.ProcessEnv;
 
   const logger = createLogger('test', { level: 'warn' });
@@ -72,6 +75,7 @@ export async function startHarness(): Promise<Harness> {
     controlSubscriber: mk(),
     gateway,
     approvalTimeoutMs: 3_000,
+    env,
   });
 
   let shutdown = new AbortController();
@@ -83,6 +87,8 @@ export async function startHarness(): Promise<Harness> {
     );
 
   const harness: Harness = {
+    runtime,
+    redisUrl: TEST_REDIS_URL,
     app,
     baseUrl: `http://127.0.0.1:${address.port}`,
     qwen,

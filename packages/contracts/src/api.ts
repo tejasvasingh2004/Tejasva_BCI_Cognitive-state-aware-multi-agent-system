@@ -63,6 +63,8 @@ export const Principal = z.object({
   workspaceId: z.string().uuid(),
   scopes: z.array(z.string()),
   via: z.enum(['session', 'api_key']),
+  role: z.enum(['owner', 'admin', 'member', 'viewer']).optional(),
+  apiKeyId: z.string().uuid().optional(),
 });
 export type Principal = z.infer<typeof Principal>;
 

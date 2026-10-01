@@ -1,6 +1,7 @@
 import type { Pool } from '@neuroflow/db';
-import { RunEventEmitter, type Redis, type RunQueue } from '@neuroflow/bus';
-import { runEventsRepo, runsRepo } from '@neuroflow/db';
+import { RunEventEmitter, runPriority, type Redis, type RunQueue } from '@neuroflow/bus';
+import { auditRepo, runEventsRepo, runsRepo } from '@neuroflow/db';
+import type { MemoryService } from '@neuroflow/memory';
 import type { Logger } from '@neuroflow/observability';
 
 /**
@@ -20,7 +21,7 @@ export async function reconcileRuns(deps: {
   for (const run of stale) {
     if (await deps.queue.isActive(run.id)) continue;
     if (run.status === 'queued' && !run.cancelRequestedAt) {
-      await deps.queue.enqueue({ runId: run.id, workspaceId: run.workspaceId });
+      await deps.queue.enqueue({ runId: run.id, workspaceId: run.workspaceId }, { priority: runPriority(run.source) });
       requeued++;
       continue;
     }
@@ -42,4 +43,20 @@ export async function reconcileRuns(deps: {
   }
   if (requeued || failed) deps.logger.warn({ requeued, failed }, 'reconciled stale runs');
   return { requeued, failed };
+}
+
+/** Applies memory retention (TTLs + workspace policy) and records it in the audit trail. */
+export async function purgeExpiredMemories(deps: { pool: Pool; memory: MemoryService; logger: Logger }): Promise<number> {
+  const purged = await deps.memory.purgeExpired();
+  for (const p of purged) {
+    await auditRepo.record(deps.pool, {
+      action: 'memory.expired',
+      workspaceId: p.workspaceId,
+      actorVia: 'system',
+      metadata: { count: p.count },
+    });
+  }
+  const total = purged.reduce((n, p) => n + p.count, 0);
+  if (total) deps.logger.info({ total }, 'expired memories purged');
+  return total;
 }

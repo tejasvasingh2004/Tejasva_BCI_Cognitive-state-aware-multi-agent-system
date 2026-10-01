@@ -1,6 +1,7 @@
-import type { Principal, RunRequest } from '@neuroflow/contracts';
-import { RunEventEmitter } from '@neuroflow/bus';
+import type { AuditAction, Principal, RunRequest } from '@neuroflow/contracts';
+import { RunEventEmitter, runPriority } from '@neuroflow/bus';
 import {
+  auditRepo,
   conversationsRepo,
   deriveTitle,
   messagesRepo,
@@ -66,11 +67,10 @@ export class RunManager {
       emitter.emit('run.queued', {});
       await emitter.flush();
       try {
-        await this.deps.queue.enqueue({
-          runId: result.run.id,
-          workspaceId: principal.workspaceId,
-          trace: injectTraceContext(),
-        });
+        await this.deps.queue.enqueue(
+          { runId: result.run.id, workspaceId: principal.workspaceId, trace: injectTraceContext() },
+          { priority: runPriority(opts.source) },
+        );
       } catch (err) {
         this.deps.logger.error({ err, runId: result.run.id }, 'failed to enqueue run');
         const error = { code: 'queue_unavailable', message: 'The execution queue is unavailable. Please retry.', stage: 'queue' };
@@ -79,6 +79,7 @@ export class RunManager {
         await emitter.flush();
         throw new HttpError('unavailable', error.message, undefined, true);
       }
+      void this.audit(principal, 'run.created', result.run.id, { source: opts.source, mode: result.run.mode });
       return result;
     });
   }
@@ -106,6 +107,7 @@ export class RunManager {
     } else {
       await this.deps.control.cancel(runId);
     }
+    void this.audit(principal, 'run.cancelled', runId);
     return (await runsRepo.get(this.deps.pool, runId, principal.workspaceId))!;
   }
 
@@ -116,16 +118,35 @@ export class RunManager {
     // Approval is a user decision: only the run's owner may approve its tool calls.
     if (run.userId !== principal.userId) throw new HttpError('forbidden', 'Only the run owner can approve actions');
     await this.deps.control.approval(runId, toolCallId, approved, reason);
+    void this.audit(principal, 'tool.approval_decided', runId, { toolCallId, approved });
   }
 
-  /** Backpressure: bounded active runs per workspace and bounded queue backlog. */
+  private audit(principal: Principal, action: AuditAction, runId: string, metadata: Record<string, unknown> = {}) {
+    return auditRepo
+      .record(this.deps.pool, {
+        action,
+        workspaceId: principal.workspaceId,
+        actorUserId: principal.userId,
+        actorVia: principal.via === 'api_key' ? `api_key:${principal.apiKeyId ?? ''}` : 'session',
+        targetType: 'run',
+        targetId: runId,
+        metadata,
+      })
+      .catch((err) => this.deps.logger.error({ err, action }, 'failed to write audit event'));
+  }
+
+  /** Backpressure: bounded active runs per workspace and per user, and bounded queue backlog. */
   private async admit(principal: Principal) {
-    const [active, backlog] = await Promise.all([
+    const [active, activeForUser, backlog] = await Promise.all([
       runsRepo.countActive(this.deps.pool, principal.workspaceId),
+      runsRepo.countActiveForUser(this.deps.pool, principal.userId),
       this.deps.queue.backlog(),
     ]);
     if (active >= this.deps.config.MAX_ACTIVE_RUNS_PER_WORKSPACE) {
       throw new HttpError('rate_limited', 'Too many active runs in this workspace. Wait for one to finish.', undefined, true);
+    }
+    if (activeForUser >= this.deps.config.MAX_ACTIVE_RUNS_PER_USER) {
+      throw new HttpError('rate_limited', 'You already have the maximum number of active runs. Wait for one to finish.', undefined, true);
     }
     if (backlog >= this.deps.config.MAX_QUEUE_BACKLOG) {
       throw new HttpError('overloaded', 'NeuroFlow is at capacity. Please retry shortly.', undefined, true);

@@ -11,6 +11,7 @@ import {
 } from '@neuroflow/contracts';
 import { derivePolicy } from '@neuroflow/cognitive';
 import { cognitiveRepo, conversationsRepo, messagesRepo, runsRepo } from '@neuroflow/db';
+import { audit } from '../audit';
 import { requireScope } from '../auth';
 import type { AppDeps } from '../deps';
 import { HttpError, notFound } from '../errors';
@@ -84,7 +85,9 @@ export async function workspaceRoutes(app: FastifyInstance, deps: AppDeps, runs:
   app.post('/v1/memories', async (req, reply) => {
     const p = requireScope(req, Scopes.memoryWrite);
     const body = CreateMemoryBody.parse(req.body);
-    return reply.code(201).send({ memory: await deps.memory.store({ ...p, ...body, source: 'user' }) });
+    const memory = await deps.memory.store({ ...p, ...body, source: 'user' });
+    void audit(deps, req, { action: 'memory.created', targetType: 'memory', targetId: memory.id, metadata: { tags: body.tags } });
+    return reply.code(201).send({ memory });
   });
 
   app.post('/v1/memories/search', async (req) => {
@@ -97,6 +100,7 @@ export async function workspaceRoutes(app: FastifyInstance, deps: AppDeps, runs:
     const p = requireScope(req, Scopes.memoryWrite);
     const { id } = IdParams.parse(req.params);
     if (!(await deps.memory.delete(p, id))) throw notFound('Memory');
+    void audit(deps, req, { action: 'memory.deleted', targetType: 'memory', targetId: id });
     return reply.code(204).send();
   });
 
@@ -122,6 +126,7 @@ export async function workspaceRoutes(app: FastifyInstance, deps: AppDeps, runs:
     const body = SetCognitiveStateBody.parse(req.body);
     const state = { ...body, observedAt: new Date().toISOString() };
     await cognitiveRepo.upsert(deps.pool, p.workspaceId, p.userId, body.source === 'manual' ? 'manual' : body.source, state);
+    void audit(deps, req, { action: 'cognitive.state_set', metadata: { workload: body.workload, source: body.source } });
     return { state, policy: derivePolicy(state) };
   });
 

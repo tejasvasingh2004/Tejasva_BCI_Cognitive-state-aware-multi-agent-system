@@ -28,6 +28,7 @@
     "@neuroflow/memory": "workspace:*",
     "@neuroflow/models": "workspace:*",
     "@neuroflow/observability": "workspace:*",
+    "@neuroflow/orchestrator": "workspace:*",
     "@neuroflow/tools": "workspace:*",
     "fastify": "^5.4.0",
     "zod": "^4.1.0"

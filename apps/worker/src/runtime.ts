@@ -1,15 +1,24 @@
 import type { Pool } from '@neuroflow/db';
 import { RunControlListener, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { cognitiveRepo, executionRepo, runsRepo } from '@neuroflow/db';
+import { agentsRepo, cognitiveRepo, executionRepo, runsRepo } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import type { ModelGateway } from '@neuroflow/models';
-import { Orchestrator, type RunStore } from '@neuroflow/orchestrator';
-import { builtinTools, ToolRegistry, ToolRuntime, type ToolCallRecorder } from '@neuroflow/tools';
+import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
+import {
+  builtinTools,
+  createWebSearchTool,
+  ToolRegistry,
+  ToolRuntime,
+  webSearchProviderFromEnv,
+  type ToolCallRecorder,
+} from '@neuroflow/tools';
 
 export type WorkerRuntime = {
   orchestrator: Orchestrator;
   control: RunControlListener;
+  gateway: ModelGateway;
+  memory: PgMemoryService;
 };
 
 export type RuntimeOptions = {
@@ -19,6 +28,8 @@ export type RuntimeOptions = {
   gateway: ModelGateway;
   bciServiceUrl?: string;
   approvalTimeoutMs?: number;
+  /** Source of optional integrations (web search provider keys). */
+  env?: NodeJS.ProcessEnv;
 };
 
 /** Wires the orchestrator to PostgreSQL, Redis and the configured providers. */
@@ -27,7 +38,10 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   const control = new RunControlListener(opts.controlSubscriber, opts.redis);
   await control.start();
 
-  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(new PgMemoryService(pool))]);
+  const memory = new PgMemoryService(pool);
+  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory)]);
+  const search = webSearchProviderFromEnv(opts.env ?? process.env);
+  if (search) registry.register(createWebSearchTool(search));
 
   const recorder: ToolCallRecorder = {
     start: (i) => executionRepo.startToolCall(pool, i),
@@ -60,6 +74,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     tools,
     store,
     cognitive: new ChainedProvider(providers),
+    loadAgents: async (workspaceId) => (await agentsRepo.listForWorkspace(pool, workspaceId)).map(agentFromSpec),
   });
-  return { orchestrator, control };
+  return { orchestrator, control, gateway: opts.gateway, memory };
 }

@@ -4,7 +4,7 @@ import { createPool, migrate, seedDev } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { createGatewayFromEnv } from '@neuroflow/models';
 import type { Logger } from '@neuroflow/observability';
-import { builtinTools, ToolRegistry } from '@neuroflow/tools';
+import { builtinTools, createWebSearchTool, ToolRegistry, webSearchProviderFromEnv } from '@neuroflow/tools';
 import type { ApiConfig } from './config';
 import type { AppDeps } from './deps';
 
@@ -21,6 +21,9 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
   await gateway.refreshHealth();
   const healthTimer = setInterval(() => void gateway.refreshHealth(), 30_000);
   const memory = new PgMemoryService(pool);
+  const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory)]);
+  const search = webSearchProviderFromEnv(env);
+  if (search) registry.register(createWebSearchTool(search));
 
   const deps: AppDeps = {
     config,
@@ -31,7 +34,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     hub: new RunEventHub(subscriber, pool),
     control: new RunControlPublisher(redis),
     gateway,
-    tools: new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory)]),
+    tools: registry,
     memory,
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };

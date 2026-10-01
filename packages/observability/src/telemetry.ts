@@ -97,4 +97,6 @@ export const runtimeMetrics = {
   toolLatency: meter.createHistogram('neuroflow.tool.latency', { unit: 'ms' }),
   toolCalls: meter.createCounter('neuroflow.tool.calls'),
   evaluations: meter.createCounter('neuroflow.evaluation.total'),
+  cost: meter.createCounter('neuroflow.run.cost', { unit: 'USD' }),
+  authFailures: meter.createCounter('neuroflow.auth.failures'),
 };

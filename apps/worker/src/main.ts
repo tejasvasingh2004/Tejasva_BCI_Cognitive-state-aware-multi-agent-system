@@ -10,7 +10,7 @@ const { createGatewayFromEnv } = await import('@neuroflow/models');
 const { loadConfig } = await import('./config');
 const { createWorkerRuntime } = await import('./runtime');
 const { processRun, WorkerShutdownError } = await import('./processor');
-const { reconcileRuns } = await import('./reconciler');
+const { purgeExpiredMemories, reconcileRuns } = await import('./reconciler');
 
 const logger = createLogger('neuroflow-worker');
 const config = loadConfig();
@@ -57,6 +57,7 @@ worker.on('error', (err) => logger.error({ err }, 'worker error'));
 
 const reconcileTimer = setInterval(() => {
   void reconcileRuns({ pool, redis, queue, logger }).catch((err) => logger.error({ err }, 'reconcile failed'));
+  void purgeExpiredMemories({ pool, memory: runtime.memory, logger }).catch((err) => logger.error({ err }, 'memory purge failed'));
 }, config.RECONCILE_INTERVAL_MS);
 
 logger.info({ concurrency: config.WORKER_CONCURRENCY }, 'worker started');

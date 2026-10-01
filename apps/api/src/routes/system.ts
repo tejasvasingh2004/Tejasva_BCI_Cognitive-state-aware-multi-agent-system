@@ -1,11 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { pingRedis } from '@neuroflow/bus';
 import { authRepo, DEV_USER, pingDb, seedDev } from '@neuroflow/db';
-import { requirePrincipal, sessionCookieOptions, sessionCookieValue, SESSION_COOKIE, clearSession } from '../auth';
+import { LoginBody } from '@neuroflow/contracts';
+import { audit } from '../audit';
+import {
+  clearSession,
+  requirePrincipal,
+  sessionCookieOptions,
+  sessionCookieValue,
+  SESSION_COOKIE,
+  type AuthFailureLimiter,
+} from '../auth';
 import type { AppDeps } from '../deps';
 import { HttpError, notFound } from '../errors';
 
-export async function systemRoutes(app: FastifyInstance, deps: AppDeps) {
+export async function systemRoutes(app: FastifyInstance, deps: AppDeps, authLimiter: AuthFailureLimiter) {
   /** Liveness: the process is up. */
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -24,6 +33,25 @@ export async function systemRoutes(app: FastifyInstance, deps: AppDeps) {
     return reply.code(db && redis ? 200 : 503).send(body);
   });
 
+  /** Public: tells the web app which sign-in experience to show. */
+  app.get('/v1/auth/config', async () => ({ authMode: deps.config.AUTH_MODE }));
+
+  /** Email + password sign-in for accounts provisioned with the db CLI (both auth modes). */
+  app.post('/v1/auth/login', async (req, reply) => {
+    await authLimiter.assertAllowed(req.ip);
+    const { email, password } = LoginBody.parse(req.body);
+    const ids = await authRepo.verifyLogin(deps.pool, email, password);
+    if (!ids) {
+      await authLimiter.recordFailure(req.ip, 'login');
+      // The email is recorded so repeated targeting of an account is visible; never the password.
+      void audit(deps, req, { action: 'auth.login_failed', outcome: 'failure', metadata: { email: email.toLowerCase() } });
+      throw new HttpError('unauthorized', 'Incorrect email or password');
+    }
+    reply.setCookie(SESSION_COOKIE, sessionCookieValue(ids.userId, ids.workspaceId), sessionCookieOptions(deps.config.NODE_ENV === 'production'));
+    void audit(deps, null, { action: 'auth.login', workspaceId: ids.workspaceId, actorUserId: ids.userId, actorVia: 'password', ip: req.ip });
+    return { ok: true };
+  });
+
   app.post('/v1/auth/dev-login', async (_req, reply) => {
     if (deps.config.AUTH_MODE !== 'dev') throw notFound('Route');
     const ids = await seedDev(deps.pool);
@@ -31,7 +59,8 @@ export async function systemRoutes(app: FastifyInstance, deps: AppDeps) {
     return { ok: true, user: { email: DEV_USER.email } };
   });
 
-  app.post('/v1/auth/logout', async (_req, reply) => {
+  app.post('/v1/auth/logout', async (req, reply) => {
+    if (req.principal) void audit(deps, req, { action: 'auth.logout' });
     clearSession(reply);
     return { ok: true };
   });

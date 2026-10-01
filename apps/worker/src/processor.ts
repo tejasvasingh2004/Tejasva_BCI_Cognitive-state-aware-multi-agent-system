@@ -1,9 +1,16 @@
 import type { Pool } from '@neuroflow/db';
 import type { ChatMessage } from '@neuroflow/contracts';
 import { RunEventEmitter, type RunJobData, type Redis } from '@neuroflow/bus';
-import { conversationsRepo, messagesRepo, runEventsRepo, runsRepo } from '@neuroflow/db';
+import { conversationsRepo, messagesRepo, runEventsRepo, runsRepo, workspaceRepo } from '@neuroflow/db';
 import { runtimeMetrics, withExtractedContext, withSpan, type Logger } from '@neuroflow/observability';
-import { RunCancelledError, StageError, toRunError } from '@neuroflow/orchestrator';
+import {
+  RunCancelledError,
+  selectForSummary,
+  StageError,
+  summarizeConversation,
+  summaryModel,
+  toRunError,
+} from '@neuroflow/orchestrator';
 import type { WorkerRuntime } from './runtime';
 
 export class WorkerShutdownError extends Error {
@@ -86,8 +93,16 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
 
   const started = Date.now();
   try {
-    const history = await loadHistory(pool, run.conversationId);
+    const [summary, settings] = await Promise.all([
+      run.conversationId ? conversationsRepo.getSummary(pool, run.conversationId) : null,
+      workspaceRepo.getSettings(pool, run.workspaceId),
+    ]);
+    const history = await loadHistory(pool, run.conversationId, summary?.uptoPosition ?? null);
     const outcome = await runtime.orchestrator.execute({
+      context: {
+        ...(settings?.instructions ? { workspaceInstructions: settings.instructions } : {}),
+        ...(summary?.summary ? { conversationSummary: summary.summary } : {}),
+      },
       run: {
         id: run.id,
         workspaceId: run.workspaceId,
@@ -103,12 +118,26 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
     });
 
     if (run.conversationId) {
-      await messagesRepo.append(pool, run.conversationId, [{ role: 'assistant', content: outcome.output }], run.id);
+      await messagesRepo.append(
+        pool,
+        run.conversationId,
+        [{ role: 'assistant', content: outcome.output, ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}) }],
+        run.id,
+      );
       await conversationsRepo.touch(pool, run.conversationId);
     }
-    await runsRepo.complete(pool, run.id, outcome.output, outcome.usage);
+    await runsRepo.complete(pool, run.id, outcome.output, outcome.usage, outcome.toolCalls);
     const durationMs = Date.now() - started;
-    emitter.emit('run.completed', { durationMs, ...(outcome.usage ? { usage: outcome.usage } : {}) });
+    emitter.emit('run.completed', {
+      durationMs,
+      ...(outcome.usage ? { usage: outcome.usage } : {}),
+      ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}),
+    });
+    if (outcome.usage?.costUsd !== undefined) runtimeMetrics.cost.add(outcome.usage.costUsd, { strategy: outcome.plan.agentStrategy });
+    if (run.conversationId) {
+      // Best effort and off the critical path: the answer is already delivered.
+      void refreshSummary(deps, run.conversationId, summary).catch((err) => log.warn({ err }, 'conversation summary failed'));
+    }
     runtimeMetrics.runDuration.record(durationMs, { status: 'completed', strategy: outcome.plan.agentStrategy });
     runtimeMetrics.runsTotal.add(1, { status: 'completed' });
     log.info({ durationMs, strategy: outcome.plan.agentStrategy }, 'run completed');
@@ -146,10 +175,37 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
   }
 }
 
-async function loadHistory(pool: Pool, conversationId: string | null): Promise<ChatMessage[]> {
+/** History after the summarised prefix. Tool exchanges keep their call ids (client tools). */
+async function loadHistory(pool: Pool, conversationId: string | null, afterPosition: number | null): Promise<ChatMessage[]> {
   if (!conversationId) return [];
-  const messages = await messagesRepo.listByConversation(pool, conversationId, 200);
-  return messages
-    .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
-    .map(({ role, content }) => ({ role, content }));
+  const messages = await messagesRepo.listByConversation(pool, conversationId, 200, afterPosition);
+  return messages.map(({ role, content, toolCalls, toolCallId, name }) => ({
+    role,
+    content,
+    ...(toolCalls ? { toolCalls } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
+    ...(name ? { name } : {}),
+  }));
+}
+
+/** Folds older turns into the rolling conversation summary once enough have accumulated. */
+export async function refreshSummary(
+  deps: Pick<ProcessorDeps, 'pool' | 'runtime'>,
+  conversationId: string,
+  current: { summary: string | null; uptoPosition: number | null } | null,
+): Promise<boolean> {
+  const unsummarized = await messagesRepo.listAfter(deps.pool, conversationId, current?.uptoPosition ?? null);
+  const fold = selectForSummary(unsummarized);
+  if (!fold?.length) return false;
+  const gateway = deps.runtime.gateway;
+  const model = summaryModel(gateway.listModels(), gateway.defaultModel());
+  if (!model) return false;
+  const summary = await summarizeConversation(gateway, {
+    model,
+    previousSummary: current?.summary ?? null,
+    messages: fold,
+    signal: AbortSignal.timeout(120_000),
+  });
+  await conversationsRepo.setSummary(deps.pool, conversationId, summary, fold.at(-1)!.position);
+  return true;
 }

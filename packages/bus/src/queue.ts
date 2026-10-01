@@ -2,6 +2,14 @@ import { Queue, type ConnectionOptions } from 'bullmq';
 
 export const RUN_QUEUE_NAME = 'neuroflow-runs';
 
+/**
+ * BullMQ priority (1 = highest). Interactive workspace runs are served before programmatic
+ * API traffic when the queue is backed up.
+ */
+export function runPriority(source: 'workspace' | 'api' | 'openai'): number {
+  return source === 'workspace' ? 1 : 5;
+}
+
 export type RunJobData = {
   runId: string;
   workspaceId: string;

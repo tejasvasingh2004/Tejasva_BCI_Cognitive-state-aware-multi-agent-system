@@ -9,6 +9,7 @@ import {
   type OpenAIChatMessage,
   type ReasoningBudget,
   type RunEvent,
+  type ToolCall,
 } from '@neuroflow/contracts';
 import { runsRepo } from '@neuroflow/db';
 import { requireScope } from '../auth';
@@ -73,6 +74,8 @@ export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: Ru
       ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
       ...((body.max_completion_tokens ?? body.max_tokens) ? { maxOutputTokens: body.max_completion_tokens ?? body.max_tokens } : {}),
       ...(body.reasoning_effort ? { reasoningBudget: mapEffort(body.reasoning_effort) } : {}),
+      ...mapTools(body),
+      ...mapResponseFormat(body),
       // OpenAI streaming cannot retract text, so strategies must only ever append.
       metadata: { ...(body.metadata ?? {}), 'neuroflow.appendOnly': true },
     });
@@ -96,7 +99,12 @@ export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: Ru
         if (event.type === 'response.delta') chunk({ content: event.data.text }, null);
         else if (event.type === 'run.completed') {
           finished = true;
-          chunk({}, 'stop');
+          if (event.data.toolCalls?.length) {
+            chunk({ tool_calls: event.data.toolCalls.map((c, index) => ({ index, ...toOpenAIToolCall(c) })) }, null);
+            chunk({}, 'tool_calls');
+          } else {
+            chunk({}, 'stop');
+          }
           if (event.data.usage) {
             sse.send({
               data: { id, object: 'chat.completion.chunk', created, model: body.model, choices: [], usage: toOpenAIUsage(event.data.usage) },
@@ -134,18 +142,30 @@ export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: Ru
       });
     }
     const primary = final.executionPlan?.models.find((m) => m.role !== 'evaluator')?.model ?? body.model;
+    const toolCalls = final.toolCalls ?? [];
     return {
       id,
       object: 'chat.completion',
       created,
       model: auto ? primary : body.model,
-      choices: [{ index: 0, message: { role: 'assistant', content: final.output ?? '' }, finish_reason: 'stop' }],
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: toolCalls.length && !final.output ? null : (final.output ?? ''),
+            ...(toolCalls.length ? { tool_calls: toolCalls.map(toOpenAIToolCall) } : {}),
+          },
+          finish_reason: toolCalls.length ? 'tool_calls' : 'stop',
+        },
+      ],
       usage: toOpenAIUsage(final.usage ?? undefined),
       neuroflow: {
         run_id: run.id,
         conversation_id: final.conversationId,
         strategy: final.executionPlan?.agentStrategy,
         models: [...new Set(final.executionPlan?.models.map((m) => m.model) ?? [])],
+        ...(final.usage?.costUsd !== undefined ? { cost_usd: final.usage.costUsd } : {}),
       },
     };
   });
@@ -159,12 +179,47 @@ function toChatMessage(m: OpenAIChatMessage): ChatMessage | null {
       return { role: 'system', content: text };
     case 'user':
       return { role: 'user', content: text };
-    case 'assistant':
-      // Client-side tool calls are not executed by NeuroFlow; keep the visible text only.
-      return text ? { role: 'assistant', content: text } : null;
+    case 'assistant': {
+      // Client-side tool calls are kept so the model sees its own calls next to their results.
+      const toolCalls = m.tool_calls?.map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments }));
+      if (!text && !toolCalls?.length) return null;
+      return { role: 'assistant', content: text, ...(toolCalls?.length ? { toolCalls } : {}) };
+    }
+    case 'tool':
+      return m.tool_call_id ? { role: 'tool', content: text, toolCallId: m.tool_call_id, ...(m.name ? { name: m.name } : {}) } : null;
     default:
       return null;
   }
+}
+
+function mapTools(body: OpenAIChatCompletionRequest) {
+  if (!body.tools?.length) return {};
+  const choice = body.tool_choice;
+  return {
+    clientTools: body.tools.map((t) => ({
+      name: t.function.name,
+      description: t.function.description ?? '',
+      parameters: t.function.parameters ?? { type: 'object', properties: {} },
+    })),
+    ...(choice ? { clientToolChoice: typeof choice === 'string' ? choice : { name: choice.function.name } } : {}),
+  };
+}
+
+function mapResponseFormat(body: OpenAIChatCompletionRequest) {
+  const rf = body.response_format;
+  if (!rf || rf.type === 'text') return {};
+  if (rf.type === 'json_object') return { responseFormat: 'json' as const };
+  return {
+    responseFormat: {
+      type: 'json_schema' as const,
+      schema: rf.json_schema.schema,
+      ...(rf.json_schema.name ? { name: rf.json_schema.name } : {}),
+    },
+  };
+}
+
+function toOpenAIToolCall(c: ToolCall) {
+  return { id: c.id, type: 'function' as const, function: { name: c.name, arguments: c.arguments } };
 }
 
 function mapEffort(effort: string): ReasoningBudget {

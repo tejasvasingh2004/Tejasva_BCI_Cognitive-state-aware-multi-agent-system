@@ -71,6 +71,9 @@ importers:
       '@neuroflow/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@neuroflow/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@neuroflow/tools':
         specifier: workspace:*
         version: link:../../packages/tools

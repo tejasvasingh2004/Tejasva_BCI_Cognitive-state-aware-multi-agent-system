@@ -5,16 +5,18 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { ZodError } from 'zod';
 import type { ApiError } from '@neuroflow/contracts';
-import { authenticate } from './auth';
+import { audit } from './audit';
+import { AuthFailureLimiter, authenticate, InvalidCredentialsError } from './auth';
 import type { AppDeps } from './deps';
 import { HttpError } from './errors';
 import { RunManager } from './run-manager';
 import { openaiRoutes } from './routes/openai';
 import { runRoutes } from './routes/runs';
+import { adminRoutes } from './routes/admin';
 import { systemRoutes } from './routes/system';
 import { workspaceRoutes } from './routes/workspace';
 
-const PUBLIC_ROUTES = new Set(['/health', '/ready', '/v1/auth/dev-login', '/v1/auth/logout']);
+const PUBLIC_ROUTES = new Set(['/health', '/ready', '/v1/auth/dev-login', '/v1/auth/login', '/v1/auth/logout', '/v1/auth/config']);
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -33,10 +35,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
 
+  const authLimiter = new AuthFailureLimiter(deps.redis, deps.config.AUTH_FAILURE_LIMIT, deps.config.AUTH_FAILURE_WINDOW_S);
+
   // Authentication boundary: every /v1 route except explicit public ones needs a principal.
   app.addHook('onRequest', async (req) => {
     const path = req.url.split('?')[0]!;
-    req.principal = (await authenticate(req, deps.pool)) ?? undefined;
+    if (req.headers.authorization?.startsWith('Bearer ')) await authLimiter.assertAllowed(req.ip);
+    try {
+      req.principal = (await authenticate(req, deps.pool)) ?? undefined;
+    } catch (err) {
+      if (err instanceof InvalidCredentialsError) {
+        await authLimiter.recordFailure(req.ip, 'api_key');
+        void audit(deps, req, { action: 'auth.api_key_rejected', outcome: 'failure', metadata: { path } });
+      }
+      throw err;
+    }
     if (!req.principal && !PUBLIC_ROUTES.has(path) && path.startsWith('/v1/')) {
       throw new HttpError('unauthorized', 'Authentication required');
     }
@@ -44,7 +57,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(rateLimit, {
     global: true,
-    hook: 'preHandler',
+    hook: 'onRequest',
     max: deps.config.RATE_LIMIT_PER_MINUTE,
     timeWindow: '1 minute',
     redis: deps.redis,
@@ -67,7 +80,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   const runs = new RunManager(deps);
   await app.register(async (scope) => {
-    await systemRoutes(scope, deps);
+    await systemRoutes(scope, deps, authLimiter);
+    await adminRoutes(scope, deps);
     await runRoutes(scope, deps, runs);
     await workspaceRoutes(scope, deps, runs);
     await openaiRoutes(scope, deps, runs);
