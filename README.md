@@ -77,13 +77,22 @@ pnpm dev                        # api :8080, worker, web :5173 (migrations run a
 Open http://localhost:5173. In `AUTH_MODE=dev` the workspace signs you in automatically as a
 local developer; `DEV_API_KEY` is registered for API clients.
 
-### Full stack in Docker
+### Production-like stack in Docker
+
+The containers run production builds (`AUTH_MODE=production`): no dev login and no dev key. The
+API refuses to start with development secrets or the default database password.
 
 ```bash
-SESSION_SECRET=$(openssl rand -hex 32) docker compose --profile app up -d --build
+# .env: SESSION_SECRET (>= 32 chars) and POSTGRES_PASSWORD (applies to a fresh pgdata volume)
+docker compose --profile app up -d --build
+# create the first account (password is read from the environment, never from argv)
+NEUROFLOW_PASSWORD='a long passphrase' pnpm user:create --email you@example.com --name "Your Name"
 # web → http://localhost:5173 (nginx proxies /api to the API)
 docker compose --profile bci up -d bci      # optional EEG cognitive-state service (:8000)
 ```
+
+Account management: `pnpm user:create`, `pnpm user:password` (both read `NEUROFLOW_PASSWORD`)
+and `pnpm apikey:create --email … --name …`. Users manage their own API keys in **Settings**.
 
 ## Using the API
 
@@ -113,7 +122,18 @@ curl -s localhost:8080/v1/chat/completions -H "authorization: Bearer $DEV_API_KE
 | `/v1/conversations[/:id[/runs]]` | conversations, history, workspace composer runs |
 | `/v1/memories[/search]` | user-managed memory |
 | `/v1/cognitive/state` · `/v1/cognitive/sample` | Cognitive Mode state (manual / BCI sample) |
+| `POST /v1/auth/login` · `/logout` · `GET /v1/auth/config` · `GET /v1/me` | email/password sessions |
+| `/v1/api-keys[/:id]` | create (key shown once, scopes can only narrow) / list / revoke |
+| `/v1/workspace/settings` | workspace instructions and memory retention (admin to change) |
+| `/v1/agents[/:id]` | built-in + custom agents (admin to change); run one with `"agent": "<id>"` |
+| `GET /v1/audit` | audit trail of security-relevant actions (admin) |
+| `GET /v1/tools` | registered tools with their JSON Schema contracts |
 | `GET /health` · `GET /ready` | liveness · readiness (database, Redis, model providers) |
+
+Run requests also accept `responseFormat` (`"json"` or `{type:"json_schema", schema}`), a
+`budget` (`maxDurationMs`, `maxCostUsd` — they can only tighten server limits), `tools` (allow-list)
+and `agent`. The OpenAI endpoint maps `tools`/`tool_choice` (client-side tools: calls are returned,
+never executed) and `response_format`.
 
 Errors always use `{"error":{"code","message","retryable?","details?"}}`.
 
@@ -131,7 +151,9 @@ Errors always use `{"error":{"code","message","retryable?","details?"}}`.
 4. **Agents** call the **Model Gateway**; tool calls go through the **Tool Runtime**
    (name → JSON Schema/Zod validation → scope + run-policy authorization → approval → timeout →
    bounded `ToolResult`). Memory is just tools (`search_memory`, `save_memory`, `delete_memory`).
-5. **Evaluation**: always a zero-cost heuristic check; a model evaluator only when the plan says so.
+5. **Evaluation**: always zero-cost checks — empty/truncated output, structured-output validity
+   (JSON Schema), trajectory (loops, hit limits) and policy compliance (tools outside the allowed set,
+   declined approvals) — plus a model evaluator only when the plan says so.
 6. Every step is a real, persisted event streamed to the UI; the answer the user saw is exactly
    what is persisted.
 
@@ -142,13 +164,18 @@ pnpm test                    # unit + integration (integration uses Postgres/Red
 pnpm test:e2e                # Playwright: full stack (API + worker) with a mock provider
 ```
 
-- Unit: contracts, gateway (streaming, reasoning hiding, retries, fallback, timeouts, cancellation),
-  tools (validation, authorization, approval, bounding), router/context, cognitive policy, UI reducer.
-- Integration (real Postgres + Redis + BullMQ): repositories, event bus, memory, and the full
-  vertical slice — API → queue → worker → orchestrator → gateway → SSE, including cancellation,
-  provider fallback, OpenAI compatibility, idempotency, workspace isolation, worker crash recovery.
-- E2E (browser): ask/stream/persist, timeline + inspector, memory, tools, cancel, provider failure,
-  Cognitive Mode.
+- Unit: contracts, gateway (streaming, reasoning hiding, retries, fallback, timeouts, cancellation,
+  cost, provider concurrency), tools (validation, authorization, approval, bounding, web search),
+  router/context, budgets, evaluation checks, client tools, agents, summaries, cognitive policy,
+  UI reducer, production config guard.
+- Integration (real Postgres + Redis + BullMQ): repositories, event bus, memory retention, and the
+  full vertical slice — API → queue → worker → orchestrator → gateway → SSE, including
+  cancellation, provider fallback, OpenAI compatibility (incl. client tools), idempotency,
+  workspace isolation, worker crash recovery, sign-in and brute-force throttling, API key scopes,
+  admin-only routes, workspace settings, custom agents and conversation summaries.
+- E2E (browser, 11 flows): ask/stream/persist, timeline + inspector, memory, tools, invalid tool
+  arguments, unauthorized tool, multi-agent + multi-model, cancel, provider failure, Cognitive
+  Mode, settings (custom agent, theme).
 
 ## Documentation
 

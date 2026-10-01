@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "migrate": "tsx src/cli.ts migrate",
-    "seed": "tsx src/cli.ts seed"
+    "seed": "tsx src/cli.ts seed",
+    "cli": "tsx --env-file-if-exists=../../.env src/cli.ts"
   },
   "dependencies": {
     "@neuroflow/contracts": "workspace:*",

@@ -42,3 +42,57 @@ documents and how they were resolved (per PRD §1: conflicts are called out, not
 - **Legacy code**: the Next.js dashboard was removed (in git history). The Python LangGraph
   runtime in `backend/app/main.py` is superseded; `backend/app/bci_service.py` exposes only the
   EEG classifier for Cognitive Mode.
+
+## Second pass (gap audit against PRD / architecture / system design)
+
+An audit of every testable requirement in the planning documents found the gaps below; all
+MVP items were implemented. Further contradictions found and how they were resolved:
+
+| Topic | Documents | Resolution |
+| --- | --- | --- |
+| Routing library | architecture §2 lists React Router | A ~25-line path router (`/`, `/c/:id`) covers the two routes; React Router can be adopted when more routes appear. |
+| `RunRequest.stream`, `tools: ToolReference[]` | system-design §2 | Every run streams through events, so `stream` only exists at the OpenAI boundary. `tools` is a list of tool names (server tools); client-defined tools use `clientTools`. |
+| Event payloads | system-design §13 (`tool.completed.result`, `run.failed.error: string`) | `tool.completed` carries status/summary/error code only (results are bounded and stay server side); `run.failed.error` is a structured `RunError`. |
+| `CREATED` run status | PRD §9.1 | Not persisted as a status: creation and queueing happen in one transaction; `run.created` and `run.queued` are both emitted. |
+| `model.delta` vs `response.delta` | PRD §25 | Only `response.delta` (user-visible text) is exposed; intermediate agent output is never streamed, which also avoids leaking internal drafts. |
+| `CognitiveStateProvider.getState(sessionId)` | system-design | `getState({ workspaceId, userId }, signal)`: state is per user per workspace; there is no separate cognitive session object. |
+| `AgentDefinition.modelPolicy` | system-design §9 | Agents declare a `modelRole`; the router assigns models to roles per run (keeps agent/model independence). `capabilities` and an `outputContract` were added. |
+| Package layout | CLAUDE.md (separate agents/context/evaluation/ui packages) | Kept as modules of `orchestrator` / `web` (see above); `bus` and `db` were added as real boundaries. |
+| Non-streaming OpenAI requests | PRD §2.2/§43 vs §12 | The HTTP request waits (bounded by `RUN_WAIT_TIMEOUT_MS`) but the work runs in a worker like every run; streaming is recommended for long tasks. |
+| WebSocket for control | PRD §26 | Both exist; the web app uses SSE + REST commands, API clients may use `/v1/runs/:id/stream`. |
+| Production authentication | PRD §37 does not choose a mechanism | Email + password accounts (scrypt) provisioned by an operator with `pnpm user:create`, signed session cookies, API keys for programs. OIDC/SSO can be added as another way to establish the same session. |
+| Audit events | Required by CLAUDE.md, absent from PRD §40 | Implemented as an append-only `audit_events` table (never secrets or message content). |
+
+### Choices made in this pass
+
+- **Budgets**: per-run tool-call budget across all agents (plus per-agent limits), a wall-clock
+  budget that aborts in-flight model/tool calls, and an optional cost budget. Callers may only
+  tighten limits (`budget.maxDurationMs`, `budget.maxCostUsd`).
+- **Cost**: Groq list prices are built in, local Ollama is free, anything else via `MODEL_PRICING`.
+  Cost is an estimate from reported token usage.
+- **Router**: latency budget < 60 s caps automatic strategies at a single agent and prefers the
+  fastest model; a cost budget restricts to priced models; the cognitive policy contributes a
+  model preference (overloaded → fastest, spare attention → strongest).
+- **Evaluation** additionally checks structured output (JSON / JSON Schema via ajv), the
+  trajectory (repeated identical tool calls, hit limits, exhausted budgets) and policy compliance
+  (tools outside the allowed set, declined approvals, invalid arguments).
+- **Supervisor** reviews specialist results and may run one follow-up round (max two rounds, only
+  when the remaining model-call budget allows).
+- **Context**: workspace instructions and a rolling conversation summary (fast model, after 24
+  unsummarised messages, keeping the latest 12 verbatim) are bounded context sources.
+- **Memory retention**: optional per-memory TTL plus a workspace retention policy evaluated at
+  query time (changes apply retroactively); expired memories are purged by the worker and audited.
+- **Client tools** (OpenAI `tools`): offered to the model in a direct call; calls are returned to
+  the client and never executed by NeuroFlow.
+- **Notifications**: Standard Mode = toast + desktop notification when the tab is hidden; in
+  Cognitive Mode the policy's notification intensity reduces this (overloaded → title badge only).
+- **Web search**: provider-neutral `web_search` tool (Tavily, Brave, self-hosted SearXNG), only
+  registered when configured.
+
+### Deliberately deferred (documented as future in the PRD/architecture)
+
+- Semantic (pgvector) memory retrieval — full-text search behind the same `MemoryService`.
+- Interaction-derived cognitive state provider.
+- Mid-graph checkpoint resume — recovered runs restart (completed side-effecting tool calls are
+  not repeated).
+- OIDC / SSO identity providers.

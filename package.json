@@ -16,7 +16,10 @@
     "format": "prettier --write .",
     "db:migrate": "pnpm --filter @neuroflow/db migrate",
     "infra:up": "docker compose up -d postgres redis",
-    "infra:down": "docker compose down"
+    "infra:down": "docker compose down",
+    "user:create": "pnpm --filter @neuroflow/db cli create-user",
+    "user:password": "pnpm --filter @neuroflow/db cli set-password",
+    "apikey:create": "pnpm --filter @neuroflow/db cli create-api-key"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

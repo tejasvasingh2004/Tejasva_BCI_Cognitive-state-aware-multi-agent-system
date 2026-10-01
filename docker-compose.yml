@@ -5,7 +5,8 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: neuroflow
-      POSTGRES_PASSWORD: neuroflow
+      # Local infra defaults to a dev password; the containerised API refuses it (set POSTGRES_PASSWORD).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neuroflow}
       POSTGRES_DB: neuroflow
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
@@ -38,13 +39,16 @@ services:
         APP: api
     env_file: .env
     environment:
-      DATABASE_URL: postgres://neuroflow:neuroflow@postgres:5432/neuroflow
+      DATABASE_URL: postgres://neuroflow:${POSTGRES_PASSWORD:-neuroflow}@postgres:5432/neuroflow
       REDIS_URL: redis://redis:6379
       QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
       HOST: 0.0.0.0
       PORT: "8080"
       SESSION_SECRET: ${SESSION_SECRET:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # The containers run production builds: password accounts + API keys, no dev login/key.
+      AUTH_MODE: production
+      DEV_API_KEY: ""
     ports:
       - "8080:8080"
     extra_hosts:
@@ -62,7 +66,7 @@ services:
         APP: worker
     env_file: .env
     environment:
-      DATABASE_URL: postgres://neuroflow:neuroflow@postgres:5432/neuroflow
+      DATABASE_URL: postgres://neuroflow:${POSTGRES_PASSWORD:-neuroflow}@postgres:5432/neuroflow
       REDIS_URL: redis://redis:6379
       QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
       BCI_SERVICE_URL: http://bci:8000
