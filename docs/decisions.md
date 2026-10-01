@@ -96,3 +96,47 @@ MVP items were implemented. Further contradictions found and how they were resol
 - Mid-graph checkpoint resume — recovered runs restart (completed side-effecting tool calls are
   not repeated).
 - OIDC / SSO identity providers.
+
+## Product Phase 2 (AI Code Agent / AI IDE workspace)
+
+Phase 2 reuses the Phase 1 runtime end to end. There is no separate code-agent backend, model
+service, tool runtime or queue.
+
+### Contradictions and ambiguities resolved
+
+| Topic | Documents | Resolution |
+| --- | --- | --- |
+| "Workspace" | Phase 1 workspace = tenant; Phase 2 workspace = repository checkout | Two names: *workspace* (tenant, isolation unit) and *code workspace* (a checkout of one repository branch owned by a tenant workspace). |
+| Code run API | PRD lists `/v1/code/runs`; the runtime has `/v1/runs` | `/v1/code/runs` is a structured front door that builds a normal `RunRequest` with `workspaceContext`; events, cancellation and approvals reuse the run endpoints. |
+| Approval of patches | "Show diff → approval" vs the generic tool approval flow | Editing tools are two-phase (`prepare` → approval with a diff preview → `execute`). A patch review *is* a Tool Runtime approval, so every policy, timeout and audit path is shared. |
+| Push / PR authority | PRD allows the agent to push and open PRs | The agent may call `push` / `create_pull_request` only with explicit per-call approval in every mode. Users can also commit/push/PR from the Git panel. Pushes are limited to `neuroflow/agent/*` branches; commits on the base branch are moved to a new agent branch. Nothing is ever merged. |
+| Sandbox location | "Agent worker → sandbox" | Sandbox containers are started by the worker through the Docker daemon; the API never executes repository commands. In docker compose the worker gets the Docker socket and the checkouts live at an identical host/container path so bind mounts resolve. |
+| Fine-tuning | PRD Model Lab includes fine-tuning | Provider-dependent. Ollama and Groq do not offer fine-tuning through NeuroFlow; DashScope is "not yet supported". The UI and API say so, and job creation is refused with the reason. Datasets can be exported (reviewed examples only) for use elsewhere. |
+| Training data | "Learn from agent interactions" vs "never train on private repositories" | Examples are created only by explicit user action (manual, import, or "Save to dataset" from a run replay) and are exported only after a human marks them reviewed. |
+
+### Notable choices
+
+- **Git via the CLI** (not a JS reimplementation). Credentials are passed per command through
+  `GIT_CONFIG_*` environment headers, prompts are disabled, and an empty global config is used.
+  The token never touches the remote URL, the checkout's config or the model.
+- **Diff of untracked files** uses a temporary index copy, so the real index is never modified.
+- **Path policy**: every repository path is normalized and confined to the checkout (no `..`,
+  absolute paths, drive letters, `.git`, or symlink escapes).
+- **Command policy**: a deny list (privilege escalation, destructive filesystem operations, Docker,
+  remote shells, `curl | sh`, Git remote/config/push, environment dumps) applies to agent and user
+  commands alike; network access is granted only to dependency installs.
+- **Monaco is bundled locally** with Vite workers (no CDN), loaded only when a code workspace opens.
+  IntelliSense and diagnostics come from Monaco's language services for TS/JS/JSON/CSS/HTML; other
+  languages get syntax highlighting (full IDE language support is a non-goal).
+- **Live workspace events** (sync status, user terminal output, user Git operations) use a Redis
+  pub/sub channel per code workspace and SSE. They are transient. Agent activity is on the
+  persisted run event stream, which is what Replay reads.
+- **Replay** reads `run_events` plus the stored patches, executions, approvals and Git operations;
+  it never calls a model, a tool or Git.
+
+### Verification status
+
+The completion-gate flow (GitHub → repository → Code Agent → plan → edit → diff → approval → test →
+fix → commit → push → PR) is verified by integration and Playwright tests, using a real Git remote,
+real Docker sandbox and a mock GitHub REST API. The same flow against github.com needs a GitHub
+token and a test repository.

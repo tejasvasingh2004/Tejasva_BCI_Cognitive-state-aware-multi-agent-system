@@ -10,6 +10,7 @@ import { useUi } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/sparkle';
 import { Tooltip } from '@/components/ui/tooltip';
+import { AppSwitcher } from './AppSwitcher';
 
 function groupByRecency(list: Conversation[]) {
   const today = new Date().toDateString();
@@ -53,7 +54,9 @@ export function Sidebar({ activeId, onSelect, onNew }: { activeId: string | null
         </Tooltip>
       </div>
 
-      <Button variant="cta" size="md" className="mt-5 w-full" onClick={onNew} data-testid="new-chat">
+      <AppSwitcher className="mt-4 justify-between" />
+
+      <Button variant="cta" size="md" className="mt-4 w-full" onClick={onNew} data-testid="new-chat">
         <Plus className="size-4" /> New conversation
       </Button>
 

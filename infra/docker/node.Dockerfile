@@ -24,6 +24,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM node:${NODE_VERSION}-alpine AS runtime
 ARG APP
 ENV NODE_ENV=production MIGRATIONS_DIR=/app/migrations LOG_PRETTY=0
+# Code workspaces use the git CLI (API + worker); the worker starts sandbox containers through
+# the Docker daemon socket mounted by docker compose (docker CLI only, no daemon in the image).
+RUN apk add --no-cache git && if [ "$APP" = "worker" ]; then apk add --no-cache docker-cli; fi
 WORKDIR /app
 COPY --from=build /out ./
 COPY infra/migrations ./migrations

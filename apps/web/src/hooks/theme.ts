@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUi } from '@/stores/ui';
 
 /** Applies the light / dark / system theme preference to <html> and follows OS changes. */
@@ -16,4 +16,15 @@ export function useApplyTheme() {
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
   }, [theme]);
+}
+
+/** Whether the dark theme is currently applied (follows the `.dark` class on <html>). */
+export function useIsDark() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
 }

@@ -61,6 +61,7 @@ const AGENT_PHASE: Record<string, string> = {
   supervisor: 'Coordinating specialists',
   critic: 'Evaluating',
   refiner: 'Refining the answer',
+  code: 'Working in the repository',
 };
 
 export const STRATEGY_LABEL: Record<string, string> = {
@@ -72,12 +73,39 @@ export const STRATEGY_LABEL: Record<string, string> = {
   evaluator_optimizer: 'Evaluate & refine',
 };
 
-const TOOL_LABEL: Record<string, string> = {
+export const TOOL_LABEL: Record<string, string> = {
   search_memory: 'Searching memory',
   save_memory: 'Saving to memory',
   delete_memory: 'Forgetting a memory',
   calculator: 'Calculating',
   get_current_time: 'Checking the time',
+  list_files: 'Exploring the repository',
+  read_file: 'Reading code',
+  search_code: 'Searching code',
+  find_symbol: 'Finding a symbol',
+  find_references: 'Finding references',
+  create_file: 'Creating a file',
+  edit_file: 'Editing code',
+  rename_file: 'Renaming a file',
+  delete_file: 'Deleting a file',
+  apply_patch: 'Applying a patch',
+  run_command: 'Running a command',
+  run_tests: 'Running tests',
+  run_linter: 'Running the linter',
+  run_build: 'Building',
+  git_status: 'Checking Git status',
+  git_diff: 'Reviewing the diff',
+  git_log: 'Reading Git history',
+  create_branch: 'Creating a branch',
+  commit: 'Committing',
+  push: 'Pushing',
+  get_repository: 'Reading repository details',
+  get_branch: 'Reading branch details',
+  get_pull_requests: 'Listing pull requests',
+  get_issues: 'Listing issues',
+  create_issue: 'Creating an issue',
+  create_pull_request: 'Opening a pull request',
+  review_pull_request: 'Reviewing a pull request',
 };
 
 export const modelName = (ref: string) => ref.slice(ref.indexOf('/') + 1);

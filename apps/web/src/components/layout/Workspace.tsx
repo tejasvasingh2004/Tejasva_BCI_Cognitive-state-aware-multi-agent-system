@@ -284,7 +284,9 @@ function ConversationTitle({ id, title }: { id: string | null; title?: string })
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(title ?? '');
-  useEffect(() => setValue(title ?? ''), [title]);
+  useEffect(() => {
+    setValue(title ?? '');
+  }, [title]);
 
   if (!id) return <div className="min-w-0 truncate text-sm font-medium text-muted">New conversation</div>;
   const save = async () => {

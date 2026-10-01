@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUp, Bot, Brain, ChevronDown, Cpu, Gauge, Network, SlidersHorizontal, Square, Wrench } from 'lucide-react';
 import type { ReasoningBudget, RequestedAgentStrategy } from '@neuroflow/contracts';
@@ -159,7 +159,9 @@ function ComposerControls() {
   const composer = useUi((s) => s.composer);
   const setComposer = useUi((s) => s.setComposer);
   const { data: models } = useModels();
-  const { data: tools = [] } = useTools();
+  const { data: allTools = [] } = useTools();
+  // Repository tools only run inside a code workspace (they are offered by the Code Agent).
+  const tools = useMemo(() => allTools.filter((t) => !t.requiresWorkspace), [allTools]);
   const { data: agentData } = useAgents();
   const agents = agentData?.agents ?? [];
   const toolsLabel = !composer.toolsEnabled

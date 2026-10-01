@@ -49,6 +49,12 @@ services:
       # The containers run production builds: password accounts + API keys, no dev login/key.
       AUTH_MODE: production
       DEV_API_KEY: ""
+      SECRETS_KEY: ${SECRETS_KEY:-}
+      CODE_DATA_DIR: ${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:5173}
+    volumes:
+      # Same path inside and outside the container (see the worker).
+      - ${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}:${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}
     ports:
       - "8080:8080"
     extra_hosts:
@@ -70,6 +76,16 @@ services:
       REDIS_URL: redis://redis:6379
       QWEN_BASE_URL: ${QWEN_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
       BCI_SERVICE_URL: http://bci:8000
+      SECRETS_KEY: ${SECRETS_KEY:-}
+      CODE_DATA_DIR: ${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}
+    volumes:
+      # Agent commands run in sibling sandbox containers started through the host Docker daemon,
+      # so repository checkouts live at an identical host/container path for the bind mounts.
+      - ${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}:${CODE_DATA_HOST_DIR:-/var/lib/neuroflow/code}
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Group owning the Docker socket on the host (getent group docker).
+    group_add:
+      - "${DOCKER_GID:-999}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

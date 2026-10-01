@@ -52,7 +52,7 @@ export function followRun(
   return () => controller.abort();
 }
 
-async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+export async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

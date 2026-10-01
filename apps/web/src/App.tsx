@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { LoginRequiredError, useSession } from '@/hooks/queries';
 import { useApplyTheme } from '@/hooks/theme';
@@ -7,16 +8,34 @@ import { Toaster } from '@/components/layout/Toaster';
 import { Workspace } from '@/components/layout/Workspace';
 import { Sparkle } from '@/components/ui/sparkle';
 import { Button } from '@/components/ui/button';
+import { useAppRoute } from '@/hooks/route';
+
+// Code workspace and Model Lab load on demand so the chat workspace stays light.
+const CodeApp = lazy(() => import('@/components/code/CodeApp').then((m) => ({ default: m.CodeApp })));
+const ModelLab = lazy(() => import('@/components/lab/ModelLab').then((m) => ({ default: m.ModelLab })));
 
 export function App() {
   useApplyTheme();
   const session = useSession();
+  const route = useAppRoute();
 
   return (
     <>
       <Background />
       {session.isSuccess ? (
-        <Workspace />
+        route.app === 'code' || route.app === 'lab' ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center">
+                <Sparkle className="size-7" animated />
+              </div>
+            }
+          >
+            {route.app === 'code' ? <CodeApp workspaceId={route.workspaceId} replayRunId={route.replayRunId} /> : <ModelLab section={route.section} />}
+          </Suspense>
+        ) : (
+          <Workspace />
+        )
       ) : session.error instanceof LoginRequiredError ? (
         <LoginScreen />
       ) : (

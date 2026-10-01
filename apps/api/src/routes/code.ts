@@ -364,6 +364,8 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     await workspaceOf(p, id);
     const sse = openSse(req, reply);
     const stop = await deps.workspaceHub.follow(id, (e) => sse.send({ event: e.type, data: e }));
+    // Signals that the subscription is live (and pushes the stream through buffering proxies).
+    sse.comment('subscribed');
     sse.onClose(() => void stop());
     if (sse.closed) void stop();
   });

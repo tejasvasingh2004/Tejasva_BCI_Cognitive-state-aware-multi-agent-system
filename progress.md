@@ -1,18 +1,23 @@
 # NeuroFlow — Implementation Progress
-Version 4 · updated 2026-10-01
+Version 5 · updated 2026-10-02
 
 Legend: `[x]` done and tested · `[~]` partial (see note) · `[ ]` not started · `[-]` deferred by design (documented as future)
 
 ## Status
 
-All MVP requirements from `prd.md`, `architecture.md`, `system-design.md` and `claude.md` are
+The numbered "Phase N" sections below are internal implementation workstreams of **Product
+Phase 1** (core runtime). **Product Phase 2** (AI Code Agent / AI IDE workspace) has its own
+section at the end; it is a specialization of the same runtime, not a second backend.
+
+Product Phase 1: all MVP requirements from `prd.md`, `architecture.md`, `system-design.md` and `claude.md` are
 implemented and tested. A requirement-by-requirement audit of the four documents against the code
 (October 2026) found remaining gaps; they were closed in this pass (see `docs/decisions.md`,
 "Second pass").
 
 Verified end to end with a real local Qwen model (Ollama) and the EEG classifier sidecar.
 
-Tests: unit + integration (real Postgres/Redis/BullMQ) across all packages, 11 Playwright E2E flows.
+Tests: unit + integration (real Postgres/Redis/BullMQ/Git/Docker) across all packages, 13 Playwright
+E2E flows (11 Phase 1, 2 Phase 2).
 
 ---
 
@@ -141,8 +146,65 @@ Tests: unit + integration (real Postgres/Redis/BullMQ) across all packages, 11 P
 | Security: auth, authorization, rate limits, audit | ✅ |
 | Critical flows have automated tests | ✅ |
 
+---
+
+## Product Phase 2 — AI Code Agent / AI IDE Workspace
+
+A code run is an ordinary NeuroFlow run with `workspaceContext`; the same API, Run Manager,
+BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and persistence carry it.
+
+- [x] GitHub connection: fine-grained token or OAuth App (single-use state), tokens AES-256-GCM
+      encrypted at rest, never returned to the browser or given to the model
+- [x] Account/organization → repository → branch selection; repository access ≠ push permission
+- [x] Code workspaces: isolated checkout per workspace, cloned/synchronised in the worker
+      (fetch + fast-forward only when clean), status events
+- [x] Repository understanding: project detection (node/python/go/rust), repository map,
+      `.neuroflow/instructions.md`, active file/selection/pinned files as context (never the
+      whole repository)
+- [x] Tool registry, all 27 PRD tools: repository (list_files, read_file, search_code, find_symbol,
+      find_references), editing (create/edit/rename/delete_file, apply_patch), execution
+      (run_command/tests/linter/build), Git (status, diff, log, create_branch, commit, push),
+      GitHub (get_repository/branch/pull_requests/issues, create_issue, create_pull_request,
+      review_pull_request) — schema validation → authorization → risk/approval → execution
+- [x] Safe editing: understand → patch → validate (`git apply --check`) → diff → approval policy →
+      apply; Suggest / Review / Auto / Restricted modes; high-impact changes always ask
+- [x] Sandbox: Docker, no network (except installs), CPU/memory/pids limits, read-only root,
+      dropped capabilities, no host env/secrets, timeouts; command policy deny-list
+- [x] Code Agent: plan (`agent.plan.created`) → explore → patch → validation (tests) → bounded
+      repair loop → summary; budgets for duration, model and tool calls
+- [x] Git workflow: commits only on `neuroflow/agent/<task>` branches, push limited to agent
+      branches and to credentials with push permission, PRs opened as drafts, never merged
+- [x] Phase 2 events (code.run.created … code.run.completed) emitted by the backend
+- [x] Replay from stored events and artifacts (never re-executes); coding evaluation signals
+- [x] Model Lab: Models, Providers, Parameters (AI workspace / Code Agent scopes), Datasets
+      (explicit user action only, reviewed-only export), Fine-tuning (provider status stated
+      honestly; no provider currently supports it through NeuroFlow), Evaluations (worker),
+      Deployments (`deployment/<name>`)
+- [x] Workspace UI: top bar (repository/branch/sync/approval mode), Explorer (Files, Search, Git,
+      Branches), Monaco (tabs, IntelliSense + diagnostics for TS/JS/JSON/CSS/HTML, HEAD diff,
+      Ctrl+S), AI Agent (Chat, Plan, Activity, Context, Approvals with diff review), bottom panel
+      (Terminal, Problems, Tests, Git Diff with commit/push/PR, Agent Logs), Ctrl+K command bar,
+      Replay view; dark mode
+- [x] Tests: code package (real Git + Docker), orchestrator code runs, API integration (mock GitHub
+      API + real Git remote + Docker), Playwright E2E for the full browser flow and Model Lab
+
+### Phase 2 completion gate
+
+| Step | Verified |
+| --- | --- |
+| GitHub → repository → branch | ✅ against a mock GitHub REST API (integration + E2E) |
+| Workspace clone / sync | ✅ real Git remote |
+| Repository understanding → plan → edit → diff → approval | ✅ |
+| Test → fix (bounded repair loop) | ✅ real Docker sandbox |
+| Final diff → commit → push | ✅ real Git push to a remote |
+| Optional PR | ✅ against the mock GitHub API |
+| **Same flow on github.com with a real repository** | ⏳ needs a GitHub token + test repository |
+
 ## Remaining (needs input or is post-MVP)
 
-1. Live Groq verification — add a `GROQ_API_KEY`.
-2. Web search — add a Tavily/Brave key or a SearXNG URL to enable the tool.
-3. OIDC/SSO, pgvector memory, interaction-based cognitive signal, mid-graph resume (post-MVP).
+1. Live GitHub verification of the Phase 2 gate — a fine-grained token for a test repository.
+2. Live Groq verification — add a `GROQ_API_KEY`.
+3. Web search — add a Tavily/Brave key or a SearXNG URL to enable the tool.
+4. OIDC/SSO, pgvector memory, interaction-based cognitive signal, mid-graph resume (post-MVP).
+5. Phase 2 non-goals stay out of scope: VS Code parity, unrestricted shell, automatic deployment,
+   merging into protected branches, automatic training or fine-tuning.
