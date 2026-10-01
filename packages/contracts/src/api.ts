@@ -86,6 +86,12 @@ export const Scopes = {
   memoryRead: 'memory:read',
   memoryWrite: 'memory:write',
   toolsExecute: 'tools:execute',
+  /** Browse repositories, read code, search (Product Phase 2). */
+  codeRead: 'code:read',
+  /** Edit files, run sandboxed commands, local Git operations. */
+  codeWrite: 'code:write',
+  /** Push branches, open pull requests / issues on GitHub. */
+  codePublish: 'code:publish',
   admin: 'admin',
 } as const;
 export const ALL_SCOPES = Object.values(Scopes);

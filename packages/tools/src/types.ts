@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { RiskLevel, RunEventPayload, RunEventType, ToolResult } from '@neuroflow/contracts';
+import type { RiskLevel, RunEventPayload, RunEventType, ToolResult, WorkspaceContext } from '@neuroflow/contracts';
 
 export type EmitFn = <T extends RunEventType>(type: T, data: RunEventPayload<T>) => void;
 
@@ -11,6 +11,23 @@ export type ToolContext = {
   scopes: readonly string[];
   signal: AbortSignal;
   emit: EmitFn;
+  /** Repository / code workspace the run operates on (Product Phase 2), when any. */
+  workspaceContext?: WorkspaceContext;
+  /** The model's tool call id (set by the runtime for prepare/execute). */
+  toolCallId?: string;
+};
+
+/**
+ * Result of a tool's optional preparation step, which runs after validation and authorization but
+ * before any side effect. It lets approval depend on the actual change (e.g. a computed diff).
+ */
+export type Prepared<S = unknown> = {
+  /** Present when this particular call needs an explicit human decision. */
+  approval?: { reason: string; preview?: unknown };
+  /** When set, execution is skipped and this is returned as the tool output (e.g. Suggest mode). */
+  output?: unknown;
+  /** Carried into execute() / onDecision(). */
+  state?: S;
 };
 
 export type ToolDefinition<I extends z.ZodType = z.ZodType, O = unknown> = {
@@ -28,7 +45,11 @@ export type ToolDefinition<I extends z.ZodType = z.ZodType, O = unknown> = {
   maxRetries?: number;
   /** Upper bound on the serialised result placed into model context. */
   maxResultChars?: number;
-  execute(args: z.infer<I>, ctx: ToolContext): Promise<O>;
+  /** Optional two-phase tools: compute the proposal (no side effects) and decide on approval. */
+  prepare?(args: z.infer<I>, ctx: ToolContext): Promise<Prepared>;
+  /** Called after a human decision on a prepared approval (e.g. to record patch status). */
+  onDecision?(approved: boolean, prepared: Prepared, ctx: ToolContext): Promise<void> | void;
+  execute(args: z.infer<I>, ctx: ToolContext, prepared?: Prepared): Promise<O>;
   /** Short human readable summary for timelines (must not contain secrets). */
   summarize?(output: O): string;
 };

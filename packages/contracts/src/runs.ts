@@ -12,6 +12,7 @@ import {
 import { ChatMessage, ToolCall, Usage } from './messages';
 import { ModelRef, ModelRole } from './models';
 import { CognitivePolicy } from './cognitive';
+import { WorkspaceContext } from './code';
 
 export const MAX_INPUT_CHARS = 32_000;
 export const MAX_MESSAGES_PER_REQUEST = 200;
@@ -77,6 +78,8 @@ export const RunRequest = z.object({
   budget: RunBudgetRequest.optional(),
   clientTools: z.array(ClientTool).max(64).optional(),
   clientToolChoice: ClientToolChoice.optional(),
+  /** Repository / code workspace context (Product Phase 2 code runs). */
+  workspaceContext: WorkspaceContext.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;

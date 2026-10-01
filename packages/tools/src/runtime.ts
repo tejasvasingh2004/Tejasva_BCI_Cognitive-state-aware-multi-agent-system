@@ -2,7 +2,14 @@ import type { ToolCall, ToolErrorCode, ToolResult, ToolResultStatus } from '@neu
 import { Scopes } from '@neuroflow/contracts';
 import { runtimeMetrics, withSpan } from '@neuroflow/observability';
 import type { ToolRegistry } from './registry';
-import { ToolExecutionError, type ApprovalGate, type ToolCallRecorder, type ToolContext, type ToolDefinition } from './types';
+import {
+  ToolExecutionError,
+  type ApprovalGate,
+  type Prepared,
+  type ToolCallRecorder,
+  type ToolContext,
+  type ToolDefinition,
+} from './types';
 
 export type ToolExecutionContext = ToolContext & {
   /** Tools this run may use (execution plan tool policy). */
@@ -97,6 +104,19 @@ export class ToolRuntime {
       riskLevel: def.riskLevel,
       ...(ctx.agentExecutionId ? { agentExecutionId: ctx.agentExecutionId } : {}),
     });
+    // 5a. Optional preparation: compute the proposed change and decide whether it needs approval.
+    let prepared: Prepared | undefined;
+    if (def.prepare) {
+      try {
+        const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(def.timeoutMs)]);
+        prepared = await raceAbort(def.prepare(args, { ...ctx, signal, toolCallId: call.id }), signal);
+      } catch (err) {
+        const message = err instanceof ToolExecutionError ? err.message : 'Tool preparation failed';
+        return this.finalize(ctx, fail(ctx.signal.aborted ? 'cancelled' : 'error', ctx.signal.aborted ? 'cancelled' : 'execution_failed', message), def);
+      }
+    }
+    const needsApproval = def.requiresApproval || Boolean(prepared?.approval);
+
     await this.opts.recorder?.start({
       runId: ctx.runId,
       agentExecutionId: ctx.agentExecutionId,
@@ -104,12 +124,27 @@ export class ToolRuntime {
       name: def.name,
       arguments: args,
       riskLevel: def.riskLevel,
-      approvalStatus: def.requiresApproval ? 'pending' : 'not_required',
+      approvalStatus: needsApproval && prepared?.output === undefined ? 'pending' : 'not_required',
     });
 
-    // 5. Human approval for consequential tools. Fails closed when no approval channel exists.
-    if (def.requiresApproval) {
-      const decision = await this.awaitApproval(call, def, args, ctx);
+    // 5b. Preparation decided the outcome without executing (e.g. Suggest mode: proposal only).
+    if (prepared && prepared.output !== undefined) {
+      const bounded = bound(prepared.output, def.maxResultChars ?? this.defaultMaxResultChars);
+      return this.finalize(
+        ctx,
+        { toolCallId: call.id, name: def.name, status: 'success', data: bounded.data, durationMs: Date.now() - started, attempts: 1, truncated: bounded.truncated },
+        def,
+        true,
+        safeSummary(def, prepared.output),
+      );
+    }
+
+    // 5c. Human approval for consequential tools. Fails closed when no approval channel exists.
+    if (needsApproval) {
+      const decision = await this.awaitApproval(call, def, args, ctx, prepared?.approval);
+      if (prepared && def.onDecision && decision !== 'cancelled') {
+        await Promise.resolve(def.onDecision(decision === 'approved', prepared, { ...ctx, toolCallId: call.id })).catch(() => {});
+      }
       if (decision !== 'approved') {
         const denied =
           decision === 'cancelled'
@@ -134,7 +169,7 @@ export class ToolRuntime {
       const timeout = AbortSignal.timeout(def.timeoutMs);
       const signal = AbortSignal.any([ctx.signal, timeout]);
       try {
-        const output = await raceAbort(def.execute(args, { ...ctx, signal }), signal);
+        const output = await raceAbort(def.execute(args, { ...ctx, signal, toolCallId: call.id }, prepared), signal);
         const bounded = bound(output, def.maxResultChars ?? this.defaultMaxResultChars);
         const result: ToolResult = {
           toolCallId: call.id,
@@ -170,6 +205,7 @@ export class ToolRuntime {
     def: ToolDefinition,
     args: unknown,
     ctx: ToolExecutionContext,
+    request?: Prepared['approval'],
   ): Promise<'approved' | 'denied' | 'timeout' | 'cancelled'> {
     if (!this.opts.approvals) return 'denied';
     ctx.emit('approval.requested', {
@@ -178,6 +214,8 @@ export class ToolRuntime {
       riskLevel: def.riskLevel,
       arguments: args,
       expiresAt: new Date(Date.now() + this.approvalTimeoutMs).toISOString(),
+      ...(request?.reason ? { reason: request.reason } : {}),
+      ...(request?.preview !== undefined ? { preview: request.preview } : {}),
     });
     let outcome: 'approved' | 'denied' | 'timeout' | 'cancelled';
     let reason: string | undefined;

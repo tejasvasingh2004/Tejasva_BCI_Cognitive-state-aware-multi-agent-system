@@ -10,3 +10,4 @@ export * from './seed';
 export * from './audit';
 export * from './workspace';
 export * from './agents';
+export * from './code';

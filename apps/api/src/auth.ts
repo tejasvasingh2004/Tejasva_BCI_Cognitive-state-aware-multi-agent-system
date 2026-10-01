@@ -14,7 +14,7 @@ export const ROLE_SCOPES: Record<WorkspaceRole, string[]> = {
   owner: [...ALL_SCOPES],
   admin: [...ALL_SCOPES],
   member: ALL_SCOPES.filter((s) => s !== Scopes.admin),
-  viewer: [Scopes.runsRead, Scopes.memoryRead],
+  viewer: [Scopes.runsRead, Scopes.memoryRead, Scopes.codeRead],
 };
 
 export function sessionCookieValue(userId: string, workspaceId: string): string {

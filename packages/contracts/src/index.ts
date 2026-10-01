@@ -7,3 +7,4 @@ export * from './runs';
 export * from './events';
 export * from './api';
 export * from './openai';
+export * from './code';

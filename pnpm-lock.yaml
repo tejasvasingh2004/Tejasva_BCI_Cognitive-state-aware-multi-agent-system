@@ -252,6 +252,21 @@ importers:
         specifier: ^5.6.1
         version: 5.11.1
 
+  packages/code:
+    dependencies:
+      '@neuroflow/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@neuroflow/tools':
+        specifier: workspace:*
+        version: link:../tools
+      diff:
+        specifier: ^8.0.2
+        version: 8.0.4
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/cognitive:
     dependencies:
       '@neuroflow/contracts':
@@ -2453,6 +2468,10 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  diff@8.0.4:
+    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
+    engines: {node: '>=0.3.1'}
 
   duplexify@4.1.3:
     resolution: {integrity: sha512-M3BmBhwJRZsSx38lZyhE53Csddgzl5R7xGJNk7CVddZD6CcmwMCH8J+7AprIrQKH7TonKxaCjcv27Qmf+sQ+oA==}
@@ -6060,6 +6079,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  diff@8.0.4: {}
 
   duplexify@4.1.3:
     dependencies:

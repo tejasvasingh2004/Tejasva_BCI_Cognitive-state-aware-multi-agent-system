@@ -3,6 +3,9 @@ import { RiskLevel, ToolErrorCode, ToolResultStatus } from './tools';
 import { ToolCall, Usage } from './messages';
 import { ExecutionPlan, RunError } from './runs';
 import { CognitivePolicy, CognitiveState } from './cognitive';
+import { ApprovalMode, FileChange } from './code';
+
+const CommandKind = z.enum(['command', 'test', 'lint', 'build', 'install']);
 
 /**
  * Realtime execution events. Every event originates from real backend execution and is persisted
@@ -85,6 +88,10 @@ export const RunEventData = {
     riskLevel: RiskLevel,
     arguments: z.unknown(),
     expiresAt: z.string(),
+    /** Why this particular call needs approval (policy explanation). */
+    reason: z.string().optional(),
+    /** What will happen if approved (e.g. diff summary, command line). */
+    preview: z.unknown().optional(),
   }),
   'approval.resolved': z.object({
     toolCallId: z.string(),
@@ -116,6 +123,67 @@ export const RunEventData = {
     verdict: z.enum(['passed', 'failed', 'needs_refinement']),
     score: z.number().min(0).max(1).optional(),
     issues: z.array(z.string()),
+  }),
+  // ---- Product Phase 2: code runs (emitted in addition to the generic run lifecycle) ----
+  'code.run.created': z.object({
+    codeWorkspaceId: z.string(),
+    repository: z.string(),
+    branch: z.string(),
+    approvalMode: ApprovalMode,
+    baseCommit: z.string().nullable(),
+  }),
+  'repository.loaded': z.object({
+    repository: z.string(),
+    branch: z.string(),
+    commit: z.string().nullable(),
+    fileCount: z.number().int(),
+    languages: z.array(z.string()),
+    projectKind: z.string(),
+    instructions: z.boolean(),
+  }),
+  'agent.plan.created': z.object({ steps: z.array(z.string()), summary: z.string().optional() }),
+  'file.search.started': z.object({ query: z.string(), kind: z.string() }),
+  'file.search.completed': z.object({ query: z.string(), kind: z.string(), matches: z.number().int(), files: z.array(z.string()) }),
+  'file.read': z.object({ path: z.string(), startLine: z.number().int().optional(), endLine: z.number().int().optional(), bytes: z.number().int() }),
+  'patch.generated': z.object({ patchId: z.string(), toolCallId: z.string(), files: z.array(FileChange), valid: z.boolean(), error: z.string().optional() }),
+  'patch.review_required': z.object({ patchId: z.string(), toolCallId: z.string(), files: z.array(FileChange), diff: z.string() }),
+  'patch.approved': z.object({ patchId: z.string() }),
+  'patch.rejected': z.object({ patchId: z.string(), reason: z.string().optional() }),
+  'file.modified': z.object({
+    path: z.string(),
+    op: FileChange.shape.op,
+    additions: z.number().int(),
+    deletions: z.number().int(),
+    patchId: z.string().optional(),
+  }),
+  'command.started': z.object({ executionId: z.string(), command: z.string(), kind: CommandKind }),
+  'command.output': z.object({ executionId: z.string(), chunk: z.string() }),
+  'command.completed': z.object({
+    executionId: z.string(),
+    kind: CommandKind,
+    exitCode: z.number().int(),
+    durationMs: z.number().int(),
+    timedOut: z.boolean(),
+  }),
+  'test.started': z.object({ executionId: z.string(), command: z.string() }),
+  'test.completed': z.object({
+    executionId: z.string(),
+    passed: z.boolean(),
+    exitCode: z.number().int(),
+    durationMs: z.number().int(),
+    summary: z.object({ passed: z.number().int().optional(), failed: z.number().int().optional(), total: z.number().int().optional() }).optional(),
+  }),
+  'git.diff.updated': z.object({ files: z.array(FileChange), additions: z.number().int(), deletions: z.number().int() }),
+  'branch.created': z.object({ branch: z.string(), from: z.string() }),
+  'commit.created': z.object({ sha: z.string(), branch: z.string(), message: z.string(), files: z.number().int() }),
+  'push.completed': z.object({ branch: z.string(), remote: z.string(), sha: z.string() }),
+  'pull_request.created': z.object({ number: z.number().int(), url: z.string(), title: z.string(), head: z.string(), base: z.string() }),
+  'code.run.completed': z.object({
+    status: z.enum(['completed', 'failed', 'cancelled']),
+    filesChanged: z.number().int(),
+    additions: z.number().int(),
+    deletions: z.number().int(),
+    testsPassed: z.boolean().nullable(),
   }),
   'response.delta': z.object({ text: z.string() }),
   'response.reset': z.object({ reason: z.string() }),
