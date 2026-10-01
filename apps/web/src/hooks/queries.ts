@@ -14,9 +14,20 @@ export const keys = {
   runEvents: (id: string) => ['run-events', id] as const,
   memories: ['memories'] as const,
   cognitive: ['cognitive'] as const,
+  agents: ['agents'] as const,
+  settings: ['settings'] as const,
+  apiKeys: ['api-keys'] as const,
+  audit: ['audit'] as const,
 };
 
-/** Session bootstrap: in dev mode the workspace signs in automatically. */
+/** Raised when the workspace needs an interactive sign-in (production auth mode). */
+export class LoginRequiredError extends Error {
+  constructor() {
+    super('Sign in required');
+  }
+}
+
+/** Session bootstrap: dev mode signs in automatically; production shows the sign-in screen. */
 export function useSession() {
   return useQuery({
     queryKey: keys.me,
@@ -25,6 +36,8 @@ export function useSession() {
         return await api.me();
       } catch (err) {
         if (err instanceof ApiRequestError && err.status === 401) {
+          const { authMode } = await api.authConfig();
+          if (authMode !== 'dev') throw new LoginRequiredError();
           await api.devLogin().catch(() => {
             throw err;
           });
@@ -34,9 +47,16 @@ export function useSession() {
       }
     },
     staleTime: Infinity,
-    retry: 1,
+    retry: (count, err) => !(err instanceof LoginRequiredError) && count < 1,
   });
 }
+
+export const useTools = () => useQuery({ queryKey: ['tools'], queryFn: () => api.tools().then((r) => r.tools), staleTime: 60_000 });
+export const useAgents = () => useQuery({ queryKey: keys.agents, queryFn: api.agents, staleTime: 30_000 });
+export const useSettings = (enabled = true) => useQuery({ queryKey: keys.settings, queryFn: api.settings, enabled });
+export const useApiKeys = (enabled = true) => useQuery({ queryKey: keys.apiKeys, queryFn: () => api.apiKeys().then((r) => r.apiKeys), enabled });
+export const useAudit = (enabled = true) =>
+  useQuery({ queryKey: keys.audit, queryFn: () => api.audit().then((r) => r.events), enabled, retry: false });
 
 export const useModels = () => useQuery({ queryKey: keys.models, queryFn: api.models, staleTime: 30_000, refetchInterval: 60_000 });
 export const useConversations = () => useQuery({ queryKey: keys.conversations, queryFn: () => api.conversations().then((r) => r.conversations) });

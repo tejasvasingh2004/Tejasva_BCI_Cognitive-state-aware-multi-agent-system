@@ -25,7 +25,11 @@ export type RunView = {
   toolsUsed: string[];
   retries: number;
   fallbacks: number;
-  memoryQueries: Array<{ query: string; count: number }>;
+  memoryQueries: Array<{
+    query: string;
+    count: number;
+    items: Array<{ id: string; source: string; tags: string[]; createdAt: string }>;
+  }>;
   evaluation?: { verdict: string; score?: number; issues: string[] };
   usage?: Usage;
   error?: { code: string; message: string; stage?: string };
@@ -159,7 +163,7 @@ export function applyRunEvent(view: RunView, e: RunEvent): RunView {
       finish(`approval-${e.data.toolCallId}`, e.data.approved ? 'done' : 'failed', e.data.approved ? 'Approved' : 'Declined');
       break;
     case 'memory.completed':
-      v.memoryQueries = [...v.memoryQueries, { query: e.data.query, count: e.data.count }];
+      v.memoryQueries = [...v.memoryQueries, { query: e.data.query, count: e.data.count, items: e.data.items ?? [] }];
       break;
     case 'evaluation.started':
       v.phase = 'Evaluating';

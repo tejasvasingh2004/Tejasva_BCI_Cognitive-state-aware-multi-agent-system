@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { PanelLeftOpen, PanelRight, PencilLine, Plus } from 'lucide-react';
+import { Menu, PanelLeftOpen, PanelRight, PencilLine, Plus } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { keys, useCancelRun, useCognitive, useConversation, useRunView, useSession } from '@/hooks/queries';
@@ -13,6 +13,8 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { Inspector } from '@/components/inspector/Inspector';
 import { CognitiveControl } from '@/components/panels/CognitiveControl';
 import { MemoryDialog } from '@/components/panels/MemoryDialog';
+import { SettingsDialog } from '@/components/panels/SettingsDialog';
+import { useRunNotifications } from '@/hooks/notifications';
 import { Composer, type ComposerHandle } from '@/components/workspace/Composer';
 import { Hero } from '@/components/workspace/Hero';
 import { Thread } from '@/components/workspace/Thread';
@@ -41,6 +43,18 @@ export function Workspace() {
   const running = Boolean(pendingText) || lastStatus === 'queued' || lastStatus === 'running';
   const cancel = useCancelRun();
   const uiDensity = composer.mode === 'cognitive' ? (cognitive?.policy?.uiDensity ?? 'full') : 'full';
+  const notificationIntensity = composer.mode === 'cognitive' ? (cognitive?.policy?.notificationIntensity ?? 'medium') : 'high';
+  const mobileSidebarOpen = useUi((s) => s.mobileSidebarOpen);
+  const setMobileSidebarOpen = useUi((s) => s.setMobileSidebarOpen);
+  const notifyOpts = useMemo(
+    () => ({
+      intensity: notificationIntensity,
+      title: detail?.conversation.title ?? 'NeuroFlow',
+      onOpen: () => window.focus(),
+    }),
+    [notificationIntensity, detail?.conversation.title],
+  );
+  useRunNotifications(lastView, notifyOpts);
 
   const submit = useCallback(
     async (text: string) => {
@@ -52,7 +66,7 @@ export function Workspace() {
           id = (await api.createConversation()).conversation.id;
           navigate(id);
         }
-        const tools = composer.toolsEnabled ? undefined : [];
+        const tools = !composer.toolsEnabled ? [] : (composer.tools ?? undefined);
         await api.startRun(
           id,
           {
@@ -62,6 +76,7 @@ export function Workspace() {
             ...(composer.model !== 'auto' ? { selectedModel: composer.model } : {}),
             ...(composer.reasoningBudget !== 'auto' ? { reasoningBudget: composer.reasoningBudget } : {}),
             ...(tools ? { tools } : {}),
+            ...(composer.agent ? { agent: composer.agent } : {}),
           },
           crypto.randomUUID(),
         );
@@ -82,9 +97,10 @@ export function Workspace() {
 
   const newConversation = useCallback(() => {
     navigate(null);
+    setMobileSidebarOpen(false);
     setError(null);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, [navigate]);
+  }, [navigate, setMobileSidebarOpen]);
 
   // Keyboard: ⌘/Ctrl+K new conversation, ⌘/Ctrl+I inspector, "/" focus composer.
   useEffect(() => {
@@ -126,12 +142,45 @@ export function Workspace() {
         )}
       </AnimatePresence>
 
+      {/* Mobile: the sidebar is an overlay drawer. */}
+      <AnimatePresence>
+        {mobileSidebarOpen && (
+          <motion.div
+            key="mobile-sidebar"
+            className="fixed inset-0 z-40 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button className="absolute inset-0 bg-black/20 backdrop-blur-sm" aria-label="Close menu" onClick={() => setMobileSidebarOpen(false)} />
+            <motion.div
+              initial={{ x: -24 }}
+              animate={{ x: 0 }}
+              exit={{ x: -24 }}
+              className="absolute inset-y-3 left-3"
+            >
+              <Sidebar
+                activeId={conversationId}
+                onSelect={(id) => {
+                  navigate(id);
+                  setMobileSidebarOpen(false);
+                }}
+                onNew={newConversation}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main className="glass relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[28px]">
         {/* top bar */}
         <header className="flex h-16 shrink-0 items-center gap-3 px-4">
+          <Button variant="glass" size="icon-sm" className="md:hidden" onClick={() => setMobileSidebarOpen(true)} aria-label="Open menu">
+            <Menu className="size-4" />
+          </Button>
           {!sidebarOpen && (
             <Tooltip content="Show sidebar">
-              <Button variant="glass" size="icon-sm" onClick={() => setSidebarOpen(true)} aria-label="Show sidebar">
+              <Button variant="glass" size="icon-sm" className="hidden md:inline-flex" onClick={() => setSidebarOpen(true)} aria-label="Show sidebar">
                 <PanelLeftOpen className="size-4" />
               </Button>
             </Tooltip>
@@ -144,7 +193,7 @@ export function Workspace() {
           <ConversationTitle id={conversationId} title={detail?.conversation.title} />
 
           <div className="ml-auto flex items-center gap-2">
-            {running && lastView && (
+            {running && lastView && notificationIntensity !== 'low' && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -226,6 +275,7 @@ export function Workspace() {
         )}
       </AnimatePresence>
       <MemoryDialog />
+      <SettingsDialog />
     </div>
   );
 }
@@ -236,7 +286,7 @@ function ConversationTitle({ id, title }: { id: string | null; title?: string })
   const [value, setValue] = useState(title ?? '');
   useEffect(() => setValue(title ?? ''), [title]);
 
-  if (!id) return <div className="text-sm font-medium text-muted">New conversation</div>;
+  if (!id) return <div className="min-w-0 truncate text-sm font-medium text-muted">New conversation</div>;
   const save = async () => {
     setEditing(false);
     if (value.trim() && value !== title) {
@@ -252,10 +302,10 @@ function ConversationTitle({ id, title }: { id: string | null; title?: string })
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => void save()}
       onKeyDown={(e) => e.key === 'Enter' && void save()}
-      className="h-8 min-w-0 max-w-md flex-1 rounded-full border border-line bg-white/80 px-3 text-sm outline-none"
+      className="h-8 min-w-0 max-w-md flex-1 rounded-full border border-line bg-surface/80 px-3 text-sm outline-none"
     />
   ) : (
-    <button onClick={() => setEditing(true)} className="group flex min-w-0 items-center gap-2 rounded-full px-2 py-1 text-sm font-medium text-ink hover:bg-white/60">
+    <button onClick={() => setEditing(true)} className="group flex min-w-0 items-center gap-2 rounded-full px-2 py-1 text-sm font-medium text-ink hover:bg-surface/60">
       <span className="truncate">{title ?? '…'}</span>
       <PencilLine className="size-3.5 shrink-0 text-faint opacity-0 transition group-hover:opacity-100" />
     </button>

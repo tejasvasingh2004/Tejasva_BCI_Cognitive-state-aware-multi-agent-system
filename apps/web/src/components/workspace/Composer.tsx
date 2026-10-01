@@ -1,10 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUp, Brain, ChevronDown, Cpu, Gauge, Network, SlidersHorizontal, Square, Wrench } from 'lucide-react';
+import { ArrowUp, Bot, Brain, ChevronDown, Cpu, Gauge, Network, SlidersHorizontal, Square, Wrench } from 'lucide-react';
 import type { ReasoningBudget, RequestedAgentStrategy } from '@neuroflow/contracts';
 import { cn } from '@/lib/utils';
 import { STRATEGY_LABEL } from '@/lib/run-view';
-import { useModels } from '@/hooks/queries';
+import { useAgents, useModels, useTools } from '@/hooks/queries';
 import { useUi } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import {
@@ -144,7 +144,7 @@ function Chip({ icon: Icon, label, value, tone = 'violet' }: { icon: typeof Cpu;
     rose: 'bg-rose-soft text-rose-500',
   };
   return (
-    <span className="flex items-center gap-2 rounded-full border border-white bg-white/70 py-1 pl-1 pr-3 text-xs text-ink-soft shadow-sm transition hover:bg-white">
+    <span className="flex items-center gap-2 rounded-full border border-surface bg-surface/70 py-1 pl-1 pr-3 text-xs text-ink-soft shadow-sm transition hover:bg-surface">
       <span className={cn('flex size-6 items-center justify-center rounded-full', tones[tone])}>
         <Icon className="size-3.5" />
       </span>
@@ -159,6 +159,17 @@ function ComposerControls() {
   const composer = useUi((s) => s.composer);
   const setComposer = useUi((s) => s.setComposer);
   const { data: models } = useModels();
+  const { data: tools = [] } = useTools();
+  const { data: agentData } = useAgents();
+  const agents = agentData?.agents ?? [];
+  const toolsLabel = !composer.toolsEnabled
+    ? 'None'
+    : !composer.tools
+      ? 'All'
+      : composer.tools.length === 1
+        ? composer.tools[0]!.replace(/_/g, ' ')
+        : `${composer.tools.length} selected`;
+  const agentLabel = composer.agent ? (agents.find((a) => a.id === composer.agent)?.name ?? composer.agent) : 'Auto';
   const modelLabel =
     composer.model === 'auto' ? 'Auto' : (models?.data.find((m) => m.id === composer.model)?.display_name ?? composer.model);
 
@@ -168,7 +179,7 @@ function ComposerControls() {
         onClick={() => setComposer({ mode: composer.mode === 'standard' ? 'cognitive' : 'standard' })}
         className={cn(
           'flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-xs shadow-sm transition',
-          composer.mode === 'cognitive' ? 'border-violet-200 bg-violet-soft text-accent-deep' : 'border-white bg-white/70 text-ink-soft hover:bg-white',
+          composer.mode === 'cognitive' ? 'border-violet-200 bg-violet-soft text-accent-deep' : 'border-surface bg-surface/70 text-ink-soft hover:bg-surface',
         )}
         aria-pressed={composer.mode === 'cognitive'}
         data-testid="mode-toggle"
@@ -206,7 +217,7 @@ function ComposerControls() {
       </DropdownMenu>
 
       <DropdownMenu>
-        <DropdownMenuTrigger className="outline-none">
+        <DropdownMenuTrigger className="outline-none" data-testid="strategy-picker">
           <Chip icon={Network} label="Agents" value={composer.agentStrategy === 'auto' ? 'Auto' : STRATEGY_LABEL[composer.agentStrategy]!} tone="violet" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
@@ -233,16 +244,68 @@ function ComposerControls() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <button
-        onClick={() => setComposer({ toolsEnabled: !composer.toolsEnabled })}
-        aria-pressed={composer.toolsEnabled}
-        className="flex items-center gap-2 rounded-full border border-white bg-white/70 py-1 pl-1 pr-3 text-xs text-ink-soft shadow-sm transition hover:bg-white"
-      >
-        <span className={cn('flex size-6 items-center justify-center rounded-full', composer.toolsEnabled ? 'bg-mint-soft text-emerald-600' : 'bg-line text-faint')}>
-          <Wrench className="size-3.5" />
-        </span>
-        Tools {composer.toolsEnabled ? 'on' : 'off'}
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger className="outline-none" data-testid="tools-picker">
+          <Chip icon={Wrench} label="Tools" value={toolsLabel} tone="mint" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>Tools the agent may use</DropdownMenuLabel>
+          <DropdownMenuItem
+            selected={composer.toolsEnabled && !composer.tools}
+            onSelect={() => setComposer({ toolsEnabled: true, tools: null })}
+          >
+            All available tools
+          </DropdownMenuItem>
+          <DropdownMenuItem selected={!composer.toolsEnabled} onSelect={() => setComposer({ toolsEnabled: false, tools: null })}>
+            No tools
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {tools.map((t) => {
+            const on = composer.toolsEnabled && (!composer.tools || composer.tools.includes(t.name));
+            return (
+              <DropdownMenuItem
+                key={t.name}
+                selected={on}
+                hint={t.requiresApproval ? 'approval' : undefined}
+                // Keep the menu open while toggling several tools.
+                onSelect={(e) => {
+                  e.preventDefault();
+                  const current = composer.toolsEnabled ? (composer.tools ?? tools.map((x) => x.name)) : [];
+                  const next = on ? current.filter((n) => n !== t.name) : [...current, t.name];
+                  setComposer({ toolsEnabled: next.length > 0, tools: next.length === tools.length ? null : next });
+                }}
+              >
+                {t.name.replace(/_/g, ' ')}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger className="outline-none" data-testid="agent-picker">
+          <Chip icon={Bot} label="Agent" value={agentLabel} tone="rose" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>Run as agent</DropdownMenuLabel>
+          <DropdownMenuItem selected={!composer.agent} onSelect={() => setComposer({ agent: null })} hint="router picks">
+            Automatic
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {agents
+            .filter((a) => !['supervisor', 'critic', 'refiner', 'writer'].includes(a.id))
+            .map((a) => (
+              <DropdownMenuItem
+                key={a.id}
+                selected={composer.agent === a.id}
+                onSelect={() => setComposer({ agent: a.id })}
+                hint={a.builtin ? undefined : 'custom'}
+              >
+                {a.name}
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -18,6 +18,18 @@ export function formatTokens(n: number | null | undefined): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
+/** Estimated USD cost; local models are "free". */
+export function formatCost(usd: number | null | undefined): string {
+  if (usd == null) return '—';
+  if (usd === 0) return 'free';
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(usd < 1 ? 3 : 2)}`;
+}
+
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 export function shortId(id: string): string {
   return id.slice(0, 8);
 }

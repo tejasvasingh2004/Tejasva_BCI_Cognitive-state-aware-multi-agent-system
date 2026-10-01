@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookMarked, MessageSquare, PanelLeftClose, Plus, Trash2 } from 'lucide-react';
+import { BookMarked, MessageSquare, PanelLeftClose, Plus, Settings, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Conversation } from '@neuroflow/contracts';
 import { api } from '@/lib/api';
@@ -28,6 +28,7 @@ export function Sidebar({ activeId, onSelect, onNew }: { activeId: string | null
   const { data: me } = useSession();
   const setSidebarOpen = useUi((s) => s.setSidebarOpen);
   const setMemoryOpen = useUi((s) => s.setMemoryOpen);
+  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const qc = useQueryClient();
   const groups = useMemo(() => groupByRecency(conversations), [conversations]);
 
@@ -46,7 +47,7 @@ export function Sidebar({ activeId, onSelect, onNew }: { activeId: string | null
           <div className="text-[11px] text-muted">AI workspace</div>
         </div>
         <Tooltip content="Collapse sidebar">
-          <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(false)} aria-label="Collapse sidebar">
+          <Button variant="ghost" size="icon-sm" className="hidden md:inline-flex" onClick={() => setSidebarOpen(false)} aria-label="Collapse sidebar">
             <PanelLeftClose className="size-4" />
           </Button>
         </Tooltip>
@@ -73,7 +74,7 @@ export function Sidebar({ activeId, onSelect, onNew }: { activeId: string | null
                   exit={{ opacity: 0, x: -6 }}
                   className={cn(
                     'group flex items-center gap-2.5 rounded-2xl px-3 py-2 text-sm transition-colors',
-                    c.id === activeId ? 'bg-white text-ink shadow-soft' : 'text-ink-soft hover:bg-white/60',
+                    c.id === activeId ? 'bg-surface text-ink shadow-soft' : 'text-ink-soft hover:bg-surface/60',
                   )}
                 >
                   <MessageSquare className={cn('size-4 shrink-0', c.id === activeId ? 'text-accent' : 'text-faint')} />
@@ -94,15 +95,25 @@ export function Sidebar({ activeId, onSelect, onNew }: { activeId: string | null
         ))}
       </nav>
 
-      <div className="mt-2 space-y-2 border-t border-white/70 pt-3">
+      <div className="mt-2 space-y-2 border-t border-surface/70 pt-3">
         <button
           onClick={() => setMemoryOpen(true)}
-          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm text-ink-soft transition hover:bg-white/60"
+          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm text-ink-soft transition hover:bg-surface/60"
         >
           <span className="flex size-7 items-center justify-center rounded-full bg-mint-soft text-emerald-600">
             <BookMarked className="size-3.5" />
           </span>
           Memory
+        </button>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm text-ink-soft transition hover:bg-surface/60"
+          data-testid="open-settings"
+        >
+          <span className="flex size-7 items-center justify-center rounded-full bg-violet-soft text-accent">
+            <Settings className="size-3.5" />
+          </span>
+          Settings
         </button>
         {me && (
           <div className="flex items-center gap-3 rounded-2xl px-3 py-2">

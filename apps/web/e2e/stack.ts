@@ -21,12 +21,17 @@ flush.disconnect();
 
 const db = await createTestDatabase();
 const provider = await startMockOpenAIServer();
+// A second provider so multi-model routing can be exercised end to end.
+const provider2 = await startMockOpenAIServer();
 const env = {
   DATABASE_URL: db.url,
   REDIS_URL,
   AUTH_MODE: 'dev',
   QWEN_BASE_URL: provider.url,
   QWEN_MODELS: 'qwen3:8b',
+  GROQ_API_KEY: 'e2e',
+  GROQ_BASE_URL: provider2.url,
+  GROQ_MODELS: 'llama-3.3-70b-versatile',
   MODEL_DEFAULT: 'qwen/qwen3:8b',
   MODEL_MAX_RETRIES: '0',
   RATE_LIMIT_PER_MINUTE: '10000',
@@ -63,6 +68,7 @@ async function stop() {
   await app.close().catch(() => {});
   await close();
   await provider.close();
+  await provider2.close();
   await db.drop().catch(() => {});
   process.exit(0);
 }

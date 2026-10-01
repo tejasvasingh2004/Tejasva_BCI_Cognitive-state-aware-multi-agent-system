@@ -42,7 +42,7 @@ export function MemoryDialog() {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void add()}
           placeholder="e.g. We decided pricing is $29 per seat"
-          className="h-10 flex-1 rounded-full border border-line bg-white/80 px-4 text-sm outline-none placeholder:text-faint focus:border-accent/40"
+          className="h-10 flex-1 rounded-full border border-line bg-surface/80 px-4 text-sm outline-none placeholder:text-faint focus:border-accent/40"
           data-testid="memory-input"
         />
         <Button variant="primary" onClick={() => void add()} disabled={busy || !draft.trim()}>
@@ -65,7 +65,7 @@ export function MemoryDialog() {
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: 12 }}
-              className="group flex items-start gap-3 rounded-2xl border border-white bg-white/70 p-3"
+              className="group flex items-start gap-3 rounded-2xl border border-surface bg-surface/70 p-3"
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm leading-6 text-ink">{m.content}</p>

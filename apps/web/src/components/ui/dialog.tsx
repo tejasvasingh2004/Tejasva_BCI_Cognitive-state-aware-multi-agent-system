@@ -21,7 +21,7 @@ export function Dialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[#e9e3f7]/50 backdrop-blur-sm" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[#e9e3f7]/50 backdrop-blur-sm dark:bg-black/50" />
         <DialogPrimitive.Content
           className={cn(
             'glass-strong fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-[28px] p-6 outline-none',
@@ -33,7 +33,7 @@ export function Dialog({
               <DialogPrimitive.Title className="text-lg font-semibold text-ink">{title}</DialogPrimitive.Title>
               {description && <DialogPrimitive.Description className="mt-1 text-sm text-muted">{description}</DialogPrimitive.Description>}
             </div>
-            <DialogPrimitive.Close className="rounded-full p-2 text-muted transition hover:bg-white hover:text-ink" aria-label="Close">
+            <DialogPrimitive.Close className="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Close">
               <X className="size-4" />
             </DialogPrimitive.Close>
           </div>

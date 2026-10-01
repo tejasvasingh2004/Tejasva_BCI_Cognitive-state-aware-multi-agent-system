@@ -68,7 +68,7 @@ export const Hero = forwardRef<ComposerHandle, Props>(function Hero({ running, o
             <button
               key={c.label}
               onClick={() => fill(c.prompt)}
-              className="flex items-center gap-2 rounded-full border border-white/90 bg-white/65 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white hover:shadow-soft"
+              className="flex items-center gap-2 rounded-full border border-surface/90 bg-surface/65 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-surface hover:shadow-soft"
             >
               <c.icon className={cn('size-3.5', c.tone)} />
               {c.label}
@@ -90,7 +90,7 @@ export const Hero = forwardRef<ComposerHandle, Props>(function Hero({ running, o
             <button
               key={t.label}
               onClick={() => fill(t.prompt)}
-              className="group flex h-[88px] flex-col justify-between rounded-2xl border border-white/80 bg-white/55 p-3.5 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-float"
+              className="group flex h-[88px] flex-col justify-between rounded-2xl border border-surface/80 bg-surface/55 p-3.5 text-left transition hover:-translate-y-0.5 hover:bg-surface hover:shadow-float"
             >
               <t.icon className="size-4 text-faint transition group-hover:text-accent" />
               <span className="text-[13px] text-ink-soft group-hover:text-ink">{t.label}</span>

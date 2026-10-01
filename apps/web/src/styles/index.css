@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Dark mode follows the `.dark` class (set from the theme preference: light / dark / system). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * NeuroFlow visual language: soft lavender daylight, frosted glass layers, pastel gradients,
  * generous radii and quiet typography. Motion communicates state, never decoration.
@@ -8,6 +11,8 @@
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --color-canvas: #f6f3fc;
+  /* Raised surfaces (cards, inputs, pills). */
+  --color-surface: #ffffff;
   --color-ink: #1e1b39;
   --color-ink-soft: #4b4768;
   --color-muted: #8c89a6;
@@ -50,6 +55,38 @@
   }
 }
 
+:root {
+  color-scheme: light;
+  --glass-bg: rgb(255 255 255 / 0.62);
+  --glass-border: rgb(255 255 255 / 0.75);
+  --glass-strong-bg: rgb(255 255 255 / 0.82);
+  --glass-strong-border: rgb(255 255 255 / 0.9);
+}
+
+/* Night lavender: deep violet-black canvas, same pastel accents at lower luminance. */
+.dark {
+  color-scheme: dark;
+  --color-canvas: #0f0d1a;
+  --color-surface: #1d1a2f;
+  --color-ink: #eceaf8;
+  --color-ink-soft: #c6c2de;
+  --color-muted: #938fae;
+  --color-faint: #6a6688;
+  --color-line: #2c2843;
+  --color-violet-soft: #2a2150;
+  --color-rose-soft: #3b1f31;
+  --color-sky-soft: #1c2945;
+  --color-mint-soft: #15332d;
+  --color-peach-soft: #3a2a1c;
+  --shadow-glass: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 24px 60px -24px rgb(0 0 0 / 0.6);
+  --shadow-soft: 0 12px 32px -16px rgb(0 0 0 / 0.55);
+  --shadow-float: 0 18px 40px -18px rgb(0 0 0 / 0.65);
+  --glass-bg: rgb(29 26 47 / 0.62);
+  --glass-border: rgb(255 255 255 / 0.07);
+  --glass-strong-bg: rgb(29 26 47 / 0.86);
+  --glass-strong-border: rgb(255 255 255 / 0.09);
+}
+
 @layer base {
   html,
   body,
@@ -70,18 +107,18 @@
 }
 
 @utility glass {
-  background: rgb(255 255 255 / 0.62);
+  background: var(--glass-bg);
   backdrop-filter: blur(28px) saturate(140%);
   -webkit-backdrop-filter: blur(28px) saturate(140%);
-  border: 1px solid rgb(255 255 255 / 0.75);
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-glass);
 }
 
 @utility glass-strong {
-  background: rgb(255 255 255 / 0.82);
+  background: var(--glass-strong-bg);
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border: 1px solid rgb(255 255 255 / 0.9);
+  border: 1px solid var(--glass-strong-border);
   box-shadow: var(--shadow-soft);
 }
 
@@ -133,7 +170,7 @@
   @apply rounded-md bg-violet-soft px-1.5 py-0.5 text-[13px] text-accent-deep;
 }
 .prose-nf pre {
-  @apply overflow-x-auto rounded-2xl border border-line bg-white/80 p-4 text-[13px] leading-6;
+  @apply overflow-x-auto rounded-2xl border border-line bg-surface/80 p-4 text-[13px] leading-6;
 }
 .prose-nf pre code {
   @apply bg-transparent p-0 text-ink-soft;

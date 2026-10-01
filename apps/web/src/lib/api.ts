@@ -1,5 +1,10 @@
 import type {
+  AgentSpec,
   ApiError,
+  ApiKeyInfo,
+  AuditEvent,
+  CreatedApiKey,
+  WorkspaceSettings,
   CognitivePolicy,
   CognitiveState,
   Conversation,
@@ -52,14 +57,15 @@ export type ModelOption = {
   tier?: string;
   available: boolean;
   capabilities?: { tools: boolean; reasoning: boolean };
+  pricing?: { inputPerMTok: number; outputPerMTok: number };
 };
 
 export type RunDetails = {
   run: Run;
   details: {
     agents: Array<{ id: string; agentId: string; role: string; model: string; status: string; iterations: number; startedAt: string; completedAt: string | null; error: string | null }>;
-    modelCalls: Array<{ agentExecutionId: string | null; role: string; provider: string; model: string; status: string; latencyMs: number; firstTokenMs: number | null; promptTokens: number | null; completionTokens: number | null; attempts: number; fallbackFrom: string | null; finishReason: string | null; error: string | null }>;
-    toolCalls: Array<{ toolCallId: string; name: string; status: string; riskLevel: string | null; approvalStatus: string | null; errorCode: string | null; durationMs: number | null; attempts: number }>;
+    modelCalls: Array<{ agentExecutionId: string | null; role: string; provider: string; model: string; status: string; latencyMs: number; firstTokenMs: number | null; promptTokens: number | null; completionTokens: number | null; attempts: number; fallbackFrom: string | null; finishReason: string | null; error: string | null; costUsd: number | null; createdAt: string }>;
+    toolCalls: Array<{ toolCallId: string; name: string; status: string; riskLevel: string | null; approvalStatus: string | null; errorCode: string | null; durationMs: number | null; attempts: number; agentExecutionId: string | null; createdAt: string }>;
     evaluations: Array<{ kind: string; iteration: number; verdict: string; score: number | null; issues: string[] }>;
   };
 };
@@ -72,8 +78,26 @@ export type CognitiveInfo = {
 
 export const api = {
   me: () => request<Me & { authMode: 'dev' | 'production' }>('/v1/me'),
+  authConfig: () => request<{ authMode: 'dev' | 'production' }>('/v1/auth/config'),
   devLogin: () => request<{ ok: true }>('/v1/auth/dev-login', { method: 'POST' }),
+  login: (email: string, password: string) => request<{ ok: true }>('/v1/auth/login', { method: 'POST', json: { email, password } }),
   logout: () => request<{ ok: true }>('/v1/auth/logout', { method: 'POST' }),
+
+  apiKeys: () => request<{ apiKeys: ApiKeyInfo[] }>('/v1/api-keys'),
+  createApiKey: (name: string, scopes?: string[]) =>
+    request<{ apiKey: CreatedApiKey }>('/v1/api-keys', { method: 'POST', json: { name, ...(scopes ? { scopes } : {}) } }),
+  revokeApiKey: (id: string) => request<void>(`/v1/api-keys/${id}`, { method: 'DELETE' }),
+
+  settings: () => request<{ settings: WorkspaceSettings; canEdit: boolean }>('/v1/workspace/settings'),
+  updateSettings: (patch: Partial<WorkspaceSettings>) =>
+    request<{ settings: WorkspaceSettings; canEdit: boolean }>('/v1/workspace/settings', { method: 'PATCH', json: patch }),
+
+  agents: () => request<{ agents: AgentSpec[]; canEdit: boolean }>('/v1/agents'),
+  saveAgent: (agent: Omit<AgentSpec, 'builtin'>) =>
+    request<{ agent: AgentSpec }>(`/v1/agents/${agent.id}`, { method: 'PUT', json: agent }),
+  deleteAgent: (id: string) => request<void>(`/v1/agents/${id}`, { method: 'DELETE' }),
+
+  audit: (before?: string) => request<{ events: AuditEvent[] }>(`/v1/audit?limit=50${before ? `&before=${encodeURIComponent(before)}` : ''}`),
 
   models: () => request<{ data: ModelOption[]; default: string | null }>('/v1/models'),
   tools: () => request<{ tools: ToolDescriptor[] }>('/v1/tools'),

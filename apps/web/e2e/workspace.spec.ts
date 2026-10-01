@@ -99,3 +99,90 @@ test('cognitive mode: workload shapes the plan; standard mode is unaffected', as
   await page.getByRole('menuitem', { name: 'Switch to Standard mode' }).click();
   await expect(page.getByTestId('cognitive-pill')).toContainText('Standard mode');
 });
+
+test('invalid tool arguments are rejected by validation and reported, never executed', async ({ page }) => {
+  await ask(page, 'please make a broken tool call');
+  const turn = lastTurn(page);
+  await expect(turn.getByTestId('execution-trace')).toHaveAttribute('data-status', 'completed');
+  await expect(turn.getByTestId('assistant-text')).toContainText('invalid_arguments');
+  await turn.getByText('Inspect').click();
+  const inspector = page.getByTestId('inspector');
+  await expect(inspector).toContainText('calculator');
+  await expect(inspector).toContainText('invalid argument');
+});
+
+test('a tool outside the selected tools is denied by authorization', async ({ page }) => {
+  await page.getByLabel('Execution controls').click();
+  await page.getByTestId('tools-picker').click();
+  await page.getByRole('menuitem', { name: 'No tools' }).click();
+  await page.getByTestId('tools-picker').click();
+  await page.getByRole('menuitem', { name: /calculator/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('tools-picker')).toContainText('calculator');
+
+  await ask(page, 'use the forbidden tool please');
+  const turn = lastTurn(page);
+  await expect(turn.getByTestId('execution-trace')).toHaveAttribute('data-status', 'completed');
+  await turn.getByText('Inspect').click();
+  const inspector = page.getByTestId('inspector');
+  await expect(inspector).toContainText('get_current_time');
+  await expect(inspector).toContainText('outside its allowed or authorised tools');
+
+  // restore
+  await page.getByTestId('tools-picker').click();
+  await page.getByRole('menuitem', { name: 'All available tools' }).click();
+});
+
+test('multi-agent, multi-model execution is visible in the execution graph', async ({ page }) => {
+  await page.getByLabel('Execution controls').click();
+  await page.getByTestId('strategy-picker').click();
+  await page.getByRole('menuitem', { name: 'Sequential agents' }).click();
+  await ask(page, 'Research the trade-offs of event sourcing');
+  const turn = lastTurn(page);
+  await expect(turn.getByTestId('execution-trace')).toHaveAttribute('data-status', 'completed');
+  await turn.getByText('Inspect').click();
+  const graph = page.getByTestId('execution-graph');
+  await expect(graph).toContainText('agent researcher');
+  await expect(graph).toContainText('agent analyst');
+  await expect(graph).toContainText('agent writer');
+  // Roles were spread across both providers.
+  const inspector = page.getByTestId('inspector');
+  await expect(inspector).toContainText(/multi-model/i);
+  await expect(inspector).toContainText('qwen3:8b');
+  await expect(inspector).toContainText('llama-3.3-70b-versatile');
+
+  await page.getByTestId('strategy-picker').click();
+  await page.getByRole('menuitem', { name: /Auto \(smallest reliable\)/ }).click();
+});
+
+test('settings: a custom agent can be created and chosen in the composer; theme switches', async ({ page }) => {
+  await page.getByTestId('open-settings').click();
+  const settings = page.getByTestId('settings');
+  await settings.getByRole('button', { name: 'Agents' }).click();
+  await settings.getByRole('button', { name: 'New agent' }).click();
+  await settings.getByPlaceholder('id (e.g. code-reviewer)').fill('reviewer');
+  await settings.getByPlaceholder('Name').fill('Reviewer');
+  await settings.getByPlaceholder('What it is good at (shown to the supervisor)').fill('Reviews code for bugs');
+  await settings.getByPlaceholder('Instructions').fill('You are a meticulous code reviewer.');
+  await settings.getByRole('button', { name: 'Save agent' }).click();
+  await expect(settings).toContainText('Reviews code for bugs');
+
+  await settings.getByRole('button', { name: 'General' }).click();
+  await settings.getByRole('radio', { name: 'Dark' }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await settings.getByRole('radio', { name: 'Light' }).click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await page.keyboard.press('Escape');
+
+  await page.getByLabel('Execution controls').click();
+  await page.getByTestId('agent-picker').click();
+  await page.getByRole('menuitem', { name: /Reviewer/ }).click();
+  await ask(page, 'Review this function');
+  const turn = lastTurn(page);
+  await expect(turn.getByTestId('execution-trace')).toHaveAttribute('data-status', 'completed');
+  await turn.getByText('Inspect').click();
+  await expect(page.getByTestId('execution-graph')).toContainText('agent reviewer');
+
+  await page.getByTestId('agent-picker').click();
+  await page.getByRole('menuitem', { name: 'Automatic' }).click();
+});

@@ -174,6 +174,14 @@ export const defaultScript: MockScript = (body) => {
       chunkDelayMs: 150,
     });
   }
+  // E2E: malformed tool arguments (must be rejected by validation, never executed).
+  if (toolNames.size > 0 && /\bbroken tool call\b/i.test(prompt)) {
+    return toolCallReply('calculator', { expr: 'not a valid argument' });
+  }
+  // E2E: a tool the run is not allowed to use (must be rejected by authorization).
+  if (toolNames.size > 0 && /\bforbidden tool\b/i.test(prompt)) {
+    return toolCallReply('get_current_time', {});
+  }
   if (toolNames.has('search_memory') && /\b(recall|remember|decide|decided)\b/i.test(prompt)) {
     return toolCallReply('search_memory', { query: prompt.replace(/[^\w\s]/g, '').slice(0, 80) });
   }

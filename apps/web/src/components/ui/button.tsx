@@ -12,9 +12,9 @@ const buttonVariants = cva(
         primary: 'bg-violet-button text-white shadow-button hover:brightness-110',
         /** Pastel pink→blue gradient pill (image reference CTA). */
         cta: 'bg-cta text-white shadow-soft hover:brightness-105',
-        glass: 'glass-strong text-ink-soft hover:text-ink hover:bg-white',
-        ghost: 'text-muted hover:bg-white/70 hover:text-ink',
-        outline: 'border border-line bg-white/60 text-ink-soft hover:bg-white hover:text-ink',
+        glass: 'glass-strong text-ink-soft hover:text-ink hover:bg-surface',
+        ghost: 'text-muted hover:bg-surface/70 hover:text-ink',
+        outline: 'border border-line bg-surface/60 text-ink-soft hover:bg-surface hover:text-ink',
         danger: 'bg-rose-500 text-white hover:bg-rose-600',
       },
       size: {

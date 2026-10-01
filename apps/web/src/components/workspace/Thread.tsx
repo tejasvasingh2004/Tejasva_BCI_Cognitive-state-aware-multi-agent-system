@@ -69,7 +69,7 @@ export function Thread({
 function UserBubble({ text }: { text: string }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end" data-testid="user-message">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-[22px] rounded-br-md bg-gradient-to-br from-[#efe9fe] to-[#e3ebfd] px-4 py-2.5 text-[15px] leading-6 text-ink shadow-sm">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-[22px] rounded-br-md bg-gradient-to-br from-[#efe9fe] to-[#e3ebfd] dark:from-[#2b2350] dark:to-[#1e2a48] px-4 py-2.5 text-[15px] leading-6 text-ink shadow-sm">
         {text}
       </div>
     </motion.div>
@@ -100,7 +100,7 @@ function AssistantTurn({
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3" data-testid="assistant-turn" data-run-id={run.id}>
-      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white shadow-soft">
+      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-surface shadow-soft">
         <Sparkle className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -157,12 +157,12 @@ function ApprovalCard({ runId, approval }: { runId: string; approval: PendingApp
     >
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <ShieldAlert className="size-4 text-orange-500" />
-        NeuroFlow wants to run <code className="rounded-md bg-white/70 px-1.5 text-accent-deep">{approval.name}</code>
+        NeuroFlow wants to run <code className="rounded-md bg-surface/70 px-1.5 text-accent-deep">{approval.name}</code>
         <span className={cn('rounded-full px-2 py-0.5 text-[11px]', approval.riskLevel === 'high' ? 'bg-rose-100 text-rose-600' : 'bg-orange-100 text-orange-600')}>
           {approval.riskLevel} risk
         </span>
       </div>
-      <pre className="mt-3 max-h-32 overflow-auto rounded-xl bg-white/70 p-3 text-xs text-ink-soft">{JSON.stringify(approval.arguments, null, 2)}</pre>
+      <pre className="mt-3 max-h-32 overflow-auto rounded-xl bg-surface/70 p-3 text-xs text-ink-soft">{JSON.stringify(approval.arguments, null, 2)}</pre>
       <div className="mt-3 flex gap-2">
         <Button size="sm" variant="primary" disabled={approve.isPending} onClick={() => decide(true)}>
           Approve

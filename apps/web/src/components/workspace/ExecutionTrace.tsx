@@ -109,7 +109,7 @@ export function ExecutionTrace({
           </span>
         )}
         {!minimal && (
-          <button onClick={onInspect} className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-faint transition hover:bg-white/70 hover:text-accent">
+          <button onClick={onInspect} className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-faint transition hover:bg-surface/70 hover:text-accent">
             <ScanSearch className="size-3.5" /> Inspect
           </button>
         )}
@@ -127,7 +127,7 @@ export function ExecutionTrace({
             {(view?.steps ?? []).length === 0 && <li className="py-1 text-xs text-faint">Loading execution timeline…</li>}
             {view?.steps.map((s) => (
               <li key={s.key} className="relative flex items-center gap-2.5 py-1.5">
-                <span className={cn('absolute -left-[21px] size-2 rounded-full ring-4 ring-white/80', s.status === 'active' ? 'bg-accent' : s.status === 'failed' ? 'bg-rose-400' : s.status === 'waiting' ? 'bg-orange-400' : 'bg-emerald-400')} />
+                <span className={cn('absolute -left-[21px] size-2 rounded-full ring-4 ring-surface/80', s.status === 'active' ? 'bg-accent' : s.status === 'failed' ? 'bg-rose-400' : s.status === 'waiting' ? 'bg-orange-400' : 'bg-emerald-400')} />
                 <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', KIND_TONE[s.kind])}>{s.kind}</span>
                 <span className="text-[13px] text-ink-soft">{s.label}</span>
                 {s.detail && <span className="truncate text-xs text-faint">{s.detail}</span>}

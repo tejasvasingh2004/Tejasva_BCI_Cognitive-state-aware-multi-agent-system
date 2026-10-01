@@ -38,7 +38,7 @@ export function CognitiveControl() {
         className="glass-strong flex h-9 items-center gap-2 rounded-full px-3.5 text-xs text-ink-soft transition hover:text-ink"
         data-testid="cognitive-pill"
       >
-        <Brain className="size-3.5 text-accent" /> Standard mode
+        <Brain className="size-3.5 text-accent" /> <span className="hidden sm:inline">Standard mode</span>
       </button>
     );
   }
@@ -49,7 +49,7 @@ export function CognitiveControl() {
         <button className="flex h-9 items-center gap-2 rounded-full border border-violet-200 bg-violet-soft/90 px-3.5 text-xs font-medium text-accent-deep shadow-sm backdrop-blur" data-testid="cognitive-pill">
           <Brain className="size-3.5" />
           Cognitive
-          <span className="flex items-center gap-1.5 rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-ink-soft">
+          <span className="flex items-center gap-1.5 rounded-full bg-surface/80 px-2 py-0.5 text-[11px] text-ink-soft">
             <span className={cn('size-1.5 rounded-full', current?.dot ?? 'bg-faint')} />
             {current ? current.hint : 'no signal'}
           </span>
