@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { AgentStrategy, ChatMessage } from '@neuroflow/contracts';
-import { callModel, runAgent, throwIfCancelled, type RunContext } from './execution';
+import { callModel, outputInstructions, runAgent, throwIfCancelled, wantsJson, type RunContext } from './execution';
 import { buildContext } from './context';
-import { heuristicEvaluation, modelEvaluation, parseJsonObject, recordEvaluation } from './evaluation';
+import { evaluate, parseJsonObject, recordEvaluation } from './evaluation';
 
 export type StrategyResult = {
   /** True when the strategy already evaluated its output (evaluator/optimizer). */
@@ -16,18 +16,44 @@ const note = (from: string, content: string): ChatMessage => ({
   content: `[Notes from ${from}]\n${content.trim() || '(no output)'}`,
 });
 
-/** DIRECT: one model call, no tools. */
+/**
+ * DIRECT: one model call, no server tools. When an API client supplied its own tools, they are
+ * offered to the model and any calls are returned to the client (never executed here).
+ */
 const direct: Strategy = async (ctx) => {
   ctx.stage = 'model';
-  const { messages, report } = buildContext({ plan: ctx.plan, history: ctx.history });
+  const outputReq = outputInstructions(ctx);
+  const { messages, report } = buildContext({
+    plan: ctx.plan,
+    history: ctx.history,
+    ...ctx.extras,
+    ...(outputReq ? { outputInstructions: outputReq } : {}),
+  });
   ctx.emit('context.built', report);
-  await callModel(ctx, { role: 'primary', messages, streamToUser: true });
+  const clientTools = ctx.request.clientTools ?? [];
+  const choice = ctx.request.clientToolChoice;
+  const res = await callModel(ctx, {
+    role: 'primary',
+    messages,
+    streamToUser: true,
+    ...(wantsJson(ctx.request.responseFormat) ? { responseFormat: 'json' as const } : {}),
+    ...(clientTools.length && choice !== 'none'
+      ? {
+          tools: clientTools
+            .filter((t) => typeof choice !== 'object' || t.name === choice.name)
+            .map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters })),
+          toolChoice: choice === 'required' || typeof choice === 'object' ? ('required' as const) : ('auto' as const),
+        }
+      : {}),
+  });
+  if (res.toolCalls.length) ctx.clientToolCalls = res.toolCalls;
   return {};
 };
 
-/** SINGLE_AGENT: one agent owns the task and may call tools. */
+/** SINGLE_AGENT: one agent owns the task and may call tools (a named agent when requested). */
 const singleAgent: Strategy = async (ctx) => {
-  await runAgent(ctx, { agent: ctx.agents.get('assistant'), streamToUser: true });
+  const id = ctx.plan.agents[0] && ctx.agents.has(ctx.plan.agents[0]) ? ctx.plan.agents[0] : 'assistant';
+  await runAgent(ctx, { agent: ctx.agents.get(id), streamToUser: true });
   return {};
 };
 
@@ -67,10 +93,20 @@ const SupervisorPlan = z.object({
     .max(4),
 });
 
-/** SUPERVISOR: decompose → delegate (bounded concurrency) → synthesise. One delegation round. */
+const SupervisorReview = z.union([
+  z.object({ done: z.literal(true) }),
+  z.object({ subtasks: SupervisorPlan.shape.subtasks.max(2) }),
+]);
+
+const MAX_SUPERVISOR_ROUNDS = 2;
+
+/**
+ * SUPERVISOR: decompose → delegate (bounded concurrency) → review → optional follow-up round
+ * (decide next action / request refinement) → synthesise. At most two delegation rounds.
+ */
 const supervisor: Strategy = async (ctx, task) => {
   const specialists = ctx.agents.specialists();
-  const roster = specialists.map((a) => `- ${a.id}: ${a.description}`).join('\n');
+  const roster = ctx.agents.roster();
   ctx.stage = 'agent:supervisor';
   const supervisorAgent = ctx.agents.get('supervisor');
   const planRes = await callModel(ctx, {
@@ -95,18 +131,45 @@ const supervisor: Strategy = async (ctx, task) => {
   }
 
   const outputs: ChatMessage[] = [];
-  const concurrency = 2;
-  for (let i = 0; i < subtasks.length; i += concurrency) {
-    const batch = subtasks.slice(i, i + concurrency);
-    const settled = await Promise.allSettled(
-      batch.map((s) => runAgent(ctx, { agent: ctx.agents.get(s.agent), task: s.task, streamToUser: false })),
-    );
-    throwIfCancelled(ctx.signal);
-    settled.forEach((r, j) => {
-      if (r.status === 'fulfilled') outputs.push(note(`${batch[j]!.agent} (${batch[j]!.task.slice(0, 80)})`, r.value.text));
-    });
-  }
+  const delegate = async (round: Array<{ agent: string; task: string }>) => {
+    const concurrency = 2;
+    for (let i = 0; i < round.length; i += concurrency) {
+      const batch = round.slice(i, i + concurrency);
+      const settled = await Promise.allSettled(
+        batch.map((s) => runAgent(ctx, { agent: ctx.agents.get(s.agent), task: s.task, streamToUser: false })),
+      );
+      throwIfCancelled(ctx.signal);
+      settled.forEach((r, j) => {
+        if (r.status === 'fulfilled') outputs.push(note(`${batch[j]!.agent} (${batch[j]!.task.slice(0, 80)})`, r.value.text));
+      });
+    }
+  };
+  await delegate(subtasks);
   if (outputs.length === 0) throw new Error('All delegated subtasks failed');
+
+  // Review: the supervisor decides whether the results suffice or one follow-up round is needed.
+  // Skipped when the remaining model-call budget could not cover another round plus synthesis.
+  for (let round = 2; round <= MAX_SUPERVISOR_ROUNDS; round++) {
+    if (ctx.plan.budgets.maxModelCalls - ctx.budget.used < 6) break;
+    const review = await callModel(ctx, {
+      role: 'supervisor',
+      streamToUser: false,
+      responseFormat: 'json',
+      maxOutputTokens: 600,
+      messages: [
+        {
+          role: 'system',
+          content: `${supervisorAgent.instructions}\nAvailable specialists:\n${roster}\nReview the specialists' results. If they are sufficient to fully answer the task respond with only {"done":true}. Otherwise request at most two follow-up subtasks (e.g. to fill a gap or refine a weak result) as only JSON: {"subtasks":[{"agent":"<id>","task":"<self-contained instruction>"}]}`,
+        },
+        { role: 'user', content: `TASK:\n${task}\n\nRESULTS:\n${outputs.map((o) => o.content).join('\n\n').slice(0, 12000)}` },
+      ],
+    });
+    const decision = SupervisorReview.safeParse(parseJsonObject(review.text));
+    if (!decision.success || 'done' in decision.data) break;
+    const followUps = decision.data.subtasks.filter((s) => specialists.some((a) => a.id === s.agent));
+    if (followUps.length === 0) break;
+    await delegate(followUps);
+  }
 
   await runAgent(ctx, { agent: ctx.agents.get('writer'), notes: outputs, streamToUser: true, role: 'synthesis' });
   return {};
@@ -123,8 +186,7 @@ const evaluatorOptimizer: Strategy = async (ctx, task) => {
     throwIfCancelled(ctx.signal);
     ctx.stage = 'evaluation';
     ctx.emit('evaluation.started', { kind: 'model', iteration });
-    const heuristic = heuristicEvaluation(ctx, current);
-    const verdict = heuristic.verdict === 'failed' ? heuristic : await modelEvaluation(ctx, task, current);
+    const verdict = await evaluate(ctx, task, current, 'model', iteration);
     await recordEvaluation(ctx, verdict, iteration);
     if (verdict.verdict === 'passed' || iteration === max) break;
 

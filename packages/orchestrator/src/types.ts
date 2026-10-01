@@ -4,6 +4,7 @@ import type {
   ModelRole,
   RunMode,
   RunRequest,
+  ToolCall,
   Usage,
 } from '@neuroflow/contracts';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
@@ -49,8 +50,10 @@ export type OrchestratorDeps = {
   tools: ToolRuntime;
   store: RunStore;
   cognitive?: CognitiveStateProvider;
-  /** Workspace-defined agents merged over the built-ins. */
+  /** Workspace-defined agents merged over the built-ins (static, e.g. tests). */
   agents?: AgentDefinition[];
+  /** Loads the workspace's custom agents for each run. */
+  loadAgents?: (workspaceId: string) => Promise<AgentDefinition[]>;
 };
 
 export type RunIdentity = {
@@ -69,12 +72,20 @@ export type ExecuteRunInput = {
   scopes: readonly string[];
   signal: AbortSignal;
   emit: EmitFn;
+  /** Additional bounded context sources. */
+  context?: {
+    workspaceInstructions?: string;
+    /** Rolling summary of conversation turns older than `history`. */
+    conversationSummary?: string;
+  };
 };
 
 export type RunOutcome = {
   output: string;
   usage?: Usage;
   plan: ExecutionPlan;
+  /** Client-defined tool calls the run ended with (returned to the API client). */
+  toolCalls?: ToolCall[];
 };
 
 export type ModelAssignmentLookup = (role: ModelRole) => { model: string; fallbacks: string[] };

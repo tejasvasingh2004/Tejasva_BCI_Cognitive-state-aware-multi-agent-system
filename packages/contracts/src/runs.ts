@@ -9,7 +9,7 @@ import {
   RunMode,
   RunStatus,
 } from './common';
-import { ChatMessage, Usage } from './messages';
+import { ChatMessage, ToolCall, Usage } from './messages';
 import { ModelRef, ModelRole } from './models';
 import { CognitivePolicy } from './cognitive';
 
@@ -23,6 +23,39 @@ export const MAX_MESSAGES_PER_REQUEST = 200;
  * With `conversationId`, `messages` are *new* messages appended to that conversation and history
  * is loaded server side. Without it, a conversation is created from `messages`.
  */
+/** Requested output shape. JSON formats are validated by the evaluator (structured output validity). */
+export const ResponseFormat = z.union([
+  z.literal('text'),
+  z.literal('json'),
+  z.object({
+    type: z.literal('json_schema'),
+    name: z.string().max(64).optional(),
+    schema: z.record(z.string(), z.unknown()),
+  }),
+]);
+export type ResponseFormat = z.infer<typeof ResponseFormat>;
+
+/**
+ * Tools defined and executed by an API client (OpenAI-compatible `tools`). NeuroFlow never executes
+ * them: the model's calls are returned to the client, which sends results back as `tool` messages.
+ */
+export const ClientTool = z.object({
+  name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+  description: z.string().max(2000).default(''),
+  parameters: z.record(z.string(), z.unknown()).default({ type: 'object', properties: {} }),
+});
+export type ClientTool = z.infer<typeof ClientTool>;
+
+export const ClientToolChoice = z.union([z.enum(['auto', 'none', 'required']), z.object({ name: z.string() })]);
+export type ClientToolChoice = z.infer<typeof ClientToolChoice>;
+
+/** Optional per-run limits supplied by the caller (tighten, never loosen, server limits). */
+export const RunBudgetRequest = z.object({
+  maxCostUsd: z.number().positive().max(100).optional(),
+  maxDurationMs: z.number().int().min(5_000).max(30 * 60_000).optional(),
+});
+export type RunBudgetRequest = z.infer<typeof RunBudgetRequest>;
+
 export const RunRequest = z.object({
   conversationId: z.string().uuid().optional(),
   messages: z
@@ -38,6 +71,12 @@ export const RunRequest = z.object({
   reasoningBudget: ReasoningBudget.optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxOutputTokens: z.number().int().positive().max(32_768).optional(),
+  /** Run a specific (built-in or workspace) agent as the single agent. */
+  agent: z.string().regex(/^[a-z0-9_-]{1,64}$/).optional(),
+  responseFormat: ResponseFormat.optional(),
+  budget: RunBudgetRequest.optional(),
+  clientTools: z.array(ClientTool).max(64).optional(),
+  clientToolChoice: ClientToolChoice.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;
@@ -86,7 +125,10 @@ export const ExecutionPlan = z.object({
   }),
   budgets: z.object({
     maxModelCalls: z.number().int().positive(),
+    /** Tool calls across the whole run (each agent is additionally bounded by toolPolicy). */
+    maxToolCalls: z.number().int().nonnegative(),
     maxDurationMs: z.number().int().positive(),
+    maxCostUsd: z.number().positive().optional(),
   }),
   cognitive: CognitivePolicy.optional(),
   /** Short, human readable reasons behind routing decisions (not model reasoning). */
@@ -112,6 +154,8 @@ export const Run = z.object({
   output: z.string().nullable(),
   error: RunError.nullable(),
   usage: Usage.nullable(),
+  /** Client-tool calls the run ended with (OpenAI `finish_reason: tool_calls`). */
+  toolCalls: z.array(ToolCall).nullable(),
   attempt: z.number().int(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),

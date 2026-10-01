@@ -3,7 +3,7 @@ import { DefaultModelGateway, GroqAdapter, QwenAdapter, buildCatalog } from '@ne
 import { builtinTools, ToolRegistry, ToolRuntime } from '@neuroflow/tools';
 import type { MockOpenAIServer } from '@neuroflow/models/testing';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
-import { Orchestrator, type RunStore } from '../src';
+import { Orchestrator, type OrchestratorDeps, type RunStore } from '../src';
 
 export class MemoryStore implements RunStore {
   plans: unknown[] = [];
@@ -47,6 +47,7 @@ export function makeOrchestrator(opts: {
   groq?: MockOpenAIServer;
   cognitive?: CognitiveStateProvider;
   approvals?: ConstructorParameters<typeof ToolRuntime>[1];
+  loadAgents?: OrchestratorDeps['loadAgents'];
 }) {
   const store = new MemoryStore();
   const registry = new ToolRegistry().registerAll(builtinTools);
@@ -55,6 +56,7 @@ export function makeOrchestrator(opts: {
     tools: new ToolRuntime(registry, opts.approvals),
     store,
     ...(opts.cognitive ? { cognitive: opts.cognitive } : {}),
+    ...(opts.loadAgents ? { loadAgents: opts.loadAgents } : {}),
   });
   return { orchestrator, store };
 }

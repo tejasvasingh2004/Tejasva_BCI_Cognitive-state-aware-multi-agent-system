@@ -25,7 +25,12 @@ export function createMemoryTools(memory: MemoryService): ToolDefinition<z.ZodTy
     async execute({ query, limit }, ctx) {
       ctx.emit('memory.started', { query });
       const items = await memory.search({ workspaceId: ctx.workspaceId, userId: ctx.userId, query, limit: limit ?? 5 });
-      ctx.emit('memory.completed', { query, count: items.length, memoryIds: items.map((m) => m.id) });
+      ctx.emit('memory.completed', {
+        query,
+        count: items.length,
+        memoryIds: items.map((m) => m.id),
+        items: items.map((m) => ({ id: m.id, source: m.source, tags: m.tags, createdAt: m.createdAt })),
+      });
       return {
         count: items.length,
         memories: items.map((m) => ({ id: m.id, content: m.content, tags: m.tags, savedAt: m.createdAt })),
@@ -41,13 +46,14 @@ export function createMemoryTools(memory: MemoryService): ToolDefinition<z.ZodTy
     input: z.object({
       content: z.string().trim().min(3).max(MEMORY_LIMITS.maxStoreChars),
       tags: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
+      ttlDays: z.number().int().min(1).max(3650).optional().describe('Forget after this many days (only if the user asks)'),
     }),
     riskLevel: 'medium',
     requiresApproval: false,
     sideEffects: true,
     permissions: [Scopes.memoryWrite],
     timeoutMs: 5_000,
-    async execute({ content, tags }, ctx) {
+    async execute({ content, tags, ttlDays }, ctx) {
       const item = await memory.store({
         workspaceId: ctx.workspaceId,
         userId: ctx.userId,
@@ -55,6 +61,7 @@ export function createMemoryTools(memory: MemoryService): ToolDefinition<z.ZodTy
         tags,
         source: 'agent',
         sourceRunId: ctx.runId,
+        ttlDays,
       });
       return { id: item.id, saved: true };
     },

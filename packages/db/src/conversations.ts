@@ -83,6 +83,17 @@ export const conversationsRepo = {
   async touch(db: Queryable, id: string): Promise<void> {
     await db.query('UPDATE conversations SET updated_at = now() WHERE id = $1', [id]);
   },
+
+  /** Rolling summary of older messages (see summary_upto_position). */
+  async getSummary(db: Queryable, id: string): Promise<{ summary: string | null; uptoPosition: number | null }> {
+    const { rows } = await db.query('SELECT summary, summary_upto_position FROM conversations WHERE id = $1', [id]);
+    const r = rows[0];
+    return { summary: r?.summary ?? null, uptoPosition: r?.summary_upto_position != null ? Number(r.summary_upto_position) : null };
+  },
+
+  async setSummary(db: Queryable, id: string, summary: string, uptoPosition: number): Promise<void> {
+    await db.query('UPDATE conversations SET summary = $2, summary_upto_position = $3 WHERE id = $1', [id, summary, uptoPosition]);
+  },
 };
 
 export const messagesRepo = {
@@ -120,6 +131,21 @@ export const messagesRepo = {
       [conversationId, limit],
     );
     return rows.map(toMessage);
+  },
+
+  /** User/assistant messages after `afterPosition` (oldest first), with their positions. */
+  async listAfter(
+    db: Queryable,
+    conversationId: string,
+    afterPosition: number | null,
+  ): Promise<Array<{ position: number; role: 'user' | 'assistant'; content: string }>> {
+    const { rows } = await db.query(
+      `SELECT position, role, content FROM messages
+        WHERE conversation_id = $1 AND role IN ('user', 'assistant') AND position > $2
+        ORDER BY position`,
+      [conversationId, afterPosition ?? 0],
+    );
+    return rows.map((r) => ({ position: Number(r.position), role: r.role, content: r.content }));
   },
 
   async linkToRun(db: Queryable, messageIds: string[], runId: string): Promise<void> {

@@ -33,7 +33,9 @@ export class QwenAdapter implements ProviderAdapter {
   }
 
   catalog(): CatalogEntry[] {
-    return this.config.models;
+    // Local Ollama inference has no per-token cost (unless pricing is configured explicitly).
+    if (this.config.flavor !== 'ollama') return this.config.models;
+    return this.config.models.map((m) => (m.pricing ? m : { ...m, pricing: { inputPerMTok: 0, outputPerMTok: 0 } }));
   }
 
   isAvailable(): boolean {

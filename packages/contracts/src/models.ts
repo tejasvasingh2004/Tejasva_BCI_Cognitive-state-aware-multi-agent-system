@@ -16,6 +16,22 @@ export function parseModelRef(ref: string): { provider: string; model: string } 
 export const ModelTier = z.enum(['fast', 'balanced', 'strong']);
 export type ModelTier = z.infer<typeof ModelTier>;
 
+export const ModelPricing = z.object({
+  inputPerMTok: z.number().nonnegative(),
+  outputPerMTok: z.number().nonnegative(),
+});
+export type ModelPricing = z.infer<typeof ModelPricing>;
+
+/** Cost of a call in USD, rounded to 1e-6. Undefined when pricing is unknown. */
+export function estimateCostUsd(
+  usage: { promptTokens: number; completionTokens: number } | undefined,
+  pricing: ModelPricing | undefined,
+): number | undefined {
+  if (!usage || !pricing) return undefined;
+  const cost = (usage.promptTokens * pricing.inputPerMTok + usage.completionTokens * pricing.outputPerMTok) / 1_000_000;
+  return Math.round(cost * 1e6) / 1e6;
+}
+
 export const ModelInfo = z.object({
   ref: ModelRef,
   provider: z.string(),
@@ -29,6 +45,8 @@ export const ModelInfo = z.object({
     streaming: z.boolean(),
   }),
   available: z.boolean(),
+  /** USD per million tokens, when known. Local models are free. */
+  pricing: ModelPricing.optional(),
 });
 export type ModelInfo = z.infer<typeof ModelInfo>;
 

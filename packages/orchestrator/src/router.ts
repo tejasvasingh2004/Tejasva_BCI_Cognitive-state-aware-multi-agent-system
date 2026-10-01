@@ -65,12 +65,30 @@ export function classifyTask(text: string): TaskSignals {
 
 export type RouterInput = {
   mode: RunMode;
-  request: Pick<RunRequest, 'agentStrategy' | 'modelStrategy' | 'selectedModel' | 'reasoningBudget' | 'tools'>;
+  request: Pick<
+    RunRequest,
+    'agentStrategy' | 'modelStrategy' | 'selectedModel' | 'reasoningBudget' | 'tools' | 'agent' | 'budget' | 'clientTools'
+  >;
   lastUserMessage: string;
   models: ModelInfo[];
   defaultModel?: string;
   availableTools: string[];
+  /** Agent ids that may be requested by name (built-in + workspace agents). */
+  availableAgents?: string[];
   cognitive?: CognitivePolicy;
+};
+
+const DEFAULT_MAX_DURATION_MS = 10 * 60_000;
+/** Below this latency budget the router avoids multi-agent graphs. */
+const TIGHT_LATENCY_MS = 60_000;
+
+const TOOL_CALL_BUDGET: Record<AgentStrategy, number> = {
+  direct: 0,
+  single_agent: 8,
+  sequential: 12,
+  parallel: 12,
+  supervisor: 16,
+  evaluator_optimizer: 8,
 };
 
 const MODEL_CALL_BUDGET: Record<AgentStrategy, number> = {
@@ -107,9 +125,26 @@ const AGENTS_BY_STRATEGY: Record<AgentStrategy, string[]> = {
 export function planExecution(input: RouterInput): ExecutionPlan {
   const signals = classifyTask(input.lastUserMessage);
   const rationale: string[] = [];
-  const available = input.models.filter((m) => m.available);
+  let available = input.models.filter((m) => m.available);
   if (available.length === 0) {
     throw new RoutingError('No model provider is configured or reachable. Configure Qwen or Groq and try again.');
+  }
+  const budget = input.request.budget;
+  const maxDurationMs = Math.min(budget?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS, DEFAULT_MAX_DURATION_MS);
+  const tightLatency = maxDurationMs < TIGHT_LATENCY_MS;
+
+  // Cost budget: only models with known pricing can be held to it.
+  if (budget?.maxCostUsd !== undefined && !input.request.selectedModel) {
+    const priced = available.filter((m) => m.pricing);
+    if (priced.length) {
+      available = priced;
+      rationale.push(`Cost budget $${budget.maxCostUsd}: restricted to models with known pricing`);
+    } else {
+      rationale.push('Cost budget set, but no model has known pricing; cost is tracked where reported');
+    }
+  }
+  if (input.request.agent && input.availableAgents && !input.availableAgents.includes(input.request.agent)) {
+    throw new RoutingError(`The agent "${input.request.agent}" does not exist in this workspace.`);
   }
 
   const selected = input.request.selectedModel
@@ -118,8 +153,7 @@ export function planExecution(input: RouterInput): ExecutionPlan {
   if (input.request.selectedModel && !selected) {
     throw new RoutingError(`The selected model "${input.request.selectedModel}" is not available.`);
   }
-  const primary =
-    selected ?? available.find((m) => m.ref === input.defaultModel) ?? available[0]!;
+  const primary = selected ?? choosePrimary(available, input, tightLatency, rationale);
 
   const allowedTools = input.request.tools
     ? input.availableTools.filter((t) => input.request.tools!.includes(t))
@@ -128,11 +162,25 @@ export function planExecution(input: RouterInput): ExecutionPlan {
 
   // --- agent strategy ---
   let agentStrategy: AgentStrategy;
-  if (input.request.agentStrategy !== 'auto') {
+  const clientTools = (input.request.clientTools?.length ?? 0) > 0;
+  if (clientTools) {
+    agentStrategy = 'direct';
+    rationale.push('Client-defined tools: one model call; tool calls are returned to the client');
+  } else if (input.request.agent && input.request.agentStrategy === 'auto') {
+    agentStrategy = 'single_agent';
+    rationale.push(`Agent "${input.request.agent}" requested: single agent`);
+  } else if (input.request.agentStrategy !== 'auto') {
     agentStrategy = input.request.agentStrategy;
     rationale.push(`Strategy "${agentStrategy}" requested explicitly`);
   } else {
     agentStrategy = autoStrategy(signals, toolsUsable, rationale);
+    if (tightLatency) {
+      const capped = capStrategy(agentStrategy, 'single_agent');
+      if (capped !== agentStrategy) {
+        rationale.push(`Latency budget ${Math.round(maxDurationMs / 1000)}s: capped strategy at "${capped}"`);
+        agentStrategy = capped;
+      }
+    }
     if (input.cognitive) {
       const capped = capStrategy(agentStrategy, input.cognitive.maxAutoStrategy);
       if (capped !== agentStrategy) {
@@ -179,6 +227,8 @@ export function planExecution(input: RouterInput): ExecutionPlan {
     maxIterations: agentStrategy === 'evaluator_optimizer' ? 2 : 0,
   };
 
+  const agents =
+    agentStrategy === 'single_agent' && input.request.agent ? [input.request.agent] : AGENTS_BY_STRATEGY[agentStrategy];
   return {
     mode: input.mode,
     taskClass: signals.taskClass,
@@ -186,7 +236,7 @@ export function planExecution(input: RouterInput): ExecutionPlan {
     agentStrategy,
     modelStrategy,
     models,
-    agents: AGENTS_BY_STRATEGY[agentStrategy],
+    agents,
     toolPolicy: {
       allowed: agentStrategy === 'direct' ? [] : allowedTools,
       maxToolCalls: agentStrategy === 'direct' ? 0 : agentStrategy === 'single_agent' ? 6 : 4,
@@ -194,10 +244,43 @@ export function planExecution(input: RouterInput): ExecutionPlan {
     contextPolicy: { maxInputTokens, recentMessages, density },
     reasoningBudget,
     evaluationPolicy,
-    budgets: { maxModelCalls: MODEL_CALL_BUDGET[agentStrategy], maxDurationMs: 10 * 60_000 },
+    budgets: {
+      maxModelCalls: MODEL_CALL_BUDGET[agentStrategy],
+      maxToolCalls: TOOL_CALL_BUDGET[agentStrategy],
+      maxDurationMs,
+      ...(budget?.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd } : {}),
+    },
     ...(input.cognitive ? { cognitive: input.cognitive } : {}),
     rationale,
   };
+}
+
+const TIER_ORDER = { fast: 0, balanced: 1, strong: 2 } as const;
+
+/**
+ * Primary model when the user did not pick one: tight latency budgets and a "fast" cognitive
+ * preference favour the fastest tier, "quality" favours the strongest, a cost budget favours the
+ * cheapest priced model; otherwise the configured default.
+ */
+function choosePrimary(available: ModelInfo[], input: RouterInput, tightLatency: boolean, rationale: string[]): ModelInfo {
+  const byTier = (dir: 1 | -1) => [...available].sort((a, b) => dir * (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]))[0]!;
+  const preference = input.cognitive?.modelPreference;
+  if (tightLatency || preference === 'fast') {
+    const m = byTier(1);
+    rationale.push(`${tightLatency ? 'Tight latency budget' : 'Cognitive policy'}: fastest model ${m.ref}`);
+    return m;
+  }
+  if (input.request.budget?.maxCostUsd !== undefined && available.every((m) => m.pricing)) {
+    const m = [...available].sort((a, b) => a.pricing!.outputPerMTok - b.pricing!.outputPerMTok)[0]!;
+    rationale.push(`Cost budget: cheapest model ${m.ref}`);
+    return m;
+  }
+  if (preference === 'quality') {
+    const m = byTier(-1);
+    rationale.push(`Cognitive policy: strongest model ${m.ref}`);
+    return m;
+  }
+  return available.find((m) => m.ref === input.defaultModel) ?? available[0]!;
 }
 
 function autoStrategy(s: TaskSignals, toolsUsable: boolean, rationale: string[]): AgentStrategy {

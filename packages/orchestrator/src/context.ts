@@ -23,6 +23,12 @@ export type ContextInput = {
   scratch?: ChatMessage[];
   /** Replace the history's last user message with this task (used for delegated subtasks). */
   replaceTask?: string;
+  /** Workspace-level instructions (Settings → Workspace). */
+  workspaceInstructions?: string;
+  /** Rolling summary of conversation turns older than the stored history window. */
+  summary?: string;
+  /** Output requirements (response format / agent output contract). */
+  outputInstructions?: string;
   now?: Date;
 };
 
@@ -45,23 +51,33 @@ export function buildContext(input: ContextInput): BuiltContext {
 
   const systemParts = [BASE_INSTRUCTIONS, `Current date: ${now.toISOString().slice(0, 10)}.`];
   if (input.instructions) systemParts.push(input.instructions);
+  const workspace = input.workspaceInstructions?.trim();
+  if (workspace) systemParts.push(`Workspace instructions:\n${workspace.slice(0, 4000)}`);
   // System messages supplied by API clients are honoured as additional (bounded) instructions.
   const clientSystem = input.history.filter((m) => m.role === 'system').map((m) => m.content.trim()).filter(Boolean);
   if (clientSystem.length) systemParts.push(`Client instructions:\n${clientSystem.join('\n').slice(0, 4000)}`);
   if (plan.cognitive) systemParts.push(plan.cognitive.presentationInstructions);
+  if (input.outputInstructions) systemParts.push(input.outputInstructions);
+  const summaryText = input.summary?.trim() ? clampText(input.summary.trim(), Math.floor(budget * 0.15)) : '';
+  if (summaryText) systemParts.push(`Summary of the earlier conversation (older messages are not shown):\n${summaryText}`);
   const system: ChatMessage = { role: 'system', content: systemParts.join('\n\n') };
 
-  const conversation = input.history.filter((m) => m.role === 'user' || m.role === 'assistant');
+  const conversation = input.history.filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'tool');
   const lastUserIdx = findLastIndex(conversation, (m) => m.role === 'user');
   const currentTask: ChatMessage =
     input.replaceTask !== undefined
       ? { role: 'user', content: input.replaceTask }
       : conversation[lastUserIdx] ?? { role: 'user', content: '' };
-  const earlier = input.replaceTask !== undefined ? conversation : conversation.slice(0, Math.max(lastUserIdx, 0));
+  // Earlier turns: tool exchanges are flattened to text so a history window can never start with an
+  // orphaned tool result. The exchange *after* the current task (client tools) is kept verbatim.
+  const earlier = flattenToolExchanges(
+    input.replaceTask !== undefined ? conversation : conversation.slice(0, Math.max(lastUserIdx, 0)),
+  );
+  const trailing = input.replaceTask !== undefined || lastUserIdx < 0 ? [] : conversation.slice(lastUserIdx + 1);
 
   const cap = Math.floor(budget * 0.5);
   const fixed: ChatMessage[] = [system, clampMessage(currentTask, cap)];
-  const scratch = (input.scratch ?? []).map((m) => clampMessage(m, Math.floor(budget * 0.25)));
+  const scratch = [...trailing, ...(input.scratch ?? [])].map((m) => clampMessage(m, Math.floor(budget * 0.25)));
   const notes = (input.taskMessages ?? []).map((m) => clampMessage(m, Math.floor(budget * 0.25)));
 
   let used = [...fixed, ...scratch, ...notes].reduce((n, m) => n + messageTokens(m), 0);
@@ -95,6 +111,8 @@ export function buildContext(input: ContextInput): BuiltContext {
     report: {
       sources: [
         { kind: 'system', items: 1, tokens: messageTokens(system) },
+        ...(workspace ? [{ kind: 'workspace', items: 1, tokens: estimateTokens(workspace.slice(0, 4000)) }] : []),
+        ...(summaryText ? [{ kind: 'summary', items: 1, tokens: estimateTokens(summaryText) }] : []),
         { kind: 'history', items: kept.length, tokens: kept.reduce((n, m) => n + messageTokens(m), 0) },
         { kind: 'task_notes', items: notes.length, tokens: notes.reduce((n, m) => n + messageTokens(m), 0) },
         { kind: 'tool_results', items: scratch.length, tokens: scratch.reduce((n, m) => n + messageTokens(m), 0) },
@@ -106,10 +124,33 @@ export function buildContext(input: ContextInput): BuiltContext {
   };
 }
 
-function clampMessage(m: ChatMessage, maxTokens: number): ChatMessage {
+function clampText(text: string, maxTokens: number): string {
   const maxChars = maxTokens * 4;
-  if (m.content.length <= maxChars) return m;
-  return { ...m, content: `${m.content.slice(0, maxChars)}\n…[truncated]` };
+  return text.length <= maxChars ? text : `${text.slice(0, maxChars)}\n…[truncated]`;
+}
+
+function clampMessage(m: ChatMessage, maxTokens: number): ChatMessage {
+  const content = clampText(m.content, maxTokens);
+  return content === m.content ? m : { ...m, content };
+}
+
+/** Converts assistant tool calls + tool results into plain assistant text. */
+function flattenToolExchanges(messages: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      const prev = out[out.length - 1];
+      const line = `[tool ${m.name ?? 'result'}] ${m.content.slice(0, 500)}`;
+      if (prev?.role === 'assistant') prev.content = `${prev.content}\n${line}`.trim();
+      else out.push({ role: 'assistant', content: line });
+    } else if (m.role === 'assistant' && m.toolCalls?.length) {
+      const calls = m.toolCalls.map((c) => `${c.name}(${c.arguments.slice(0, 200)})`).join(', ');
+      out.push({ role: 'assistant', content: `${m.content}\n[called tools: ${calls}]`.trim() });
+    } else {
+      out.push({ ...m });
+    }
+  }
+  return out;
 }
 
 function findLastIndex<T>(arr: T[], pred: (v: T) => boolean): number {

@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   JsonSchema,
   ModelInfo,
+  ModelPricing,
   ModelTier,
   ReasoningBudget,
   ToolCall,
@@ -82,6 +83,8 @@ export type CatalogEntry = {
   contextWindow: number;
   tools: boolean;
   reasoning: ReasoningStyle;
+  /** USD per million tokens; undefined when unknown. */
+  pricing?: ModelPricing;
 };
 
 export type ProviderRequest = Omit<ModelRequest, 'model' | 'fallbacks' | 'signal' | 'timeoutMs'> & {

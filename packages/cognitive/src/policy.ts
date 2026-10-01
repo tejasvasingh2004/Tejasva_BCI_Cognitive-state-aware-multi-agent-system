@@ -13,6 +13,7 @@ const POLICIES: Record<WorkloadLevel, Omit<CognitivePolicy, 'workload'>> = {
     taskChunking: 'low',
     uiDensity: 'full',
     notificationIntensity: 'medium',
+    modelPreference: 'quality',
     maxAutoStrategy: 'supervisor',
     evaluation: 'heuristic',
     presentationInstructions:
@@ -24,6 +25,7 @@ const POLICIES: Record<WorkloadLevel, Omit<CognitivePolicy, 'workload'>> = {
     taskChunking: 'medium',
     uiDensity: 'reduced',
     notificationIntensity: 'low',
+    modelPreference: 'balanced',
     maxAutoStrategy: 'sequential',
     evaluation: 'model',
     presentationInstructions:
@@ -35,6 +37,8 @@ const POLICIES: Record<WorkloadLevel, Omit<CognitivePolicy, 'workload'>> = {
     taskChunking: 'high',
     uiDensity: 'minimal',
     notificationIntensity: 'low',
+    // Under high load a quick answer matters more than the strongest model.
+    modelPreference: 'fast',
     maxAutoStrategy: 'single_agent',
     evaluation: 'model',
     presentationInstructions:

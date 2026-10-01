@@ -23,6 +23,8 @@ export const CognitivePolicy = z.object({
   taskChunking: Density,
   uiDensity: z.enum(['full', 'reduced', 'minimal']),
   notificationIntensity: Density,
+  /** Model preference applied by the router to automatic model selection. */
+  modelPreference: z.enum(['fast', 'balanced', 'quality']),
   /** Upper bound for automatically selected strategies. Explicit user choices are respected. */
   maxAutoStrategy: AgentStrategy,
   evaluation: z.enum(['heuristic', 'model']),

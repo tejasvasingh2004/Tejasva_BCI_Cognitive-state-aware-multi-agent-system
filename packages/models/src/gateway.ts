@@ -1,4 +1,11 @@
-import { parseModelRef, type ModelInfo, type ToolCall, type Usage } from '@neuroflow/contracts';
+import {
+  estimateCostUsd,
+  parseModelRef,
+  type ModelInfo,
+  type ModelPricing,
+  type ToolCall,
+  type Usage,
+} from '@neuroflow/contracts';
 import { ModelError, isAbortError } from './errors';
 import type {
   CatalogEntry,
@@ -24,6 +31,10 @@ export type GatewayPolicy = {
   /** Default fallback chain applied when a request does not specify one. */
   defaultFallbacks: string[];
   defaultModel?: string;
+  /** Per-model pricing overrides keyed by model ref (USD per 1M tokens). */
+  pricing: Map<string, ModelPricing>;
+  /** Max concurrent attempts per provider id (unset = unlimited). Protects quotas and local GPUs. */
+  providerConcurrency: Record<string, number>;
 };
 
 export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
@@ -34,7 +45,46 @@ export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   baseBackoffMs: 500,
   maxBackoffMs: 8_000,
   defaultFallbacks: [],
+  pricing: new Map(),
+  providerConcurrency: {},
 };
+
+/** FIFO counting semaphore; waiting respects cancellation. */
+class Semaphore {
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async acquire(signal?: AbortSignal): Promise<() => void> {
+    if (this.active >= this.limit) {
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          const i = this.waiters.indexOf(grant);
+          if (i >= 0) this.waiters.splice(i, 1);
+          reject(new ModelError('cancelled', 'Model call cancelled'));
+        };
+        const grant = () => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve();
+        };
+        if (signal?.aborted) return onAbort();
+        signal?.addEventListener('abort', onAbort, { once: true });
+        this.waiters.push(grant);
+      });
+    } else {
+      this.active++;
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = this.waiters.shift();
+      if (next) next();
+      else this.active--;
+    };
+  }
+}
 
 type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 
@@ -56,11 +106,19 @@ export class DefaultModelGateway implements ModelGateway {
   private readonly adapters = new Map<string, ProviderAdapter>();
   private readonly policy: GatewayPolicy;
   private readonly sleep: Sleep;
+  private readonly semaphores = new Map<string, Semaphore>();
 
   constructor(adapters: ProviderAdapter[], policy: Partial<GatewayPolicy> = {}, opts: { sleep?: Sleep } = {}) {
     for (const a of adapters) this.adapters.set(a.id, a);
     this.policy = { ...DEFAULT_GATEWAY_POLICY, ...policy };
     this.sleep = opts.sleep ?? defaultSleep;
+    for (const [provider, limit] of Object.entries(this.policy.providerConcurrency)) {
+      if (limit > 0) this.semaphores.set(provider, new Semaphore(limit));
+    }
+  }
+
+  private pricingFor(ref: string, entry: CatalogEntry): ModelPricing | undefined {
+    return this.policy.pricing.get(ref) ?? entry.pricing;
   }
 
   listModels(): ModelInfo[] {
@@ -76,6 +134,9 @@ export class DefaultModelGateway implements ModelGateway {
           contextWindow: entry.contextWindow,
           capabilities: { tools: entry.tools, reasoning: entry.reasoning !== 'none', streaming: true },
           available: adapter.isAvailable(),
+          ...(this.pricingFor(`${adapter.id}/${entry.model}`, entry)
+            ? { pricing: this.pricingFor(`${adapter.id}/${entry.model}`, entry) }
+            : {}),
         });
       }
     }
@@ -134,14 +195,18 @@ export class DefaultModelGateway implements ModelGateway {
         yield { type: 'attempt', ref, provider: adapter.id, model, attempt };
 
         let producedOutput = false;
+        const release = await this.semaphores.get(adapter.id)?.acquire(request.signal);
         try {
           const result = yield* this.runAttempt(adapter, entry, model, request, () => {
             producedOutput = true;
           });
+          release?.();
+          const costUsd = estimateCostUsd(result.usage, this.pricingFor(ref, entry));
           yield {
             type: 'done',
             response: {
               ...result,
+              ...(result.usage && costUsd !== undefined ? { usage: { ...result.usage, costUsd } } : {}),
               provider: adapter.id,
               model,
               ref,
@@ -152,6 +217,7 @@ export class DefaultModelGateway implements ModelGateway {
           };
           return;
         } catch (err) {
+          release?.();
           const error = toModelError(err, request.signal);
           if (error.code === 'cancelled') throw error;
           if (producedOutput) {
@@ -168,6 +234,9 @@ export class DefaultModelGateway implements ModelGateway {
           await this.sleep(delayMs, request.signal).catch(() => {
             throw new ModelError('cancelled', 'Model call cancelled');
           });
+        } finally {
+          // Also covers a consumer that stops iterating early (generator return).
+          release?.();
         }
       }
     }

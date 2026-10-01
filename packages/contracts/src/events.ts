@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { RiskLevel, ToolErrorCode, ToolResultStatus } from './tools';
-import { Usage } from './messages';
+import { ToolCall, Usage } from './messages';
 import { ExecutionPlan, RunError } from './runs';
 import { CognitivePolicy, CognitiveState } from './cognitive';
 
@@ -104,6 +104,10 @@ export const RunEventData = {
     query: z.string(),
     count: z.number().int(),
     memoryIds: z.array(z.string()),
+    /** Source metadata of retrieved memories (never their content). */
+    items: z
+      .array(z.object({ id: z.string(), source: z.string(), tags: z.array(z.string()), createdAt: z.string() }))
+      .optional(),
   }),
   'evaluation.started': z.object({ kind: z.string(), iteration: z.number().int() }),
   'evaluation.completed': z.object({
@@ -115,7 +119,12 @@ export const RunEventData = {
   }),
   'response.delta': z.object({ text: z.string() }),
   'response.reset': z.object({ reason: z.string() }),
-  'run.completed': z.object({ durationMs: z.number().nonnegative(), usage: Usage.optional() }),
+  'run.completed': z.object({
+    durationMs: z.number().nonnegative(),
+    usage: Usage.optional(),
+    /** Present when the run ended by calling client-defined tools. */
+    toolCalls: z.array(ToolCall).optional(),
+  }),
   'run.failed': z.object({ error: RunError }),
   'run.cancelled': z.object({ reason: z.string() }),
 } as const;

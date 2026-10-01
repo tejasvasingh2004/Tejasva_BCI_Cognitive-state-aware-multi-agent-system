@@ -134,4 +134,83 @@ describe('buildContext', () => {
     expect(messages.length).toBeLessThan(10);
     expect(report.droppedMessages).toBeGreaterThan(40);
   });
+
+  it('flattens earlier tool exchanges so a window never starts with an orphaned tool result', () => {
+    const plan = planExecution({ ...base, lastUserMessage: 'x' });
+    const { messages } = buildContext({
+      plan,
+      history: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: '', toolCalls: [{ id: 't', name: 'lookup', arguments: '{}' }] },
+        { role: 'tool', content: '{"ok":true}', toolCallId: 't', name: 'lookup' },
+        { role: 'assistant', content: 'done' },
+        { role: 'user', content: 'second' },
+      ],
+    });
+    expect(messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'assistant', 'user']);
+    expect(messages.some((m) => m.toolCalls)).toBe(false);
+    expect(messages[2]!.content).toContain('[called tools: lookup({})]');
+  });
+});
+
+describe('planExecution budgets and preferences', () => {
+  const priced: ModelInfo[] = [
+    { ...model('qwen/qwen3:8b', 'balanced'), pricing: { inputPerMTok: 0, outputPerMTok: 0 } },
+    { ...model('groq/llama-3.3-70b-versatile', 'strong'), pricing: { inputPerMTok: 0.59, outputPerMTok: 0.79 } },
+    model('groq/unpriced', 'fast'),
+  ];
+
+  it('caps automatic strategies under a tight latency budget and prefers the fastest model', () => {
+    const plan = planExecution({
+      ...base,
+      request: { ...base.request, budget: { maxDurationMs: 20_000 } },
+      lastUserMessage: 'Give a comprehensive, in-depth analysis comparing A and B: 1. cost 2. risk 3. speed',
+    });
+    expect(['direct', 'single_agent']).toContain(plan.agentStrategy);
+    expect(plan.budgets.maxDurationMs).toBe(20_000);
+    expect(plan.models[0]!.model).toBe('groq/llama-3.1-8b-instant');
+  });
+
+  it('restricts to priced models under a cost budget and records it', () => {
+    const plan = planExecution({
+      ...base,
+      models: priced,
+      request: { ...base.request, budget: { maxCostUsd: 0.01 } },
+      lastUserMessage: 'hi',
+    });
+    expect(plan.budgets.maxCostUsd).toBe(0.01);
+    expect(plan.models.every((m) => m.model !== 'groq/unpriced')).toBe(true);
+    expect(plan.models[0]!.model).toBe('qwen/qwen3:8b');
+  });
+
+  it('applies the cognitive model preference to automatic model selection', () => {
+    const high = derivePolicy({ workload: 'high', confidence: 1, source: 'manual', observedAt: '' });
+    expect(planExecution({ ...base, cognitive: high, lastUserMessage: 'what is dns?' }).models[0]!.model).toBe(
+      'groq/llama-3.1-8b-instant',
+    );
+    const low = derivePolicy({ workload: 'low', confidence: 1, source: 'manual', observedAt: '' });
+    expect(planExecution({ ...base, cognitive: low, lastUserMessage: 'what is dns?' }).models[0]!.model).toBe(
+      'groq/llama-3.3-70b-versatile',
+    );
+  });
+
+  it('routes client tools to a direct call and named agents to a single agent', () => {
+    const client = planExecution({
+      ...base,
+      request: { ...base.request, clientTools: [{ name: 't', description: '', parameters: {} }] },
+      lastUserMessage: 'analyse in depth',
+    });
+    expect(client.agentStrategy).toBe('direct');
+    expect(client.toolPolicy.allowed).toEqual([]);
+    const named = planExecution({
+      ...base,
+      availableAgents: ['assistant', 'reviewer'],
+      request: { ...base.request, agent: 'reviewer' },
+      lastUserMessage: 'hi',
+    });
+    expect(named).toMatchObject({ agentStrategy: 'single_agent', agents: ['reviewer'] });
+    expect(() =>
+      planExecution({ ...base, availableAgents: ['assistant'], request: { ...base.request, agent: 'ghost' }, lastUserMessage: 'hi' }),
+    ).toThrow(RoutingError);
+  });
 });

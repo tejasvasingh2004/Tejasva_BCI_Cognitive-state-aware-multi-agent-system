@@ -79,4 +79,26 @@ describe.skipIf(!reachable)('memory', () => {
     expect(await memory.delete(me, item.id)).toBe(true);
     expect((await memory.search({ ...me, query: 'temporary fact' })).length).toBe(0);
   });
+
+  it('applies TTLs and the workspace retention policy, then purges expired memories', async () => {
+    const scope = await authRepo.ensureUserWithWorkspace(db.pool, { email: 'ret@x.io', displayName: 'R', workspaceName: 'R' });
+    const ttl = await memory.store({ ...scope, content: 'Temporary launch code word is pelican', ttlDays: 3 });
+    expect(Date.parse(ttl.expiresAt!)).toBeGreaterThan(Date.now() + 2.9 * 86_400_000);
+    const keep = await memory.store({ ...scope, content: 'Long-lived preference: dark roast coffee' });
+    expect(keep.expiresAt).toBeNull();
+
+    // Backdate both, then enable a 7-day workspace retention policy: it applies retroactively.
+    await db.pool.query(`UPDATE memories SET created_at = now() - interval '10 days' WHERE workspace_id = $1`, [scope.workspaceId]);
+    await db.pool.query(`UPDATE memories SET expires_at = now() - interval '1 second' WHERE id = $1`, [ttl.id]);
+    expect((await memory.list(scope)).map((m) => m.id)).toEqual([keep.id]);
+    await db.pool.query('UPDATE workspaces SET memory_retention_days = 7 WHERE id = $1', [scope.workspaceId]);
+    expect(await memory.list(scope)).toEqual([]);
+    expect(await memory.search({ ...scope, query: 'coffee preference' })).toEqual([]);
+
+    const purged = await memory.purgeExpired();
+    expect(purged).toContainEqual({ workspaceId: scope.workspaceId, count: 2 });
+    expect(await memory.purgeExpired()).not.toContainEqual(expect.objectContaining({ workspaceId: scope.workspaceId }));
+    // Other workspaces without retention are untouched.
+    expect((await memory.list(me)).length).toBeGreaterThan(0);
+  });
 });

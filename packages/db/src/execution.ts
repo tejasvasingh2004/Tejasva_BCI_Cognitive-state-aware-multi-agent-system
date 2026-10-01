@@ -47,8 +47,8 @@ export const executionRepo = {
   ): Promise<void> {
     await db.query(
       `INSERT INTO model_calls (run_id, agent_execution_id, role, provider, model, status, latency_ms, first_token_ms,
-                                prompt_tokens, completion_tokens, attempts, fallback_from, finish_reason, error)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                                prompt_tokens, completion_tokens, attempts, fallback_from, finish_reason, error, cost_usd)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         input.runId,
         input.agentExecutionId ?? null,
@@ -64,6 +64,7 @@ export const executionRepo = {
         input.fallbackFrom ?? null,
         input.finishReason ?? null,
         input.error ?? null,
+        input.usage?.costUsd ?? null,
       ],
     );
   },
@@ -214,6 +215,8 @@ export const executionRepo = {
         fallbackFrom: r.fallback_from as string | null,
         finishReason: r.finish_reason as string | null,
         error: r.error as string | null,
+        costUsd: r.cost_usd != null ? Number(r.cost_usd) : null,
+        createdAt: iso(r.created_at)!,
       })),
       toolCalls: tools.rows.map((r) => ({
         toolCallId: r.tool_call_id as string,
@@ -224,6 +227,8 @@ export const executionRepo = {
         errorCode: r.error_code as string | null,
         durationMs: r.duration_ms as number | null,
         attempts: r.attempts as number,
+        agentExecutionId: r.agent_execution_id as string | null,
+        createdAt: iso(r.created_at)!,
       })),
       evaluations: evals.rows.map((r) => ({
         kind: r.kind as string,

@@ -1,6 +1,6 @@
 import { GroqAdapter } from './adapters/groq';
 import { QwenAdapter, type QwenFlavor } from './adapters/qwen';
-import { buildCatalog } from './catalog';
+import { buildCatalog, parsePricing } from './catalog';
 import { DefaultModelGateway, type GatewayPolicy } from './gateway';
 import type { ProviderAdapter } from './types';
 
@@ -48,8 +48,20 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
     ...num(env.MODEL_TIMEOUT_MS, (v) => ({ attemptTimeoutMs: v })),
     ...num(env.MODEL_FIRST_TOKEN_TIMEOUT_MS, (v) => ({ firstTokenTimeoutMs: v })),
     ...num(env.MODEL_IDLE_TIMEOUT_MS, (v) => ({ idleTimeoutMs: v })),
+    pricing: parsePricing(env.MODEL_PRICING),
+    providerConcurrency: parseConcurrency(env.MODEL_PROVIDER_CONCURRENCY),
   };
   return new DefaultModelGateway(adapters, policy);
+}
+
+/** `MODEL_PROVIDER_CONCURRENCY=qwen=2,groq=16` */
+function parseConcurrency(spec: string | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of (spec ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const [provider, n] = item.split('=');
+    if (provider && Number(n) > 0) out[provider.trim()] = Math.floor(Number(n));
+  }
+  return out;
 }
 
 function num<T>(raw: string | undefined, f: (v: number) => T): T | object {

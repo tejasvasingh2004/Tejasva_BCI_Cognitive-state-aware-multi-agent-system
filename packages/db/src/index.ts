@@ -7,3 +7,6 @@ export * from './events';
 export * from './execution';
 export * from './cognitive';
 export * from './seed';
+export * from './audit';
+export * from './workspace';
+export * from './agents';

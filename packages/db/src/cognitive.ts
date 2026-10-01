@@ -35,29 +35,3 @@ export const cognitiveRepo = {
     );
   },
 };
-
-export type StoredAgent = {
-  id: string;
-  name: string;
-  description: string;
-  instructions: string;
-  capabilities: string[];
-  tools: string[];
-  modelPolicy: Record<string, unknown>;
-};
-
-/** Workspace-defined agents. Built-in agents live in code (packages/orchestrator). */
-export const agentsRepo = {
-  async listForWorkspace(db: Queryable, workspaceId: string): Promise<StoredAgent[]> {
-    const { rows } = await db.query('SELECT * FROM agents WHERE workspace_id = $1 ORDER BY name', [workspaceId]);
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      instructions: r.instructions,
-      capabilities: r.capabilities,
-      tools: r.tools,
-      modelPolicy: r.model_policy,
-    }));
-  },
-};

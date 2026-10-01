@@ -1,5 +1,5 @@
 import type { CatalogEntry, ReasoningStyle } from './types';
-import type { ModelTier } from '@neuroflow/contracts';
+import type { ModelPricing, ModelTier } from '@neuroflow/contracts';
 
 type KnownModel = Omit<CatalogEntry, 'model'>;
 
@@ -21,12 +21,12 @@ const KNOWN: Record<string, KnownModel> = {
   'qwen-turbo': km('Qwen Turbo', 'fast', 131_072, true, 'toggle'),
   'qwen-plus': km('Qwen Plus', 'balanced', 131_072, true, 'toggle'),
   'qwen-max': km('Qwen Max', 'strong', 32_768, true, 'none'),
-  // Groq
-  'llama-3.1-8b-instant': km('Llama 3.1 8B Instant', 'fast', 131_072, true, 'none'),
-  'llama-3.3-70b-versatile': km('Llama 3.3 70B', 'strong', 131_072, true, 'none'),
-  'qwen/qwen3-32b': km('Qwen3 32B (Groq)', 'strong', 131_072, true, 'toggle'),
-  'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort'),
-  'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort'),
+  // Groq (list prices, USD per 1M input/output tokens; override with MODEL_PRICING)
+  'llama-3.1-8b-instant': km('Llama 3.1 8B Instant', 'fast', 131_072, true, 'none', [0.05, 0.08]),
+  'llama-3.3-70b-versatile': km('Llama 3.3 70B', 'strong', 131_072, true, 'none', [0.59, 0.79]),
+  'qwen/qwen3-32b': km('Qwen3 32B (Groq)', 'strong', 131_072, true, 'toggle', [0.29, 0.59]),
+  'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]),
+  'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
 };
 
 function km(
@@ -35,8 +35,32 @@ function km(
   contextWindow: number,
   tools: boolean,
   reasoning: ReasoningStyle,
+  price?: [number, number],
 ): KnownModel {
-  return { displayName, tier, contextWindow, tools, reasoning };
+  return {
+    displayName,
+    tier,
+    contextWindow,
+    tools,
+    reasoning,
+    ...(price ? { pricing: { inputPerMTok: price[0], outputPerMTok: price[1] } } : {}),
+  };
+}
+
+/**
+ * Parses `MODEL_PRICING`: comma separated `<provider>/<model>=<input>:<output>` (USD per 1M tokens),
+ * e.g. `groq/llama-3.3-70b-versatile=0.59:0.79,qwen/qwen-plus=0.4:1.2`.
+ */
+export function parsePricing(spec: string | undefined): Map<string, ModelPricing> {
+  const out = new Map<string, ModelPricing>();
+  for (const item of (spec ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const eq = item.lastIndexOf('=');
+    const [inp, outp] = item.slice(eq + 1).split(':').map(Number);
+    if (eq > 0 && Number.isFinite(inp) && Number.isFinite(outp) && inp! >= 0 && outp! >= 0) {
+      out.set(item.slice(0, eq), { inputPerMTok: inp!, outputPerMTok: outp! });
+    }
+  }
+  return out;
 }
 
 /**

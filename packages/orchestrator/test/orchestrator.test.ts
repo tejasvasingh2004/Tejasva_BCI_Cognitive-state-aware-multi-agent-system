@@ -107,6 +107,13 @@ describe('Orchestrator', () => {
     expect(out.output.length).toBeGreaterThan(0);
   });
 
+  it('SUPERVISOR reviews results and can run one follow-up round', async () => {
+    const { orchestrator, store } = makeOrchestrator({ qwen });
+    const { input } = runInput('Plan a launch (needs follow-up)', { agentStrategy: 'supervisor' });
+    await orchestrator.execute(input);
+    expect(store.agents.map((a) => a.agentId)).toEqual(['researcher', 'analyst', 'analyst', 'writer']);
+  });
+
   it('EVALUATOR_OPTIMIZER refines when the evaluator asks for it (bounded)', async () => {
     let evals = 0;
     qwen.setScript((body, i) => {

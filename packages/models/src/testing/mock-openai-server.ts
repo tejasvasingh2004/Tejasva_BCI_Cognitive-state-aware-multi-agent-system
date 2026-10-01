@@ -150,6 +150,12 @@ export const defaultScript: MockScript = (body) => {
   if (body.response_format && (body.response_format as { type?: string }).type === 'json_object') {
     const system = body.messages.find((m) => m.role === 'system')?.content ?? '';
     if (system.includes('evaluat')) return textReply(JSON.stringify({ verdict: 'passed', score: 0.9, issues: [] }));
+    if (system.includes("Review the specialists' results")) {
+      // Supervisor review: ask for one follow-up round only when the task says so.
+      return textReply(
+        JSON.stringify(/needs follow-up/i.test(prompt) ? { subtasks: [{ agent: 'analyst', task: 'Fill the gap' }] } : { done: true }),
+      );
+    }
     if (system.includes('subtasks')) {
       return textReply(JSON.stringify({ subtasks: [{ agent: 'researcher', task: `Research: ${prompt}` }, { agent: 'analyst', task: `Analyse: ${prompt}` }] }));
     }

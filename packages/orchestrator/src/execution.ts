@@ -4,20 +4,27 @@ import {
   type ChatMessage,
   type ExecutionPlan,
   type ModelRole,
+  type ResponseFormat,
+  type RunRequest,
   type ToolCall,
   type Usage,
 } from '@neuroflow/contracts';
 import { ModelError, type FinishReason, type ModelResponse, type ToolChoice } from '@neuroflow/models';
 import { runtimeMetrics, withSpan } from '@neuroflow/observability';
 import { toolResultContent, type EmitFn } from '@neuroflow/tools';
-import type { AgentCatalog, AgentDefinition } from './agents/definitions';
+import { outputContractInstructions, type AgentCatalog, type AgentDefinition } from './agents/definitions';
 import { buildContext } from './context';
 import { BudgetExceededError, RunCancelledError } from './errors';
 import type { OrchestratorDeps, RunIdentity } from './types';
 
-/** Tracks per-run resource budgets so autonomous loops cannot run away. */
+/**
+ * Tracks per-run resource budgets so autonomous loops cannot run away. Wall-clock time is also
+ * enforced asynchronously by the orchestrator (an abort that interrupts in-flight calls).
+ */
 export class RunBudget {
   private modelCalls = 0;
+  private toolCalls = 0;
+  private cost = 0;
   private readonly deadline: number;
 
   constructor(private readonly plan: ExecutionPlan) {
@@ -27,12 +34,42 @@ export class RunBudget {
   consumeModelCall() {
     if (++this.modelCalls > this.plan.budgets.maxModelCalls) throw new BudgetExceededError('model call');
     if (Date.now() > this.deadline) throw new BudgetExceededError('time');
+    const maxCost = this.plan.budgets.maxCostUsd;
+    if (maxCost !== undefined && this.cost >= maxCost) throw new BudgetExceededError('cost');
+  }
+
+  /** Run-wide tool-call budget (agents are additionally bounded by the tool policy). */
+  tryConsumeToolCall(): boolean {
+    if (this.toolCalls >= this.plan.budgets.maxToolCalls) return false;
+    this.toolCalls++;
+    return true;
+  }
+
+  addCost(usage: Usage | undefined) {
+    if (usage?.costUsd !== undefined) this.cost += usage.costUsd;
   }
 
   get used() {
     return this.modelCalls;
   }
+
+  get toolCallsUsed() {
+    return this.toolCalls;
+  }
+
+  get costUsd() {
+    return Math.round(this.cost * 1e6) / 1e6;
+  }
 }
+
+/** Record of what the run did, used by trajectory/policy evaluation. Never contains arguments. */
+export type TrajectoryStep = {
+  tool: string;
+  status: string;
+  errorCode?: string;
+  /** Normalised name+arguments key, used only to detect repeated identical calls. */
+  argsKey: string;
+};
 
 /**
  * The single path to the user-visible answer. What is streamed is exactly what is persisted.
@@ -60,6 +97,7 @@ export class ResponseChannel {
 
 export type RunContext = {
   run: RunIdentity;
+  request: Omit<RunRequest, 'messages'>;
   plan: ExecutionPlan;
   history: ChatMessage[];
   scopes: readonly string[];
@@ -78,7 +116,34 @@ export type RunContext = {
   stage: string;
   /** Clients that cannot retract streamed text (OpenAI protocol) need append-only output. */
   appendOnly: boolean;
+  trajectory: TrajectoryStep[];
+  /** True when a tool-call limit cut an agent loop short. */
+  toolLimitHit: boolean;
+  /** Bounded extra context sources (workspace instructions, conversation summary). */
+  extras: { workspaceInstructions?: string; summary?: string };
+  /** Client-defined tool calls returned to the API client (direct strategy only). */
+  clientToolCalls?: ToolCall[];
 };
+
+/** Output requirements for the user-facing generation: request format + agent contract. */
+export function outputInstructions(ctx: RunContext, agent?: AgentDefinition): string | undefined {
+  const parts: string[] = [];
+  const fmt = ctx.request.responseFormat;
+  if (fmt === 'json') parts.push('Respond with a single valid JSON value and nothing else (no code fences, no prose).');
+  else if (fmt && typeof fmt === 'object') {
+    parts.push(
+      'Respond with a single JSON value that validates against this JSON Schema, and nothing else:\n' +
+        JSON.stringify(fmt.schema).slice(0, 4000),
+    );
+  }
+  const contract = outputContractInstructions(agent?.outputContract);
+  if (contract && !fmt) parts.push(contract);
+  return parts.length ? parts.join('\n') : undefined;
+}
+
+export function wantsJson(format: ResponseFormat | undefined): boolean {
+  return format === 'json' || (typeof format === 'object' && format?.type === 'json_schema');
+}
 
 export function modelFor(ctx: RunContext, role: ModelRole): { model: string; fallbacks: string[] } {
   const a =
@@ -88,8 +153,11 @@ export function modelFor(ctx: RunContext, role: ModelRole): { model: string; fal
   return { model: a.model, fallbacks: a.fallbacks };
 }
 
+/** Throws the reason a run's signal was aborted: a budget limit or user cancellation. */
 export function throwIfCancelled(signal: AbortSignal) {
-  if (signal.aborted) throw new RunCancelledError();
+  if (!signal.aborted) return;
+  if (signal.reason instanceof BudgetExceededError) throw signal.reason;
+  throw new RunCancelledError();
 }
 
 export type ModelCallOptions = {
@@ -162,6 +230,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
       if (!response) throw new ModelError('provider_error', 'Model returned no response');
 
       ctx.usage.total = addUsage(ctx.usage.total, response.usage);
+      ctx.budget.addCost(response.usage);
       span.setAttributes({ 'model.provider': response.provider, 'model.ref': response.ref });
       runtimeMetrics.modelLatency.record(response.latencyMs, { model: response.ref, role: opts.role });
       if (response.firstTokenMs !== undefined) runtimeMetrics.modelFirstToken.record(response.firstTokenMs, { model: response.ref });
@@ -227,7 +296,10 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
           error: message.slice(0, 500),
         })
         .catch(() => {});
-      if (cancelled) throw new RunCancelledError();
+      if (cancelled) {
+        throwIfCancelled(ctx.signal);
+        throw new RunCancelledError();
+      }
       throw err;
     }
   });
@@ -273,6 +345,9 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
   let toolCallsUsed = 0;
   let iterations = 0;
   let text = '';
+  // Output requirements apply to the generation the user sees (or an explicitly contracted agent).
+  const outputReq = opts.streamToUser || opts.agent.outputContract ? outputInstructions(ctx, opts.agent) : undefined;
+  const json = opts.streamToUser && wantsJson(ctx.request.responseFormat);
 
   return withSpan('agent.run', { 'agent.id': opts.agent.id, 'agent.role': role }, async () => {
     try {
@@ -280,6 +355,8 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
         iterations++;
         const toolsLeft = toolSpecs.length > 0 && toolCallsUsed < ctx.plan.toolPolicy.maxToolCalls;
         const lastIteration = iterations >= opts.agent.maxIterations;
+        // Tools withheld because a tool-call or iteration limit cut the loop short.
+        if (toolSpecs.length > 0 && (!toolsLeft || (lastIteration && iterations > 1))) ctx.toolLimitHit = true;
         const { messages, report } = buildContext({
           plan: ctx.plan,
           instructions: opts.agent.instructions,
@@ -287,6 +364,8 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
           taskMessages: opts.notes,
           scratch,
           ...(opts.task !== undefined ? { replaceTask: opts.task } : {}),
+          ...ctx.extras,
+          ...(outputReq ? { outputInstructions: outputReq } : {}),
         });
         if (iterations === 1) ctx.emit('context.built', { agentExecutionId, ...report });
 
@@ -295,14 +374,24 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
           messages,
           agentExecutionId,
           streamToUser: opts.streamToUser,
+          ...(json ? { responseFormat: 'json' as const } : {}),
           ...(toolsLeft && !lastIteration ? { tools: toolSpecs, toolChoice: 'auto' as const } : {}),
         });
         text += res.text;
 
-        if (res.toolCalls.length === 0 || !toolsLeft || lastIteration) break;
+        if (res.toolCalls.length === 0 || !toolsLeft || lastIteration) {
+          if (res.toolCalls.length > 0) ctx.toolLimitHit = true;
+          break;
+        }
 
         scratch.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
-        for (const call of res.toolCalls.slice(0, ctx.plan.toolPolicy.maxToolCalls - toolCallsUsed)) {
+        const remaining = ctx.plan.toolPolicy.maxToolCalls - toolCallsUsed;
+        if (res.toolCalls.length > remaining) ctx.toolLimitHit = true;
+        for (const call of res.toolCalls.slice(0, remaining)) {
+          if (!ctx.budget.tryConsumeToolCall()) {
+            ctx.toolLimitHit = true;
+            break;
+          }
           toolCallsUsed++;
           ctx.stage = `tool:${call.name}`;
           const result = await ctx.deps.tools.execute(call, {
@@ -315,8 +404,17 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
             allowedTools: allowed,
             agentExecutionId,
           });
-          if (result.status === 'cancelled') throw new RunCancelledError();
+          if (result.status === 'cancelled') {
+            throwIfCancelled(ctx.signal);
+            throw new RunCancelledError();
+          }
           if (result.status !== 'success') ctx.toolFailures++;
+          ctx.trajectory.push({
+            tool: call.name,
+            status: result.status,
+            argsKey: call.name + ':' + call.arguments.replace(/s+/g, ''),
+            ...(result.error ? { errorCode: result.error.code } : {}),
+          });
           scratch.push({ role: 'tool', content: toolResultContent(result), toolCallId: call.id, name: call.name });
         }
         skipUnansweredCalls(res.toolCalls, scratch);

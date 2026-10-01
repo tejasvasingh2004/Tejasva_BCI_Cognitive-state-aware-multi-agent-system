@@ -8,6 +8,7 @@ import {
   stripThinking,
   ThinkFilter,
   type ModelEvent,
+  type ProviderAdapter,
 } from '../src';
 import { startMockOpenAIServer, textReply, type MockOpenAIServer } from '../src/testing';
 
@@ -190,5 +191,71 @@ describe('ThinkFilter', () => {
   it('discards unterminated think blocks', () => {
     expect(stripThinking('<think>never closed')).toBe('');
     expect(stripThinking('a < b')).toBe('a < b');
+  });
+});
+
+describe('ModelGateway cost and concurrency', () => {
+  it('attaches estimated cost from catalog pricing or overrides', async () => {
+    groq.setScript(() => textReply('priced answer'));
+    const res = await gateway().complete({ model: 'groq/llama-3.3-70b-versatile', messages: user });
+    const u = res.usage!;
+    expect(u.costUsd).toBeCloseTo((u.promptTokens * 0.59 + u.completionTokens * 0.79) / 1e6, 6);
+
+    const overridden = await gateway({
+      pricing: new Map([['groq/llama-3.3-70b-versatile', { inputPerMTok: 1000, outputPerMTok: 1000 }]]),
+    }).complete({ model: 'groq/llama-3.3-70b-versatile', messages: user });
+    expect(overridden.usage!.costUsd).toBeCloseTo(overridden.usage!.totalTokens / 1000, 6);
+    expect(gateway().listModels().find((m) => m.ref === 'groq/llama-3.3-70b-versatile')?.pricing).toEqual({
+      inputPerMTok: 0.59,
+      outputPerMTok: 0.79,
+    });
+  });
+
+  /** Provider stub that holds each stream open for `ms` and records peak concurrency. */
+  function slowProvider(ms: number) {
+    const stats = { inFlight: 0, peak: 0 };
+    const adapter: ProviderAdapter = {
+      id: 'slow',
+      displayName: 'Slow',
+      catalog: () => buildCatalog('m1'),
+      isAvailable: () => true,
+      async *stream() {
+        stats.inFlight++;
+        stats.peak = Math.max(stats.peak, stats.inFlight);
+        try {
+          await new Promise((r) => setTimeout(r, ms));
+          yield { type: 'delta' as const, text: 'ok' };
+          yield { type: 'finish' as const, reason: 'stop' as const };
+        } finally {
+          stats.inFlight--;
+        }
+      },
+    };
+    return { adapter, stats };
+  }
+
+  it('limits concurrent attempts per provider', async () => {
+    const { adapter, stats } = slowProvider(30);
+    const gw = new DefaultModelGateway([adapter], { providerConcurrency: { slow: 1 } });
+    const results = await Promise.all([1, 2, 3].map(() => gw.complete({ model: 'slow/m1', messages: user })));
+    expect(results.map((r) => r.text)).toEqual(['ok', 'ok', 'ok']);
+    expect(stats.peak).toBe(1);
+
+    const unlimited = slowProvider(30);
+    const gw2 = new DefaultModelGateway([unlimited.adapter]);
+    await Promise.all([1, 2, 3].map(() => gw2.complete({ model: 'slow/m1', messages: user })));
+    expect(unlimited.stats.peak).toBe(3);
+  });
+
+  it('a queued call can be cancelled while waiting for a slot', async () => {
+    const { adapter } = slowProvider(60);
+    const gw = new DefaultModelGateway([adapter], { providerConcurrency: { slow: 1 } });
+    const first = gw.complete({ model: 'slow/m1', messages: user });
+    const ctrl = new AbortController();
+    const second = gw.complete({ model: 'slow/m1', messages: user, signal: ctrl.signal });
+    await new Promise((r) => setTimeout(r, 5));
+    ctrl.abort();
+    await expect(second).rejects.toMatchObject({ code: 'cancelled' });
+    await expect(first).resolves.toMatchObject({ text: 'ok' });
   });
 });

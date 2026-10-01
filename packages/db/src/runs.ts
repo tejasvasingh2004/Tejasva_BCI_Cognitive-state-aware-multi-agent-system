@@ -1,4 +1,4 @@
-import type { ExecutionPlan, Run, RunError, RunRequest, Usage } from '@neuroflow/contracts';
+import type { ExecutionPlan, Run, RunError, RunRequest, ToolCall, Usage } from '@neuroflow/contracts';
 import { iso, type Queryable } from './client';
 
 export type RunSource = 'workspace' | 'api' | 'openai';
@@ -20,6 +20,7 @@ const toRun = (r: Record<string, unknown>): RunRow => {
           promptTokens: (r.prompt_tokens as number) ?? 0,
           completionTokens: (r.completion_tokens as number) ?? 0,
           totalTokens: ((r.prompt_tokens as number) ?? 0) + ((r.completion_tokens as number) ?? 0),
+          ...(r.cost_usd != null ? { costUsd: Number(r.cost_usd) } : {}),
         }
       : null;
   return {
@@ -42,6 +43,7 @@ const toRun = (r: Record<string, unknown>): RunRow => {
     output: (r.output as string | null) ?? null,
     error,
     usage,
+    toolCalls: (r.output_tool_calls as ToolCall[] | null) ?? null,
     attempt: r.attempt as number,
     createdAt: iso(r.created_at as Date)!,
     startedAt: iso(r.started_at as Date | null),
@@ -128,12 +130,19 @@ export const runsRepo = {
     );
   },
 
-  async complete(db: Queryable, id: string, output: string, usage?: Usage): Promise<boolean> {
+  async complete(db: Queryable, id: string, output: string, usage?: Usage, toolCalls?: ToolCall[]): Promise<boolean> {
     const res = await db.query(
       `UPDATE runs SET status = 'completed', output = $2, completed_at = now(),
-              prompt_tokens = $3, completion_tokens = $4
+              prompt_tokens = $3, completion_tokens = $4, cost_usd = $5, output_tool_calls = $6
         WHERE id = $1 AND status = 'running'`,
-      [id, output, usage?.promptTokens ?? null, usage?.completionTokens ?? null],
+      [
+        id,
+        output,
+        usage?.promptTokens ?? null,
+        usage?.completionTokens ?? null,
+        usage?.costUsd ?? null,
+        toolCalls?.length ? JSON.stringify(toolCalls) : null,
+      ],
     );
     return (res.rowCount ?? 0) > 0;
   },
@@ -178,6 +187,14 @@ export const runsRepo = {
     const { rows } = await db.query(
       `SELECT count(*)::int AS n FROM runs WHERE workspace_id = $1 AND status IN ('queued', 'running')`,
       [workspaceId],
+    );
+    return rows[0].n;
+  },
+
+  async countActiveForUser(db: Queryable, userId: string): Promise<number> {
+    const { rows } = await db.query(
+      `SELECT count(*)::int AS n FROM runs WHERE user_id = $1 AND status IN ('queued', 'running')`,
+      [userId],
     );
     return rows[0].n;
   },

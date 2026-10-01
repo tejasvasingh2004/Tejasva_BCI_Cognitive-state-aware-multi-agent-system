@@ -24,15 +24,20 @@ export const Usage = z.object({
   promptTokens: z.number().int().nonnegative(),
   completionTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
+  /** Estimated USD cost, present only when every contributing model has known pricing. */
+  costUsd: z.number().nonnegative().optional(),
 });
 export type Usage = z.infer<typeof Usage>;
 
 export function addUsage(a: Usage | undefined, b: Usage | undefined): Usage | undefined {
   if (!a) return b;
   if (!b) return a;
+  const cost =
+    a.costUsd !== undefined && b.costUsd !== undefined ? Math.round((a.costUsd + b.costUsd) * 1e6) / 1e6 : undefined;
   return {
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens: a.completionTokens + b.completionTokens,
     totalTokens: a.totalTokens + b.totalTokens,
+    ...(cost !== undefined ? { costUsd: cost } : {}),
   };
 }

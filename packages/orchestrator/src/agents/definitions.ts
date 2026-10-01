@@ -1,4 +1,4 @@
-import type { ModelRole } from '@neuroflow/contracts';
+import type { AgentOutputContract, AgentSpec, ModelRole } from '@neuroflow/contracts';
 
 /**
  * Agents are execution roles, not models. Which model an agent uses is decided per run by the
@@ -13,7 +13,41 @@ export type AgentDefinition = {
   tools: string[] | '*';
   modelRole: ModelRole;
   maxIterations: number;
+  /** What the agent is good at; shown to the supervisor when it delegates. */
+  capabilities?: string[];
+  /** Shape of the agent's output, enforced through instructions and checked by evaluation. */
+  outputContract?: AgentOutputContract;
+  /** True for workspace-defined agents. */
+  custom?: boolean;
 };
+
+/** Converts a stored workspace agent into a runtime definition. */
+export function agentFromSpec(spec: AgentSpec): AgentDefinition {
+  return {
+    id: spec.id,
+    name: spec.name,
+    description: spec.description,
+    instructions: spec.instructions,
+    tools: spec.tools,
+    modelRole: spec.modelRole,
+    maxIterations: spec.maxIterations,
+    capabilities: spec.capabilities,
+    ...(spec.outputContract ? { outputContract: spec.outputContract } : {}),
+    custom: true,
+  };
+}
+
+/** Instruction text that enforces an output contract. */
+export function outputContractInstructions(c: AgentOutputContract | undefined): string | undefined {
+  if (!c) return undefined;
+  const base =
+    c.format === 'json'
+      ? 'Respond with a single valid JSON value and nothing else (no code fences, no prose).'
+      : c.format === 'text'
+        ? 'Respond in plain text without Markdown formatting.'
+        : 'Respond in well-structured Markdown.';
+  return c.description ? `Output contract: ${base} ${c.description}` : `Output contract: ${base}`;
+}
 
 export const BUILTIN_AGENTS: AgentDefinition[] = [
   {
@@ -25,6 +59,7 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
     tools: '*',
     modelRole: 'agent',
     maxIterations: 6,
+    capabilities: ['general', 'tools', 'memory'],
   },
   {
     id: 'researcher',
@@ -35,6 +70,7 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
     tools: ['search_memory', 'get_current_time', 'calculator'],
     modelRole: 'research',
     maxIterations: 4,
+    capabilities: ['research', 'facts', 'memory'],
   },
   {
     id: 'analyst',
@@ -45,6 +81,7 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
     tools: ['calculator'],
     modelRole: 'analysis',
     maxIterations: 3,
+    capabilities: ['analysis', 'trade-offs', 'calculation'],
   },
   {
     id: 'writer',
@@ -104,8 +141,19 @@ export class AgentCatalog {
     return this.agents.has(id);
   }
 
+  ids(): string[] {
+    return [...this.agents.keys()];
+  }
+
   /** Specialists the supervisor may delegate to. */
   specialists(): AgentDefinition[] {
     return [...this.agents.values()].filter((a) => !['supervisor', 'critic', 'refiner', 'writer'].includes(a.id));
+  }
+
+  /** Roster line per specialist, including capabilities, for supervisor delegation. */
+  roster(): string {
+    return this.specialists()
+      .map((a) => `- ${a.id}: ${a.description}${a.capabilities?.length ? ` [capabilities: ${a.capabilities.join(', ')}]` : ''}`)
+      .join('\n');
   }
 }
