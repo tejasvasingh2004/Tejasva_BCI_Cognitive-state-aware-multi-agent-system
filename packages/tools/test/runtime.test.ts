@@ -97,7 +97,7 @@ const big = defineTool({
 
 const registry = new ToolRegistry().registerAll([...builtinTools, flaky, writer, slow, dangerous, big]);
 
-function gate(decision: { approved: boolean } | 'timeout'): ApprovalGate {
+function gate(decision: { approved: boolean; reason?: string } | 'timeout'): ApprovalGate {
   return { wait: async () => decision };
 }
 
@@ -165,6 +165,13 @@ describe('ToolRuntime', () => {
       ctx().c,
     );
     expect(denied.error?.code).toBe('approval_denied');
+
+    // The user's rejection feedback reaches the model so it can adapt.
+    const withFeedback = await new ToolRuntime(registry, { approvals: gate({ approved: false, reason: 'Fix the test instead' }) }).execute(
+      { id: 'd2b', name: 'dangerous', arguments: '{"target":"x"}' },
+      ctx().c,
+    );
+    expect(withFeedback.error).toMatchObject({ code: 'approval_denied', message: 'The user declined this action. Their feedback: Fix the test instead' });
 
     const timedOut = await new ToolRuntime(registry, { approvals: gate('timeout') }).execute(
       { id: 'd3', name: 'dangerous', arguments: '{"target":"x"}' },
@@ -236,5 +243,41 @@ describe('calculator', () => {
     expect(evaluateExpression('max(1, 5, 3) + pi - pi')).toBe(5);
     expect(() => evaluateExpression('process.exit()')).toThrow();
     expect(() => evaluateExpression('1/0')).toThrow();
+  });
+});
+
+describe('unexpected tool failures', () => {
+  it('give the model a generic message, keep a redacted diagnostic for operators and emit tool.started once', async () => {
+    const broken = defineTool({
+      name: 'broken',
+      description: 'Fails while preparing',
+      input: z.object({}),
+      riskLevel: 'low',
+      requiresApproval: false,
+      sideEffects: false,
+      permissions: [],
+      timeoutMs: 1_000,
+      prepare: async () => {
+        throw new TypeError('db said no for token ghp_abcdef123456');
+      },
+      execute: async () => ({ ok: true }),
+    });
+    const finished: Array<{ result: ToolResult; extra?: { diagnostic?: string } }> = [];
+    const onUnexpectedError = vi.fn();
+    const rt = new ToolRuntime(new ToolRegistry().registerAll([broken]), {
+      onUnexpectedError,
+      recorder: {
+        start: async () => {},
+        approval: async () => {},
+        finish: async (_runId, result, extra) => void finished.push({ result, extra }),
+        findCompleted: async () => null,
+      },
+    });
+    const { c, events } = ctx({ allowedTools: ['broken'] });
+    const res = await rt.execute({ id: 'b1', name: 'broken', arguments: '{}' }, c);
+    expect(res.error).toMatchObject({ code: 'execution_failed', message: 'Tool preparation failed' });
+    expect(events.filter((e) => e.type === 'tool.started')).toHaveLength(1);
+    expect(onUnexpectedError).toHaveBeenCalledWith(expect.any(TypeError), expect.objectContaining({ tool: 'broken', phase: 'prepare' }));
+    expect(finished[0]!.extra?.diagnostic).toBe('TypeError: db said no for token ghp_[REDACTED]');
   });
 });

@@ -13,7 +13,7 @@ import { ModelError, type FinishReason, type ModelResponse, type ToolChoice } fr
 import { runtimeMetrics, withSpan } from '@neuroflow/observability';
 import { toolResultContent, type EmitFn } from '@neuroflow/tools';
 import { outputContractInstructions, type AgentCatalog, type AgentDefinition } from './agents/definitions';
-import { buildContext, type CodeContext } from './context';
+import { buildContext, estimateTokens, type CodeContext } from './context';
 import { BudgetExceededError, RunCancelledError } from './errors';
 import type { OrchestratorDeps, RunIdentity } from './types';
 
@@ -374,6 +374,8 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
       ? ctx.plan.toolPolicy.allowed
       : ctx.plan.toolPolicy.allowed.filter((t) => (opts.agent.tools as string[]).includes(t));
   const toolSpecs = ctx.deps.tools.registry.specs(allowed);
+  const toolSpecTokens = toolSpecs.length ? estimateTokens(JSON.stringify(toolSpecs)) : 0;
+  let compactedSoFar = 0;
   const scratch: ChatMessage[] = [];
   let toolCallsUsed = 0;
   let iterations = 0;
@@ -396,11 +398,14 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
           history: ctx.history,
           taskMessages: opts.notes,
           scratch,
+          ...(toolsLeft && !lastIteration ? { reserveTokens: toolSpecTokens } : {}),
           ...(opts.task !== undefined ? { replaceTask: opts.task } : {}),
           ...ctx.extras,
           ...(outputReq ? { outputInstructions: outputReq } : {}),
         });
-        if (iterations === 1) ctx.emit('context.built', { agentExecutionId, ...report });
+        // Re-emitted when the loop had to compact older tool results, so the inspector shows it.
+        if (iterations === 1 || (report.compactedToolResults ?? 0) > compactedSoFar) ctx.emit('context.built', { agentExecutionId, ...report });
+        compactedSoFar = Math.max(compactedSoFar, report.compactedToolResults ?? 0);
 
         const res = await callModel(ctx, {
           role,

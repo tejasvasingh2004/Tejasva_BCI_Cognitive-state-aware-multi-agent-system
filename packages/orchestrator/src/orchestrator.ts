@@ -2,7 +2,7 @@ import type { CognitivePolicy } from '@neuroflow/contracts';
 import { derivePolicy } from '@neuroflow/cognitive';
 import { withSpan } from '@neuroflow/observability';
 import { AgentCatalog, type AgentDefinition } from './agents/definitions';
-import { BudgetExceededError, RunCancelledError } from './errors';
+import { BudgetExceededError, EmptyResponseError, RunCancelledError } from './errors';
 import { evaluate, recordEvaluation } from './evaluation';
 import { newCodeRunState, observeCodeEvent, ResponseChannel, RunBudget, throwIfCancelled, type RunContext } from './execution';
 import { planExecution } from './router';
@@ -135,7 +135,7 @@ export class Orchestrator {
         }
 
         if (!response.text.trim() && !ctx.clientToolCalls?.length) {
-          throw new Error('The model returned an empty response');
+          throw new EmptyResponseError();
         }
         span.setAttribute('run.cost_usd', ctx.budget.costUsd);
         return {

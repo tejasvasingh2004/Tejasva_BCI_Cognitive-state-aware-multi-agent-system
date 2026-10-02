@@ -21,6 +21,14 @@ export class RoutingError extends Error {
   }
 }
 
+/** The model finished without producing any answer (typically a model too small for the task). */
+export class EmptyResponseError extends Error {
+  constructor() {
+    super('The model returned an empty response');
+    this.name = 'EmptyResponseError';
+  }
+}
+
 /**
  * Maps internal errors to a user-safe code/message. Infrastructure details (URLs, stack traces,
  * provider payloads) are never exposed.
@@ -32,6 +40,9 @@ export function toRunError(err: unknown, stage?: string): { code: string; messag
     return { code: 'budget_exceeded', message: `The task exceeded its ${err.budget} limit and was stopped.`, ...base };
   }
   if (err instanceof RoutingError) return { code: 'no_model', message: err.message, ...base };
+  if (err instanceof EmptyResponseError) {
+    return { code: 'empty_response', message: 'The model returned an empty answer. Try again or choose a more capable model.', ...base };
+  }
   if (err instanceof ModelError) {
     const messages: Record<string, string> = {
       timeout: 'The model took too long to respond.',

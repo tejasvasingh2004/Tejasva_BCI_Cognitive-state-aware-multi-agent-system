@@ -111,7 +111,7 @@ export const executionRepo = {
     );
   },
 
-  async finishToolCall(db: Queryable, runId: string, result: ToolResult): Promise<void> {
+  async finishToolCall(db: Queryable, runId: string, result: ToolResult, extra?: { diagnostic?: string }): Promise<void> {
     await db.query(
       `INSERT INTO tool_calls (run_id, tool_call_id, name, status, approval_status)
        VALUES ($1, $2, $3, 'running', 'not_required')
@@ -126,7 +126,7 @@ export const executionRepo = {
         runId,
         result.toolCallId,
         result.status,
-        result.data === undefined ? null : JSON.stringify(result.data),
+        result.data !== undefined ? JSON.stringify(result.data) : extra?.diagnostic ? JSON.stringify({ diagnostic: extra.diagnostic }) : null,
         result.error?.code ?? null,
         result.error?.message ?? null,
         result.attempts,

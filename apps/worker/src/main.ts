@@ -38,6 +38,7 @@ const runtime = await createWorkerRuntime({
   bciServiceUrl: config.BCI_SERVICE_URL,
   approvalTimeoutMs: config.TOOL_APPROVAL_TIMEOUT_MS,
   code: { dataDir: config.CODE_DATA_DIR, secretsKey: config.SECRETS_KEY, sessionSecret: config.SESSION_SECRET, githubApiUrl: config.GITHUB_API_URL },
+  onToolError: (err, info) => logger.warn({ err, ...info }, 'tool failed unexpectedly'),
 });
 
 const shutdown = new AbortController();

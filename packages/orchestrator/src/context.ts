@@ -31,6 +31,8 @@ export type ContextInput = {
   outputInstructions?: string;
   /** Repository context of code runs (bounded; never the whole repository). */
   code?: CodeContext;
+  /** Tokens already spoken for outside the messages (tool schemas sent with the request). */
+  reserveTokens?: number;
   now?: Date;
 };
 
@@ -61,7 +63,9 @@ export type BuiltContext = {
 export function buildContext(input: ContextInput): BuiltContext {
   const { plan } = input;
   const now = input.now ?? new Date();
-  const budget = plan.contextPolicy.maxInputTokens;
+  // Tool schemas travel with every request: they count against the same input budget.
+  const max = plan.contextPolicy.maxInputTokens;
+  const budget = Math.max(Math.floor(max / 4), max - (input.reserveTokens ?? 0));
 
   const systemParts = [BASE_INSTRUCTIONS, `Current date: ${now.toISOString().slice(0, 10)}.`];
   if (input.instructions) systemParts.push(input.instructions);
@@ -110,6 +114,20 @@ ${clampText(code.pinned, Math.floor(budget * 0.2))}` });
   const notes = (input.taskMessages ?? []).map((m) => clampMessage(m, Math.floor(budget * 0.25)));
 
   let used = [...fixed, ...scratch, ...notes].reduce((n, m) => n + messageTokens(m), 0);
+  // A long tool loop must not outgrow the budget: older tool results are replaced by a stub
+  // (call/result pairing is kept), the two most recent stay verbatim.
+  let compacted = 0;
+  const toolIdx = scratch.map((m, i) => (m.role === 'tool' ? i : -1)).filter((i) => i >= 0);
+  for (const i of toolIdx.slice(0, -2)) {
+    if (used <= budget) break;
+    const m = scratch[i]!;
+    const stub = { ...m, content: COMPACTED_RESULT };
+    const saved = messageTokens(m) - messageTokens(stub);
+    if (saved <= 0) continue;
+    scratch[i] = stub;
+    used -= saved;
+    compacted++;
+  }
 
   // Recent history, newest first, deduplicated, bounded by count and budget.
   const kept: ChatMessage[] = [];
@@ -150,9 +168,12 @@ ${clampText(code.pinned, Math.floor(budget * 0.2))}` });
       ],
       totalTokens: used,
       droppedMessages: dropped,
+      ...(compacted ? { compactedToolResults: compacted } : {}),
     },
   };
 }
+
+const COMPACTED_RESULT = '[Earlier tool result omitted to stay within the context budget. Call the tool again if you still need it.]';
 
 function clampText(text: string, maxTokens: number): string {
   const maxChars = maxTokens * 4;

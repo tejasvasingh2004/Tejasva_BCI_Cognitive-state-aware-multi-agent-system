@@ -33,7 +33,7 @@ export class ModelError extends Error {
 
 export function httpStatusToError(status: number, body: string, retryAfter?: string | null): ModelError {
   const msg = summarizeProviderError(body) || `HTTP ${status}`;
-  const retryAfterMs = parseRetryAfter(retryAfter);
+  const retryAfterMs = parseRetryAfter(retryAfter) ?? (status === 429 ? retryHintFromMessage(msg) : undefined);
   if (status === 401 || status === 403) return new ModelError('auth', `Provider rejected credentials: ${msg}`, { status });
   if (status === 404) return new ModelError('model_not_found', msg, { status });
   if (status === 408) return new ModelError('timeout', msg, { status });
@@ -51,6 +51,14 @@ function summarizeProviderError(body: string): string {
     // not JSON
   }
   return body.slice(0, 300);
+}
+
+/** Providers such as Groq also state the wait in the message: "Please try again in 39.12s" / "in 450ms". */
+function retryHintFromMessage(msg: string): number | undefined {
+  const m = /try again in (?:(\d+)m)?(\d+(?:\.\d+)?)(ms|s)\b/i.exec(msg);
+  if (!m) return undefined;
+  const value = Number(m[2]) * (m[3] === 'ms' ? 1 : 1000) + Number(m[1] ?? 0) * 60_000;
+  return Number.isFinite(value) ? value : undefined;
 }
 
 function parseRetryAfter(value: string | null | undefined): number | undefined {

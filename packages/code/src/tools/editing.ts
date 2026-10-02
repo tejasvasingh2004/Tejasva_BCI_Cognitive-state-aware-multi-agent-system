@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Scopes, type ApprovalMode, type FileChange } from '@neuroflow/contracts';
 import { defineTool, ToolExecutionError, type Prepared, type ToolContext, type ToolDefinition } from '@neuroflow/tools';
+import { BeginPatchError, beginPatchToUnified, isBeginPatch } from '../begin-patch';
 import { filePatch, renamePatch, summarizePatch } from '../patch';
 import { normalizeRepoPath } from '../paths';
 import { assertModeAllows, openFor, type CodeServices, type OpenCodeWorkspace } from '../services';
@@ -226,9 +227,14 @@ export function editingTools(services: CodeServices): ToolDefinition[] {
 
   const applyPatchTool = twoPhase(
     'apply_patch',
-    'Apply a unified diff (git format, paths prefixed a/ and b/) that may touch several files. The patch is validated before anything changes.',
+    'Apply a patch that may touch several files: a unified diff (git format, paths prefixed a/ and b/) or a "*** Begin Patch" envelope (*** Update File / *** Add File / *** Delete File with @@ hunks of context, - and + lines). The patch is validated before anything changes.',
     z.object({ patch: z.string().min(10).max(400_000), summary: summaryArg }),
-    async ({ patch, summary }) => {
+    async ({ patch: input, summary }, ws) => {
+      const patch = isBeginPatch(input)
+        ? await beginPatchToUnified(input, (p) => ws.checkout.readText(p)).catch((err: unknown) => {
+            throw err instanceof BeginPatchError ? new ToolExecutionError(err.message) : err;
+          })
+        : input;
       const files = summarizePatch(patch);
       for (const f of files) {
         normalizeRepoPath(f.path);

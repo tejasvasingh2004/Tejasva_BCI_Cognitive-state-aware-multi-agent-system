@@ -3,7 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  beginPatchToUnified,
   classifyCommand,
+  isBeginPatch,
   detectProject,
   filePatch,
   findReferences,
@@ -160,6 +162,51 @@ describe('command policy', () => {
     const d = classifyCommand(cmd, mode);
     expect(d.decision).toBe(decision);
     if (network) expect(d.network).toBe(network);
+  });
+});
+
+describe('"*** Begin Patch" envelopes', () => {
+  const files: Record<string, string> = {
+    'test_env.py': 'from env import Env\n\nenv = Env()\nobs, reward, done, info = env.step(1)\nprint(reward)\n',
+    'old.py': 'x = 1\n',
+  };
+  const read = async (p: string) => files[p] ?? null;
+
+  it('converts update/add/delete operations into a unified diff', async () => {
+    const diff = await beginPatchToUnified(
+      [
+        '*** Begin Patch',
+        '*** Update File: test_env.py',
+        '@@ env = Env()',
+        '-obs, reward, done, info = env.step(1)',
+        '-print(reward)',
+        '+obs, reward, done = env.step(1)',
+        '+assert reward is not None',
+        '*** Add File: tests/conftest.py',
+        '+import sys',
+        '*** Delete File: old.py',
+        '*** End Patch',
+      ].join('\n'),
+      read,
+    );
+    expect(summarizePatch(diff).map((f) => [f.path, f.op])).toEqual([
+      ['test_env.py', 'modify'],
+      ['tests/conftest.py', 'create'],
+      ['old.py', 'delete'],
+    ]);
+    expect(diff).toContain('+obs, reward, done = env.step(1)');
+    expect(diff).toContain('-print(reward)');
+  });
+
+  it('matches context despite trailing whitespace and rejects hunks that do not match', async () => {
+    const tolerant = await beginPatchToUnified(['*** Begin Patch', '*** Update File: old.py', '-x = 1   ', '+x = 2', '*** End Patch'].join('\n'), read);
+    expect(tolerant).toContain('+x = 2');
+    await expect(
+      beginPatchToUnified(['*** Begin Patch', '*** Update File: old.py', '-y = 9', '+y = 2', '*** End Patch'].join('\n'), read),
+    ).rejects.toThrow(/does not match/);
+    await expect(beginPatchToUnified(['*** Begin Patch', '*** Update File: ../etc/passwd', '+x', '*** End Patch'].join('\n'), read)).rejects.toThrow();
+    expect(isBeginPatch('*** Begin Patch\n*** End Patch')).toBe(true);
+    expect(isBeginPatch('diff --git a/x b/x')).toBe(false);
   });
 });
 

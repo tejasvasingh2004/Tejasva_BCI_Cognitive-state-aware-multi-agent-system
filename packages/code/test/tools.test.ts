@@ -135,6 +135,16 @@ describe('Code Agent tools', () => {
     expect((await call('git_status', {}, 'restricted')).status).toBe('success');
   });
 
+  it('apply_patch accepts "*** Begin Patch" envelopes (GPT-OSS style) through the same review flow', async () => {
+    const res = await call('apply_patch', {
+      patch: ['*** Begin Patch', '*** Update File: src/math.js', '@@ export function mul(a, b) {', '-  return a * b; // product', '+  return b * a; // product', '*** End Patch'].join('\n'),
+    });
+    expect(res.status).toBe('success');
+    const review = events.find((e) => e.type === 'patch.review_required');
+    expect(review?.type === 'patch.review_required' && review.data.diff).toContain('+  return b * a; // product');
+    expect(await checkout.readText('src/math.js')).toContain('return b * a; // product');
+  });
+
   it('Auto mode applies low-risk edits directly but asks before deleting files', async () => {
     const auto = await call('create_file', { path: 'src/util.js', content: 'export const id = (x) => x;' }, 'auto');
     expect(auto.data).toMatchObject({ applied: true });

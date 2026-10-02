@@ -30,6 +30,8 @@ export const RunEventData = {
     ),
     totalTokens: z.number().int(),
     droppedMessages: z.number().int(),
+    /** Older tool results replaced by a stub to keep a long tool loop within the input budget. */
+    compactedToolResults: z.number().int().optional(),
   }),
   'agent.started': z.object({
     agentExecutionId: z.string(),

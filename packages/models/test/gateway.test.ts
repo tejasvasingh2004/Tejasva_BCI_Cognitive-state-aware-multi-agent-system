@@ -117,6 +117,26 @@ describe('ModelGateway', () => {
     expect(done?.type === 'done' && done.response.attempts).toBe(3);
   });
 
+  it('waits as long as a rate-limiting provider asks (bounded) instead of falling back early', async () => {
+    const slept: number[] = [];
+    const gw = new DefaultModelGateway(
+      [new GroqAdapter({ baseUrl: groq.url, apiKey: 'test-key', models: buildCatalog('llama-3.3-70b-versatile') })],
+      { baseBackoffMs: 1, maxBackoffMs: 5, maxRateLimitWaitMs: 60_000 },
+      { sleep: async (ms) => void slept.push(ms) },
+    );
+    groq.setScript((_b, i) =>
+      i === 0
+        ? { kind: 'error', status: 429, message: 'Rate limit reached on tokens per minute (TPM). Please try again in 39.12s.' }
+        : i === 1
+          ? { kind: 'error', status: 429, message: 'slow down', retryAfter: '120' }
+          : textReply('ok'),
+    );
+    const events = await collect(gw.stream({ model: 'groq/llama-3.3-70b-versatile', messages: user }));
+    expect(events.at(-1)?.type).toBe('done');
+    // Hint parsed from the message (39.12s), then a Retry-After header capped at the policy limit.
+    expect(slept).toEqual([39_370, 60_000]);
+  });
+
   it('does not retry non-retryable errors, but falls back to another provider', async () => {
     qwen.setScript(() => ({ kind: 'error', status: 400, message: 'bad' }));
     groq.setScript(() => textReply('from groq'));

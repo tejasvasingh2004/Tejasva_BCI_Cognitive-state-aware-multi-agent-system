@@ -34,6 +34,8 @@ export type RuntimeOptions = {
   /** Source of optional integrations (web search provider keys). */
   env?: NodeJS.ProcessEnv;
   code?: { dataDir?: string; secretsKey?: string; sessionSecret?: string; githubApiUrl?: string; sandbox?: Sandbox };
+  /** Receives unexpected tool errors (details stay in operator logs, never in model context). */
+  onToolError?: (err: unknown, info: { tool: string; phase: 'prepare' | 'execute'; runId: string; toolCallId: string }) => void;
 };
 
 /** Wires the orchestrator to PostgreSQL, Redis and the configured providers. */
@@ -58,13 +60,14 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   const recorder: ToolCallRecorder = {
     start: (i) => executionRepo.startToolCall(pool, i),
     approval: (runId, id, status) => executionRepo.setToolApproval(pool, runId, id, status),
-    finish: (runId, result) => executionRepo.finishToolCall(pool, runId, result),
+    finish: (runId, result, extra) => executionRepo.finishToolCall(pool, runId, result, extra),
     findCompleted: (runId, id) => executionRepo.findCompletedToolCall(pool, runId, id),
   };
   const tools = new ToolRuntime(registry, {
     recorder,
     approvalTimeoutMs: opts.approvalTimeoutMs,
     approvals: { wait: (runId, id, timeout, signal) => control.waitForApproval(runId, id, timeout, signal) },
+    ...(opts.onToolError ? { onUnexpectedError: opts.onToolError } : {}),
   });
 
   const store: RunStore = {

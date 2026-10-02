@@ -87,6 +87,21 @@ describe('planExecution', () => {
     expect(plan.models[0]!.fallbacks[0]).toBe('qwen/qwen3:8b');
   });
 
+  it('orders fallbacks by capability before provider: no silent downgrade to a much weaker model', () => {
+    const plan = planExecution({
+      ...base,
+      models: [
+        model('groq/openai/gpt-oss-120b', 'strong'),
+        model('qwen/qwen3:0.6b', 'fast'),
+        model('groq/openai/gpt-oss-20b', 'balanced'),
+        model('groq/qwen/qwen3.8-27b', 'balanced'),
+      ],
+      request: { agentStrategy: 'single_agent', modelStrategy: 'single', selectedModel: 'groq/openai/gpt-oss-120b' },
+      lastUserMessage: 'Fix the failing test',
+    });
+    expect(plan.models[0]!.fallbacks).toEqual(['groq/openai/gpt-oss-20b', 'groq/qwen/qwen3.8-27b']);
+  });
+
   it('fails clearly without usable models', () => {
     expect(() => planExecution({ ...base, models: [model('qwen/x', 'fast', false)], lastUserMessage: 'hi' })).toThrow(RoutingError);
     expect(() =>
@@ -133,6 +148,23 @@ describe('buildContext', () => {
     expect(messages.at(-1)!.content).toBe('the current question');
     expect(messages.length).toBeLessThan(10);
     expect(report.droppedMessages).toBeGreaterThan(40);
+  });
+
+  it('keeps a long tool loop within budget: tool schemas are reserved, older results compacted', () => {
+    const plan = planExecution({ ...base, lastUserMessage: 'x' });
+    plan.contextPolicy.maxInputTokens = 4_000;
+    const scratch = Array.from({ length: 4 }, (_, i) => [
+      { role: 'assistant' as const, content: '', toolCalls: [{ id: `t${i}`, name: 'read_file', arguments: '{}' }] },
+      { role: 'tool' as const, content: `result ${i} ${'x'.repeat(3_000)}`, toolCallId: `t${i}`, name: 'read_file' },
+    ]).flat();
+    const { messages, report } = buildContext({ plan, history: [{ role: 'user', content: 'fix it' }], scratch, reserveTokens: 1_000 });
+    const tools = messages.filter((m) => m.role === 'tool');
+    expect(tools).toHaveLength(4);
+    // Pairing is intact; the two most recent results stay verbatim, older ones are stubs.
+    expect(tools.slice(-2).every((m) => m.content.startsWith('result'))).toBe(true);
+    expect(tools[0]!.content).toMatch(/omitted to stay within the context budget/);
+    expect(report.compactedToolResults).toBeGreaterThanOrEqual(1);
+    expect(report.totalTokens).toBeLessThanOrEqual(3_000);
   });
 
   it('flattens earlier tool exchanges so a window never starts with an orphaned tool result', () => {

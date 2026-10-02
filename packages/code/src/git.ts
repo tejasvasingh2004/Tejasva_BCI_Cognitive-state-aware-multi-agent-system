@@ -275,7 +275,16 @@ function classify(err: unknown, stderr: string, token?: string): GitError {
   // Never surface credentials, even if git echoed them.
   const clean = token ? stderr.split(token).join('***') : stderr;
   const msg = clean.trim().split('\n').slice(-3).join(' ').slice(0, 500) || (err instanceof Error ? err.message : 'git failed');
-  if (/authentication failed|could not read username|403|401|permission denied/i.test(clean)) return new GitError('Git authentication failed', 'auth', msg);
+  // A valid credential without write access (e.g. a fine-grained token with Contents: read-only):
+  // reads of public repositories succeed, so this first shows up on push.
+  if (/permission to .* denied|\b403\b/i.test(clean)) {
+    return new GitError(
+      'The remote refused write access: the connected credential cannot push to this repository (a fine-grained GitHub token needs this repository selected with Contents: Read and write)',
+      'auth',
+      msg,
+    );
+  }
+  if (/authentication failed|could not read username|401|permission denied/i.test(clean)) return new GitError('Git authentication failed', 'auth', msg);
   if (/could not resolve host|unable to access|timed out|connection/i.test(clean)) return new GitError('Git could not reach the remote', 'network', msg);
   if (/not found|does not exist|did not match any|unknown revision|pathspec/i.test(clean)) return new GitError(msg, 'not_found', msg);
   if (/conflict|rejected|non-fast-forward|already exists/i.test(clean)) return new GitError(msg, 'conflict', msg);

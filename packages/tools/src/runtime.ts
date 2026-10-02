@@ -22,6 +22,11 @@ export type ToolRuntimeOptions = {
   recorder?: ToolCallRecorder;
   approvalTimeoutMs?: number;
   defaultMaxResultChars?: number;
+  /**
+   * Called for errors that are not a ToolExecutionError (bugs, infrastructure). The model only
+   * sees a generic message, so this is where operators get the details.
+   */
+  onUnexpectedError?: (err: unknown, info: { tool: string; phase: 'prepare' | 'execute'; runId: string; toolCallId: string }) => void;
 };
 
 /**
@@ -111,8 +116,27 @@ export class ToolRuntime {
         const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(def.timeoutMs)]);
         prepared = await raceAbort(def.prepare(args, { ...ctx, signal, toolCallId: call.id }), signal);
       } catch (err) {
+        const unexpected = !(err instanceof ToolExecutionError) && !ctx.signal.aborted;
+        if (unexpected) this.opts.onUnexpectedError?.(err, { tool: def.name, phase: 'prepare', runId: ctx.runId, toolCallId: call.id });
         const message = err instanceof ToolExecutionError ? err.message : 'Tool preparation failed';
-        return this.finalize(ctx, fail(ctx.signal.aborted ? 'cancelled' : 'error', ctx.signal.aborted ? 'cancelled' : 'execution_failed', message), def);
+        // tool.started was already emitted; record the call (with its arguments) before finishing it.
+        await this.opts.recorder?.start({
+          runId: ctx.runId,
+          agentExecutionId: ctx.agentExecutionId,
+          toolCallId: call.id,
+          name: def.name,
+          arguments: args,
+          riskLevel: def.riskLevel,
+          approvalStatus: 'not_required',
+        });
+        return this.finalize(
+          ctx,
+          fail(ctx.signal.aborted ? 'cancelled' : 'error', ctx.signal.aborted ? 'cancelled' : 'execution_failed', message),
+          def,
+          true,
+          undefined,
+          unexpected ? diagnose(err) : undefined,
+        );
       }
     }
     const needsApproval = def.requiresApproval || Boolean(prepared?.approval);
@@ -141,7 +165,7 @@ export class ToolRuntime {
 
     // 5c. Human approval for consequential tools. Fails closed when no approval channel exists.
     if (needsApproval) {
-      const decision = await this.awaitApproval(call, def, args, ctx, prepared?.approval);
+      const { outcome: decision, reason } = await this.awaitApproval(call, def, args, ctx, prepared?.approval);
       if (prepared && def.onDecision && decision !== 'cancelled') {
         await Promise.resolve(def.onDecision(decision === 'approved', prepared, { ...ctx, toolCallId: call.id })).catch(() => {});
       }
@@ -151,7 +175,12 @@ export class ToolRuntime {
             ? fail('cancelled', 'cancelled', 'Run cancelled while awaiting approval')
             : decision === 'timeout'
               ? fail('denied', 'approval_timeout', 'Approval was not given in time')
-              : fail('denied', 'approval_denied', 'The user declined this action');
+              : fail(
+                  'denied',
+                  'approval_denied',
+                  // The user's feedback is what lets the model adapt instead of guessing.
+                  reason ? `The user declined this action. Their feedback: ${reason.slice(0, 500)}` : 'The user declined this action',
+                );
         return this.finalize(ctx, denied, def, true);
       }
     }
@@ -160,6 +189,7 @@ export class ToolRuntime {
     const maxAttempts = def.sideEffects ? 1 : 1 + (def.maxRetries ?? 1);
     let attempts = 0;
     let lastError: { status: ToolResultStatus; code: ToolErrorCode; message: string; retryable: boolean } | undefined;
+    let diagnostic: string | undefined;
     while (attempts < maxAttempts) {
       attempts++;
       if (ctx.signal.aborted) {
@@ -190,6 +220,10 @@ export class ToolRuntime {
           lastError = { status: 'timeout', code: 'timeout', message: `Tool timed out after ${def.timeoutMs}ms`, retryable: true };
         } else {
           const retryable = err instanceof ToolExecutionError ? err.retryable : false;
+          if (!(err instanceof ToolExecutionError)) {
+            this.opts.onUnexpectedError?.(err, { tool: def.name, phase: 'execute', runId: ctx.runId, toolCallId: call.id });
+            diagnostic = diagnose(err);
+          }
           const message = err instanceof ToolExecutionError ? err.message : 'Tool execution failed';
           lastError = { status: 'error', code: 'execution_failed', message, retryable };
         }
@@ -197,7 +231,7 @@ export class ToolRuntime {
       }
     }
     const e = lastError!;
-    return this.finalize(ctx, { ...fail(e.status, e.code, e.message, e.retryable), attempts }, def, true);
+    return this.finalize(ctx, { ...fail(e.status, e.code, e.message, e.retryable), attempts }, def, true, undefined, diagnostic);
   }
 
   private async awaitApproval(
@@ -206,8 +240,8 @@ export class ToolRuntime {
     args: unknown,
     ctx: ToolExecutionContext,
     request?: Prepared['approval'],
-  ): Promise<'approved' | 'denied' | 'timeout' | 'cancelled'> {
-    if (!this.opts.approvals) return 'denied';
+  ): Promise<{ outcome: 'approved' | 'denied' | 'timeout' | 'cancelled'; reason?: string }> {
+    if (!this.opts.approvals) return { outcome: 'denied' };
     ctx.emit('approval.requested', {
       toolCallId: call.id,
       name: def.name,
@@ -241,7 +275,7 @@ export class ToolRuntime {
       call.id,
       outcome === 'approved' ? 'approved' : outcome === 'timeout' ? 'expired' : 'denied',
     );
-    return outcome;
+    return { outcome, ...(reason ? { reason } : {}) };
   }
 
   private async finalize(
@@ -250,6 +284,7 @@ export class ToolRuntime {
     def: ToolDefinition | undefined,
     started = false,
     summary?: string,
+    diagnostic?: string,
   ): Promise<ToolResult> {
     if (!started) {
       // Rejected before execution: still observable in the timeline and the database.
@@ -268,9 +303,15 @@ export class ToolRuntime {
       ...(result.error ? { errorCode: result.error.code } : {}),
       ...(summary ? { summary } : {}),
     });
-    await this.opts.recorder?.finish(ctx.runId, result).catch(() => {});
+    await this.opts.recorder?.finish(ctx.runId, result, diagnostic ? { diagnostic } : undefined).catch(() => {});
     return result;
   }
+}
+
+/** Operator diagnostic for an unexpected error: bounded, with credential-like strings redacted. */
+function diagnose(err: unknown): string {
+  const text = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return text.replace(/(gh[pousr]_|github_pat_|gsk_|sk-)[A-Za-z0-9_-]+/g, '$1[REDACTED]').slice(0, 1000);
 }
 
 /** Serialises a ToolResult for the model's `tool` message. */

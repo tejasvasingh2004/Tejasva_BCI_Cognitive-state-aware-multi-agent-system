@@ -92,6 +92,7 @@ export type ToolCallRecorder = {
     approvalStatus: 'not_required' | 'pending';
   }): Promise<void>;
   approval(runId: string, toolCallId: string, status: 'approved' | 'denied' | 'expired'): Promise<void>;
-  finish(runId: string, result: ToolResult): Promise<void>;
+  /** `diagnostic`: operator-only detail of an unexpected failure (never sent to the model). */
+  finish(runId: string, result: ToolResult, extra?: { diagnostic?: string }): Promise<void>;
   findCompleted(runId: string, toolCallId: string): Promise<ToolResult | null>;
 };

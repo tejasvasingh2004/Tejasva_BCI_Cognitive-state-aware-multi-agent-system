@@ -6,7 +6,7 @@ import {
   toolCallReply,
   type MockOpenAIServer,
 } from '@neuroflow/models/testing';
-import { RunCancelledError, StageError } from '../src';
+import { RunCancelledError, StageError, toRunError } from '../src';
 import { makeOrchestrator, runInput, streamed, types } from './helpers';
 
 let qwen: MockOpenAIServer;
@@ -40,6 +40,16 @@ describe('Orchestrator', () => {
     );
     expect(qwen.requests[0]!.tools).toBeUndefined();
     expect(store.evaluations[0]).toMatchObject({ kind: 'heuristic', verdict: 'passed' });
+  });
+
+  it('an empty model answer fails the run with a clear empty_response error', async () => {
+    qwen.setScript(() => textReply(''));
+    const { orchestrator } = makeOrchestrator({ qwen });
+    const { input } = runInput('hello');
+    const err = await orchestrator.execute(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(StageError);
+    const stageError = err as StageError;
+    expect(toRunError(stageError.cause, stageError.stage)).toMatchObject({ code: 'empty_response', stage: 'evaluation' });
   });
 
   it('SINGLE_AGENT: model requests a tool, runtime validates and executes it, model resumes', async () => {

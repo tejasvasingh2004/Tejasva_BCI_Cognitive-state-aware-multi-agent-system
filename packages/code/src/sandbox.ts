@@ -59,8 +59,8 @@ export interface Sandbox {
   run(req: SandboxRequest): Promise<SandboxResult>;
 }
 
-const SAFE_ENV = /^[A-Z][A-Z0-9_]{0,63}$/;
-const BLOCKED_ENV = /(TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL|AUTH)/;
+const SAFE_ENV = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const BLOCKED_ENV = /(TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL|AUTH)/i;
 
 /**
  * Runs commands in a throwaway Docker container: only the repository is mounted, the root
@@ -103,6 +103,9 @@ export class DockerSandbox implements Sandbox {
       COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
       PIP_CACHE_DIR: `${home}/pip`,
       PYTHONUSERBASE: `${home}/python`,
+      // Interpreter/test caches must not end up in the repository (and in commits).
+      PYTHONDONTWRITEBYTECODE: '1',
+      PYTEST_ADDOPTS: '-p no:cacheprovider',
       GOPATH: `${home}/go`,
       GOCACHE: `${home}/go-build`,
       CARGO_HOME: `${home}/cargo`,
@@ -143,7 +146,8 @@ export class DockerSandbox implements Sandbox {
       req.image,
       'sh',
       '-c',
-      req.command,
+      // Tools installed into the user caches (pip --user, npm/go/cargo) are callable by name.
+      `export PATH="$PYTHONUSERBASE/bin:$HOME/go/bin:$CARGO_HOME/bin:$PATH"; ${req.command}`,
     ];
 
     const started = Date.now();

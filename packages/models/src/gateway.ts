@@ -29,6 +29,8 @@ export type GatewayPolicy = {
   idleTimeoutMs: number;
   baseBackoffMs: number;
   maxBackoffMs: number;
+  /** Longest wait honoured when a provider rate-limits and says when to retry (e.g. per-minute token quotas). */
+  maxRateLimitWaitMs: number;
   /** Default fallback chain applied when a request does not specify one. */
   defaultFallbacks: string[];
   defaultModel?: string;
@@ -45,6 +47,7 @@ export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   idleTimeoutMs: 30_000,
   baseBackoffMs: 500,
   maxBackoffMs: 8_000,
+  maxRateLimitWaitMs: 60_000,
   defaultFallbacks: [],
   pricing: new Map(),
   providerConcurrency: {},
@@ -259,7 +262,7 @@ export class DefaultModelGateway implements ModelGateway {
           }
           lastError = error;
           if (!error.retryable || attempt > this.policy.maxRetries) break;
-          const delayMs = this.backoff(attempt, error.retryAfterMs);
+          const delayMs = this.backoff(attempt, error.retryAfterMs, error.code);
           yield { type: 'retry', ref, attempt, reason: error.message, delayMs };
           await this.sleep(delayMs, request.signal).catch(() => {
             throw new ModelError('cancelled', 'Model call cancelled');
@@ -365,7 +368,10 @@ export class DefaultModelGateway implements ModelGateway {
     return { adapter, entry, model: parsed.model };
   }
 
-  private backoff(attempt: number, retryAfterMs?: number): number {
+  private backoff(attempt: number, retryAfterMs?: number, code?: string): number {
+    // A rate-limited provider that says when capacity returns is worth waiting for (bounded):
+    // falling back early would downgrade the model for a few seconds of quota.
+    if (retryAfterMs !== undefined && code === 'rate_limited') return Math.min(retryAfterMs + 250, this.policy.maxRateLimitWaitMs);
     if (retryAfterMs !== undefined) return Math.min(retryAfterMs, this.policy.maxBackoffMs);
     const exp = this.policy.baseBackoffMs * 2 ** (attempt - 1);
     const jitter = Math.random() * this.policy.baseBackoffMs;

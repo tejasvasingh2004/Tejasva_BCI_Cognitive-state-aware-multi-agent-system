@@ -347,12 +347,22 @@ export function assignModels(
   available: ModelInfo[],
   pinPrimary = false,
 ): ModelAssignment[] {
-  const fallbacksFor = (ref: string) =>
-    available
+  // Fallbacks keep capability first (no silent downgrade to a much weaker model), then prefer
+  // another provider so one outage or quota does not take out the whole chain.
+  const fallbacksFor = (ref: string) => {
+    const self = available.find((m) => m.ref === ref);
+    const rank = self ? TIER_RANK[self.tier] : TIER_RANK.balanced;
+    const key = (m: ModelInfo) => [Math.max(0, rank - TIER_RANK[m.tier]), Math.abs(rank - TIER_RANK[m.tier]), Number(m.provider === parseProvider(ref))];
+    return available
       .filter((m) => m.ref !== ref)
-      .sort((a, b) => Number(b.provider !== parseProvider(ref)) - Number(a.provider !== parseProvider(ref)))
+      .sort((a, b) => {
+        const ka = key(a);
+        const kb = key(b);
+        return ka[0]! - kb[0]! || ka[1]! - kb[1]! || ka[2]! - kb[2]!;
+      })
       .map((m) => m.ref)
       .slice(0, 2);
+  };
 
   if (strategy === 'single') {
     return roles.map((role) => ({ role, model: primary.ref, fallbacks: fallbacksFor(primary.ref) }));

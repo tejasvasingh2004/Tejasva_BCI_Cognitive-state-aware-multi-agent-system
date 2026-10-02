@@ -13,6 +13,7 @@ export * from './policy';
 export * from './detect';
 export * from './repo-index';
 export * from './patch';
+export * from './begin-patch';
 export * from './workspace';
 export * from './github';
 export * from './services';
