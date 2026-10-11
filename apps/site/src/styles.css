@@ -1,26 +1,26 @@
 @import 'tailwindcss';
 
 /*
- * NeuroFlow site: warm porcelain canvas, frosted glass, copper accents and soft 3D objects.
+ * NeuroFlow site: icy sky canvas, clear frosted glass with cyan edges, cobalt depth and soft 3D objects.
  * Depth is CSS 3D (perspective transforms driven by --px/--py pointer and --sy/--p scroll
  * variables set by <Stage>), so the pre-rendered HTML is complete and text stays crisp.
  */
 @theme {
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
-  --color-canvas: #f3eee8;
-  --color-panel: #fbf9f6;
-  --color-raised: #ede5dc;
-  --color-line: #e2d7ca;
-  --color-ink: #241e1a;
-  --color-ink-soft: #463c35;
-  --color-muted: #6f6258;
-  --color-faint: #9d8f83;
-  --color-accent: #b0653f;
-  --color-accent-soft: #94502f;
-  --color-peach: #f1bfa0;
-  --color-blush: #f7e1d2;
-  --color-sand: #e6d8c7;
+  --color-canvas: #edf3f9;
+  --color-panel: #f8fbfe;
+  --color-raised: #e3ecf5;
+  --color-line: #d5e1ee;
+  --color-ink: #13233a;
+  --color-ink-soft: #2c3e57;
+  --color-muted: #566880;
+  --color-faint: #8a9bb0;
+  --color-accent: #2f6bd8;
+  --color-accent-soft: #2357bb;
+  --color-sky: #a8cdf3;
+  --color-frost: #dceafa;
+  --color-mist: #cfdff0;
   --color-mint: #23855a;
   --color-rose: #c8433f;
   --color-amber: #b77a0c;
@@ -50,63 +50,63 @@
     font-feature-settings: 'ss01', 'cv11';
     background-image:
       radial-gradient(60rem 40rem at 12% -10%, rgb(255 255 255 / 0.9), transparent 60%),
-      radial-gradient(50rem 34rem at 100% 10%, rgb(241 191 160 / 0.28), transparent 60%);
+      radial-gradient(50rem 34rem at 100% 10%, rgb(143 190 240 / 0.28), transparent 60%);
     background-repeat: no-repeat;
   }
   ::selection {
-    background: rgb(176 101 63 / 0.22);
+    background: rgb(47 107 216 / 0.22);
   }
 }
 
 @utility text-gradient {
-  background: linear-gradient(100deg, #241e1a 0%, #4a3428 42%, #a85f3b 100%);
+  background: linear-gradient(100deg, #13233a 0%, #1f3e72 42%, #2f6bd8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 @utility glow {
-  box-shadow: 0 0 0 1px rgb(176 101 63 / 0.16), 0 30px 80px -30px rgb(176 101 63 / 0.45);
+  box-shadow: 0 0 0 1px rgb(47 107 216 / 0.16), 0 30px 80px -30px rgb(47 107 216 / 0.45);
 }
 
 @utility grid-bg {
   background-image:
-    linear-gradient(to right, rgb(90 60 40 / 0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(90 60 40 / 0.07) 1px, transparent 1px);
+    linear-gradient(to right, rgb(40 80 140 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(40 80 140 / 0.07) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%);
 }
 
 /* Frosted glass: the main surface of the site. */
 @utility glass {
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.78), rgb(255 251 247 / 0.42));
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.78), rgb(246 250 255 / 0.42));
   backdrop-filter: blur(18px) saturate(1.35);
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
   border: 1px solid rgb(255 255 255 / 0.75);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.95),
     inset 0 -1px 0 rgb(255 255 255 / 0.3),
-    0 1px 2px rgb(70 40 20 / 0.05),
-    0 30px 70px -32px rgb(100 60 30 / 0.32);
+    0 1px 2px rgb(20 45 90 / 0.05),
+    0 30px 70px -32px rgb(30 70 140 / 0.32);
 }
 
 @utility glass-strong {
-  background: linear-gradient(150deg, rgb(255 255 255 / 0.62), rgb(255 248 242 / 0.3));
+  background: linear-gradient(150deg, rgb(255 255 255 / 0.62), rgb(243 248 255 / 0.3));
   backdrop-filter: blur(28px) saturate(1.5);
   -webkit-backdrop-filter: blur(28px) saturate(1.5);
   border: 1px solid rgb(255 255 255 / 0.85);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 1),
     inset 0 0 40px rgb(255 255 255 / 0.35),
-    0 50px 110px -40px rgb(100 60 30 / 0.42),
-    0 12px 30px -14px rgb(100 60 30 / 0.16);
+    0 50px 110px -40px rgb(30 70 140 / 0.42),
+    0 12px 30px -14px rgb(30 70 140 / 0.16);
 }
 
 @utility glow-cta {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.45),
-    0 0 0 4px rgb(241 191 160 / 0.28),
-    0 14px 34px -10px rgb(176 101 63 / 0.6);
+    0 0 0 4px rgb(143 190 240 / 0.28),
+    0 14px 34px -10px rgb(47 107 216 / 0.6);
 }
 
 @layer components {
@@ -188,27 +188,27 @@
     border-radius: 9999px;
     background: radial-gradient(circle at 31% 27%, #fff 0, var(--s-hi) 13%, var(--s-mid) 50%, var(--s-lo) 100%);
     box-shadow:
-      inset -14px -18px 32px rgb(110 60 30 / 0.2),
+      inset -14px -18px 32px rgb(30 70 140 / 0.2),
       inset 8px 10px 18px rgb(255 255 255 / 0.55),
-      0 34px 60px -22px rgb(110 60 30 / 0.42);
+      0 34px 60px -22px rgb(30 70 140 / 0.42);
   }
-  .sphere-peach { --s-hi: #ffe9db; --s-mid: #efb593; --s-lo: #c27e5b; }
-  .sphere-cream { --s-hi: #fffbf6; --s-mid: #f0e5d9; --s-lo: #c9b39e; }
-  .sphere-sand { --s-hi: #faf0e4; --s-mid: #dcc5ab; --s-lo: #a4866a; }
-  .sphere-copper { --s-hi: #ffd8bd; --s-mid: #c58560; --s-lo: #74432a; }
+  .sphere-sky { --s-hi: #e8f2fe; --s-mid: #91bbee; --s-lo: #3f74c9; }
+  .sphere-ice { --s-hi: #ffffff; --s-mid: #e7eff8; --s-lo: #a7bdd5; }
+  .sphere-mist { --s-hi: #f2f7fc; --s-mid: #c2d5ea; --s-lo: #7d99ba; }
+  .sphere-cobalt { --s-hi: #cfe2ff; --s-mid: #4f86e0; --s-lo: #1b4ea6; }
   .sphere-glass {
-    background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.25) 34%, rgb(255 228 208 / 0.18) 68%, rgb(196 140 105 / 0.4));
+    background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.25) 34%, rgb(214 234 255 / 0.18) 68%, rgb(90 140 210 / 0.4));
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     border: 1px solid rgb(255 255 255 / 0.7);
     box-shadow:
-      inset -10px -14px 24px rgb(160 100 60 / 0.18),
-      0 30px 50px -24px rgb(110 60 30 / 0.35);
+      inset -10px -14px 24px rgb(40 90 170 / 0.18),
+      0 30px 50px -24px rgb(30 70 140 / 0.35);
   }
   .floor {
     background-image:
-      linear-gradient(to right, rgb(120 80 50 / 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(120 80 50 / 0.1) 1px, transparent 1px);
+      linear-gradient(to right, rgb(50 90 150 / 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(50 90 150 / 0.1) 1px, transparent 1px);
     background-size: 64px 64px;
     transform: perspective(700px) rotateX(64deg);
     transform-origin: 50% 0%;

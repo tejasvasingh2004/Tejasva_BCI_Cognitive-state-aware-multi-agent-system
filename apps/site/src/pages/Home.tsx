@@ -122,10 +122,10 @@ export function Home() {
         <Stage scroll="enter" className="relative mx-auto mt-14 max-w-5xl">
           <div className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden>
             <Layer className="-left-14 top-10" depth={40} duration={7}>
-              <Sphere size={70} tone="peach" />
+              <Sphere size={70} tone="sky" />
             </Layer>
             <Layer className="-right-16 bottom-14 z-20" depth={70} duration={9}>
-              <Sphere size={130} tone="cream" />
+              <Sphere size={130} tone="ice" />
             </Layer>
             <Layer className="-left-24 bottom-0 z-20" depth={60} rotate={[50, 0, -18]} duration={10}>
               <div className="relative h-28 w-44 overflow-hidden rounded-[22px] shadow-2xl">
@@ -136,7 +136,7 @@ export function Home() {
           <div className="screen3d relative">
             <AgentDemo />
           </div>
-          <div className="mx-auto mt-6 h-8 w-3/4 rounded-[50%] bg-[#6b4a32]/15 blur-2xl" aria-hidden />
+          <div className="mx-auto mt-6 h-8 w-3/4 rounded-[50%] bg-[#25456f]/15 blur-2xl" aria-hidden />
         </Stage>
       </Section>
 
@@ -197,8 +197,8 @@ export function Home() {
                 Research, analysis and writing in Chat; repositories in Code; models in Model Lab. All on the same runtime, with live progress from real backend events and a replayable history.
               </p>
               <div className="relative mt-10" style={{ perspective: '1200px' }}>
-                <Sphere size={52} tone="copper" className="float absolute -right-3 -top-7 z-10" />
-                <Sphere size={30} tone="peach" className="float absolute -bottom-4 -left-3 z-10" />
+                <Sphere size={52} tone="cobalt" className="float absolute -right-3 -top-7 z-10" />
+                <Sphere size={30} tone="sky" className="float absolute -bottom-4 -left-3 z-10" />
                 <Tilt className="rounded-[18px]" max={8}>
                   <img
                     src="/screens/chat.png"
@@ -206,7 +206,7 @@ export function Home() {
                     width={1440}
                     height={900}
                     loading="lazy"
-                    className="rounded-[18px] shadow-[0_40px_80px_-30px_rgb(90_55_30/0.55)]"
+                    className="rounded-[18px] shadow-[0_40px_80px_-30px_rgb(25_60_125/0.55)]"
                     style={{ transform: 'rotateY(-10deg) rotateX(6deg)' }}
                   />
                 </Tilt>
@@ -224,12 +224,12 @@ export function Home() {
         </Reveal>
         <div className="relative mt-14 grid gap-5 md:grid-cols-3">
           <svg className="pointer-events-none absolute left-[16%] top-8 hidden h-6 w-[68%] md:block" viewBox="0 0 600 24" preserveAspectRatio="none" fill="none" aria-hidden>
-            <path d="M0 12 C 150 -6, 450 30, 600 12" stroke="#b0653f" strokeOpacity="0.35" strokeWidth="2" strokeDasharray="6 8" />
+            <path d="M0 12 C 150 -6, 450 30, 600 12" stroke="#2f6bd8" strokeOpacity="0.35" strokeWidth="2" strokeDasharray="6 8" />
           </svg>
           {STEPS.map((s, i) => (
             <Reveal key={s.n} delay={i * 0.08}>
               <Tilt className="glass h-full rounded-[26px] p-6" max={8}>
-                <span className="sphere sphere-copper relative flex size-12 items-center justify-center text-lg font-bold text-white [text-shadow:0_1px_2px_rgb(80_40_20/0.5)]">{s.n}</span>
+                <span className="sphere sphere-cobalt relative flex size-12 items-center justify-center text-lg font-bold text-white [text-shadow:0_1px_2px_rgb(15_40_100/0.5)]">{s.n}</span>
                 <h3 className="mt-5 text-lg font-semibold">{s.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted">{s.body}</p>
               </Tilt>
@@ -279,10 +279,10 @@ export function Home() {
         <Stage scroll="enter" className="relative">
           <div className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden>
             <Layer className="-left-6 -top-10 z-10" depth={40} duration={7}>
-              <Sphere size={84} tone="peach" />
+              <Sphere size={84} tone="sky" />
             </Layer>
             <Layer className="-bottom-10 right-16 z-10" depth={60} duration={8}>
-              <Sphere size={60} tone="copper" />
+              <Sphere size={60} tone="cobalt" />
             </Layer>
             <Layer className="-right-10 -top-8 z-10" depth={50} rotate={[20, -30, 12]} duration={9}>
               <div className="relative h-32 w-48 overflow-hidden rounded-[22px] shadow-2xl">

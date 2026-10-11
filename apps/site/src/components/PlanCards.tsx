@@ -34,7 +34,7 @@ export function PlanCards({ plans = ['free', 'pro', 'team', 'enterprise'] }: { p
           <Tilt
             key={plan}
             max={5}
-            className={cn('glass flex flex-col rounded-[26px] p-6', c.featured && 'bg-gradient-to-b from-peach/45 to-white/50 outline-1 outline-accent/30 glow')}
+            className={cn('glass flex flex-col rounded-[26px] p-6', c.featured && 'bg-gradient-to-b from-sky/45 to-white/50 outline-1 outline-accent/30 glow')}
           >
             <div className="flex items-center justify-between">
               <p className="text-[15px] font-semibold text-ink">{c.name}</p>

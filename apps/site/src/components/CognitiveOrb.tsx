@@ -8,11 +8,11 @@ const STATES = [
     label: 'Focused',
     rings: 3,
     size: 128,
-    tone: 'sphere-peach',
+    tone: 'sphere-sky',
     lines: ['Plan: 3 steps, each with the files it touches.', 'Patch src/math.js (+1 −1) with the reasoning summary.', 'Tests: 12 passed in the sandbox; output attached.'],
   },
-  { id: 'busy', label: 'Busy', rings: 2, size: 104, tone: 'sphere-sand', lines: ['Fixed add(); 12 tests pass.', 'One change waiting for your review.'] },
-  { id: 'overloaded', label: 'Overloaded', rings: 1, size: 82, tone: 'sphere-cream', lines: ['Done. Review one diff when you are ready.'] },
+  { id: 'busy', label: 'Busy', rings: 2, size: 104, tone: 'sphere-mist', lines: ['Fixed add(); 12 tests pass.', 'One change waiting for your review.'] },
+  { id: 'overloaded', label: 'Overloaded', rings: 1, size: 82, tone: 'sphere-ice', lines: ['Done. Review one diff when you are ready.'] },
 ] as const;
 
 /** Cognitive Mode, interactive: the same answer shaped for three levels of workload. */
@@ -37,7 +37,7 @@ export function CognitiveOrb() {
             className={cn('absolute rounded-full border transition-all duration-700', r < s.rings ? 'border-accent/30 opacity-100' : 'border-transparent opacity-0')}
             style={{ width: 170 + r * 70, height: 170 + r * 70, transform: `rotateX(72deg) rotateZ(${r * 30}deg)` }}
           >
-            <span className="sphere sphere-copper absolute -top-1.5 left-1/2 size-3" />
+            <span className="sphere sphere-cobalt absolute -top-1.5 left-1/2 size-3" />
           </div>
         ))}
         <div className={cn('sphere float transition-all duration-700', s.tone)} style={{ width: s.size, height: s.size }} />

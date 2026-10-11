@@ -27,7 +27,7 @@ export function Nav() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5">
-      <div className={cn('glass mx-auto max-w-6xl overflow-hidden rounded-[22px] transition-shadow duration-300', (scrolled || open) && 'shadow-[0_20px_50px_-24px_rgb(100_60_30/0.45)]')} style={{ backgroundColor: 'rgb(250 247 243 / 0.82)' }}>
+      <div className={cn('glass mx-auto max-w-6xl overflow-hidden rounded-[22px] transition-shadow duration-300', (scrolled || open) && 'shadow-[0_20px_50px_-24px_rgb(30_70_140/0.45)]')} style={{ backgroundColor: 'rgb(246 249 253 / 0.82)' }}>
       <div className="flex h-14 items-center gap-6 px-4 sm:px-5">
         <Link to="/" className="flex items-center gap-2.5" aria-label="NeuroFlow home">
           <Logo />

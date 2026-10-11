@@ -7,9 +7,9 @@ export const cn = (...v: ClassValue[]) => twMerge(clsx(v));
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <span className={cn('sphere sphere-cream relative inline-flex size-7 items-center justify-center', className)} aria-hidden>
+    <span className={cn('sphere sphere-ice relative inline-flex size-7 items-center justify-center', className)} aria-hidden>
       <span className="absolute inset-[6px] rounded-full border-2 border-accent/80" />
-      <span className="sphere sphere-copper absolute right-[2px] top-[4px] size-2" />
+      <span className="sphere sphere-cobalt absolute right-[2px] top-[4px] size-2" />
     </span>
   );
 }
@@ -19,8 +19,8 @@ const buttonClass = (variant: ButtonProps['variant'] = 'primary', size: ButtonPr
   cn(
     'inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
     size === 'lg' ? 'h-12 px-6 text-[15px]' : 'h-10 px-4 text-sm',
-    variant === 'primary' && 'bg-ink text-canvas shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_10px_24px_-10px_rgb(36_30_26/0.55)] hover:-translate-y-px hover:bg-[#3a2f28]',
-    variant === 'accent' && 'glow-cta bg-gradient-to-b from-[#c47a52] to-[#a65b37] text-white hover:-translate-y-px hover:from-[#cd8459] hover:to-[#ad6240]',
+    variant === 'primary' && 'bg-ink text-canvas shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_10px_24px_-10px_rgb(19_35_58/0.55)] hover:-translate-y-px hover:bg-[#22354f]',
+    variant === 'accent' && 'glow-cta bg-gradient-to-b from-[#4a8ae6] to-[#2862c8] text-white hover:-translate-y-px hover:from-[#5896ec] hover:to-[#3070d4]',
     variant === 'outline' && 'glass text-ink hover:-translate-y-px hover:bg-white/80',
     variant === 'ghost' && 'text-ink-soft hover:text-ink',
   );
@@ -87,7 +87,7 @@ export function Reveal({ children, className, delay = 0 }: { children: ReactNode
 export function Screenshot({ src, alt, className }: { src: string; alt: string; className?: string }) {
   return (
     <div className={cn('glass rounded-[22px] p-1.5', className)}>
-      <img src={src} alt={alt} width={1440} height={900} loading="lazy" decoding="async" className="block h-auto w-full rounded-[16px] shadow-[0_0_0_1px_rgb(36_30_26/0.12)]" />
+      <img src={src} alt={alt} width={1440} height={900} loading="lazy" decoding="async" className="block h-auto w-full rounded-[16px] shadow-[0_0_0_1px_rgb(19_35_58/0.12)]" />
     </div>
   );
 }
@@ -96,9 +96,9 @@ export function PageHeader({ eyebrow, title, children }: { eyebrow: string; titl
   return (
     <div className="relative overflow-hidden">
       <div className="grid-bg pointer-events-none absolute inset-0" />
-      <div className="sphere sphere-peach float pointer-events-none absolute left-[8%] top-28 hidden size-14 md:block" style={{ '--dur': '8s' } as React.CSSProperties} aria-hidden />
-      <div className="sphere sphere-cream float pointer-events-none absolute right-[6%] top-40 hidden size-24 md:block" style={{ '--dur': '9s', '--delay': '-3s' } as React.CSSProperties} aria-hidden />
-      <div className="sphere sphere-sand float pointer-events-none absolute right-[22%] top-24 hidden size-6 md:block" aria-hidden />
+      <div className="sphere sphere-sky float pointer-events-none absolute left-[8%] top-28 hidden size-14 md:block" style={{ '--dur': '8s' } as React.CSSProperties} aria-hidden />
+      <div className="sphere sphere-ice float pointer-events-none absolute right-[6%] top-40 hidden size-24 md:block" style={{ '--dur': '9s', '--delay': '-3s' } as React.CSSProperties} aria-hidden />
+      <div className="sphere sphere-mist float pointer-events-none absolute right-[22%] top-24 hidden size-6 md:block" aria-hidden />
       <div className="relative mx-auto max-w-4xl px-5 pb-6 pt-36 text-center sm:px-8">
         <Eyebrow>{eyebrow}</Eyebrow>
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-ink sm:text-5xl">{title}</h1>

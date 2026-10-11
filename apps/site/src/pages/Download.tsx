@@ -17,7 +17,7 @@ export function Download() {
 
       <Section className="pt-10 md:pt-10">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <Reveal className="flex flex-col glass rounded-[28px] bg-gradient-to-b from-peach/45 to-white/50 p-8 glow">
+          <Reveal className="flex flex-col glass rounded-[28px] bg-gradient-to-b from-sky/45 to-white/50 p-8 glow">
             <Globe className="size-6 text-accent-soft" />
             <div className="mt-5 flex items-center gap-2">
               <h2 className="text-2xl font-bold">Web app</h2>

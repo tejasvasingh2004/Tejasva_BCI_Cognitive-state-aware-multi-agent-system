@@ -14,8 +14,8 @@ export function HeroScene() {
       {/* Room: light, grid floor */}
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
         <div className="absolute left-1/2 top-[-18rem] h-[42rem] w-[70rem] -translate-x-1/2 rounded-full bg-white/80 blur-[110px]" />
-        <div className="absolute right-[-10rem] top-[8rem] h-[30rem] w-[30rem] rounded-full bg-peach/40 blur-[120px]" />
-        <div className="absolute left-[-12rem] top-[22rem] h-[26rem] w-[26rem] rounded-full bg-blush/80 blur-[100px]" />
+        <div className="absolute right-[-10rem] top-[8rem] h-[30rem] w-[30rem] rounded-full bg-sky/40 blur-[120px]" />
+        <div className="absolute left-[-12rem] top-[22rem] h-[26rem] w-[26rem] rounded-full bg-frost/80 blur-[100px]" />
         <div className="floor absolute inset-x-[-30%] top-[58%] h-[70%]" />
       </div>
 
@@ -28,10 +28,10 @@ export function HeroScene() {
           <TestsPanel />
         </Layer>
         <Layer className="left-[13%] top-[9%]" depth={60} duration={6}>
-          <Sphere size={66} tone="peach" />
+          <Sphere size={66} tone="sky" />
         </Layer>
         <Layer className="right-[31%] top-[7%]" depth={40} duration={7}>
-          <Sphere size={24} tone="sand" />
+          <Sphere size={24} tone="mist" />
         </Layer>
         <Layer className="left-[7%] top-[52%] lg:left-[9%]" depth={48} enter={0.6} duration={7}>
           <Chip>
@@ -76,10 +76,10 @@ export function HeroScene() {
           <PullRequestPanel />
         </Layer>
         <Layer className="bottom-[16%] right-[-70px]" depth={120} duration={11}>
-          <Sphere size={190} tone="cream" />
+          <Sphere size={190} tone="ice" />
         </Layer>
         <Layer className="bottom-[5%] left-[30%]" depth={100} duration={6}>
-          <Sphere size={44} tone="copper" />
+          <Sphere size={44} tone="cobalt" />
         </Layer>
         <Layer className="bottom-[9%] right-[27%]" depth={70} enter={0.8} duration={8}>
           <Chip>
@@ -90,11 +90,11 @@ export function HeroScene() {
 
       {/* Small screens: a lighter composition under the card */}
       <div className="pointer-events-none relative mx-auto mt-8 flex max-w-sm items-end justify-center gap-4 px-4 md:hidden" aria-hidden>
-        <Sphere size={46} tone="peach" className="float" />
+        <Sphere size={46} tone="sky" className="float" />
         <div className="w-60 rotate-[-4deg]">
           <TestsPanel />
         </div>
-        <Sphere size={28} tone="copper" className="float" />
+        <Sphere size={28} tone="cobalt" className="float" />
       </div>
     </Stage>
   );
@@ -162,7 +162,7 @@ function TestsPanel() {
 
 function DiffSlab() {
   return (
-    <div className="relative h-[200px] w-[330px] overflow-hidden rounded-[26px] shadow-[0_50px_80px_-30px_rgb(100_60_30/0.5),inset_0_1px_0_rgb(255_255_255/0.8)]">
+    <div className="relative h-[200px] w-[330px] overflow-hidden rounded-[26px] shadow-[0_50px_80px_-30px_rgb(30_70_140/0.5),inset_0_1px_0_rgb(255_255_255/0.8)]">
       <Terrazzo className="absolute inset-0 size-full" seed={11} />
       <div className="glass absolute inset-x-5 top-5 rounded-2xl p-3 font-mono text-[11px] leading-5">
         <div className="mb-1 flex justify-between text-[10px] text-faint">
@@ -182,7 +182,7 @@ function PullRequestPanel() {
   return (
     <div className="glass w-[270px] overflow-hidden rounded-[26px]">
       <div className="relative h-28 overflow-hidden">
-        <Terrazzo className="absolute inset-0 size-full" seed={3} base="#efe4d8" />
+        <Terrazzo className="absolute inset-0 size-full" seed={3} base="#e9f0f8" />
         <Ribbon variant="c" className="absolute -left-4 top-0 w-[115%]" />
       </div>
       <div className="p-4">

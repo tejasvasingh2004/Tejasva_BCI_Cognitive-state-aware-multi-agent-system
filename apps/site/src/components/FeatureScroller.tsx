@@ -38,7 +38,7 @@ export function FeatureScroller({ items }: { items: ScrollFeature[] }) {
           >
             <div className={cn('transition-opacity duration-500 md:opacity-35', active === i && 'md:opacity-100')}>
               <div className="flex items-center gap-3">
-                <span className="sphere sphere-cream flex size-10 items-center justify-center">
+                <span className="sphere sphere-ice flex size-10 items-center justify-center">
                   <f.icon className="size-4 text-accent" />
                 </span>
                 <Eyebrow>
@@ -64,10 +64,10 @@ export function FeatureScroller({ items }: { items: ScrollFeature[] }) {
         <Stage className="sticky top-24 flex h-[calc(100vh-7rem)] items-center">
           <div className="relative w-full" style={{ perspective: '1800px' }}>
             <div className="depth absolute -left-8 -top-10" style={{ '--d': 30 } as React.CSSProperties}>
-              <Sphere size={58} tone="peach" className="float" />
+              <Sphere size={58} tone="sky" className="float" />
             </div>
             <div className="depth absolute -bottom-12 -right-6 z-20" style={{ '--d': 60 } as React.CSSProperties}>
-              <Sphere size={110} tone="cream" className="float" />
+              <Sphere size={110} tone="ice" className="float" />
             </div>
             <div className="relative aspect-[16/10.4]">
               {items.map((f, i) => {
@@ -85,7 +85,7 @@ export function FeatureScroller({ items }: { items: ScrollFeature[] }) {
                     style={{ ...style, transformOrigin: '50% 60%' }}
                     aria-hidden={o !== 0}
                   >
-                    <Screenshot src={f.image} alt={f.alt} className="shadow-[0_60px_120px_-40px_rgb(90_55_30/0.55)]" />
+                    <Screenshot src={f.image} alt={f.alt} className="shadow-[0_60px_120px_-40px_rgb(25_60_125/0.55)]" />
                   </div>
                 );
               })}

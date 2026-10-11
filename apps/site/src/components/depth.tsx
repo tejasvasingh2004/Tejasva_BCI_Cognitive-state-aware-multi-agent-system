@@ -107,12 +107,12 @@ export function Layer({
   );
 }
 
-export type SphereTone = 'peach' | 'cream' | 'sand' | 'copper' | 'glass';
-export function Sphere({ size, tone = 'cream', className }: { size: number; tone?: SphereTone; className?: string }) {
+export type SphereTone = 'sky' | 'ice' | 'mist' | 'cobalt' | 'glass';
+export function Sphere({ size, tone = 'ice', className }: { size: number; tone?: SphereTone; className?: string }) {
   return <div aria-hidden className={cn('sphere', `sphere-${tone}`, className)} style={{ width: size, height: size }} />;
 }
 
-/** A glossy ribbon with a copper edge, like a bent sheet of porcelain. */
+/** A glossy ribbon with a cyan edge, like a bent sheet of clear glass. */
 export function Ribbon({ className, variant = 'a' }: { className?: string; variant?: 'a' | 'b' | 'c' }) {
   const id = svgId(useId());
   const d = {
@@ -124,20 +124,20 @@ export function Ribbon({ className, variant = 'a' }: { className?: string; varia
     <svg viewBox="0 0 220 140" className={cn('pointer-events-none', className)} aria-hidden fill="none">
       <defs>
         <linearGradient id={`${id}b`} x1="0" x2="1" y1="0" y2="0.3">
-          <stop offset="0" stopColor="#efdccb" />
-          <stop offset="0.45" stopColor="#fffaf5" />
-          <stop offset="0.75" stopColor="#f1ddca" />
-          <stop offset="1" stopColor="#e2c3a6" />
+          <stop offset="0" stopColor="#d9e8f6" />
+          <stop offset="0.45" stopColor="#ffffff" />
+          <stop offset="0.75" stopColor="#e1edf9" />
+          <stop offset="1" stopColor="#b9d3ee" />
         </linearGradient>
         <linearGradient id={`${id}e`} x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0" stopColor="#8a4d2d" />
-          <stop offset="0.35" stopColor="#e7b085" />
-          <stop offset="0.55" stopColor="#fff0e2" />
-          <stop offset="0.75" stopColor="#c27a50" />
-          <stop offset="1" stopColor="#7a4428" />
+          <stop offset="0" stopColor="#2f63b8" />
+          <stop offset="0.35" stopColor="#8fd0ee" />
+          <stop offset="0.55" stopColor="#ffffff" />
+          <stop offset="0.75" stopColor="#5bb1e6" />
+          <stop offset="1" stopColor="#2a5cb0" />
         </linearGradient>
         <filter id={`${id}s`} x="-20%" y="-20%" width="140%" height="160%">
-          <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#7a4a2a" floodOpacity="0.28" />
+          <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#1f4f9a" floodOpacity="0.28" />
         </filter>
       </defs>
       <g filter={`url(#${id}s)`}>
@@ -162,11 +162,11 @@ function mulberry32(seed: number) {
 }
 
 /** Terrazzo stone texture. */
-export function Terrazzo({ className, seed = 7, base = '#eadfd3' }: { className?: string; seed?: number; base?: string }) {
+export function Terrazzo({ className, seed = 7, base = '#e6eef7' }: { className?: string; seed?: number; base?: string }) {
   const id = svgId(useId());
   const chips = useMemo(() => {
     const rnd = mulberry32(seed);
-    const colors = ['#b9a28c', '#8c7663', '#ffffff', '#d3bca5', '#a88b74', '#f6efe7', '#6f5b4b'];
+    const colors = ['#a6bbd3', '#6d86a6', '#ffffff', '#c5d5e7', '#89a5c6', '#f3f7fb', '#4c6585'];
     return Array.from({ length: 90 }, () => ({
       x: (rnd() * 140).toFixed(1),
       y: (rnd() * 140).toFixed(1),
@@ -188,7 +188,7 @@ export function Terrazzo({ className, seed = 7, base = '#eadfd3' }: { className?
         <linearGradient id={`${id}l`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
           <stop offset="0.5" stopColor="#fff" stopOpacity="0" />
-          <stop offset="1" stopColor="#6b4a32" stopOpacity="0.18" />
+          <stop offset="1" stopColor="#25456f" stopOpacity="0.18" />
         </linearGradient>
       </defs>
       <rect width="100%" height="100%" fill={`url(#${id})`} />

@@ -56,9 +56,9 @@ function Tile({ icon: Icon, eyebrow, title, children, className, delay = 0 }: { 
 function PlanVisual() {
   const steps = ['Read src/math.js and its test', 'Fix add() and keep it a one-liner', 'Run the tests', 'Summarise the change for the reviewer'];
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blush/70 to-transparent px-6">
+    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-frost/70 to-transparent px-6">
       <Ribbon variant="a" className="absolute -right-8 bottom-[-30px] w-80 opacity-80" />
-      <Sphere size={34} tone="peach" className="float absolute left-[8%] top-[14%]" />
+      <Sphere size={34} tone="sky" className="float absolute left-[8%] top-[14%]" />
       <div className="glass relative w-full max-w-md rounded-2xl p-4 shadow-xl">
         <div className="flex items-center gap-2 text-[12px] font-semibold text-ink">
           <ListChecks className="size-3.5 text-accent" /> Proposed plan
@@ -141,15 +141,15 @@ function OrbitVisual() {
   const models = ['groq · gpt-oss-120b', 'qwen3 · local', 'gpt-oss-20b', 'deployment/fast', 'openai-compatible'];
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-t from-blush/60 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-frost/60 to-transparent" />
       {/* Chips travel an ellipse (a tilted orbit) and pass behind and in front of the gateway. */}
       <div className="relative h-[150px] w-[440px] max-w-full">
         <svg className="absolute inset-0 size-full overflow-visible" viewBox="0 0 440 150" fill="none" aria-hidden>
-          <ellipse cx="220" cy="75" rx="220" ry="62" stroke="#b0653f" strokeOpacity="0.28" />
-          <ellipse cx="220" cy="75" rx="170" ry="44" stroke="#b0653f" strokeOpacity="0.18" strokeDasharray="4 6" />
+          <ellipse cx="220" cy="75" rx="220" ry="62" stroke="#2f6bd8" strokeOpacity="0.28" />
+          <ellipse cx="220" cy="75" rx="170" ry="44" stroke="#2f6bd8" strokeOpacity="0.18" strokeDasharray="4 6" />
         </svg>
         <div className="absolute left-1/2 top-1/2 z-[2] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
-          <Sphere size={82} tone="copper" />
+          <Sphere size={82} tone="cobalt" />
         </div>
         {models.map((m, i) => (
           <div key={m} className="orbit-chip absolute left-0 top-0" style={{ '--i': i } as Vars}>
@@ -172,16 +172,16 @@ function BranchVisual() {
   return (
     <div className="absolute inset-0 flex items-center justify-center px-6">
       <svg viewBox="0 0 300 160" className="w-full" fill="none" aria-hidden>
-        <path d="M10 110 H290" stroke="#c9b6a3" strokeWidth="3" strokeLinecap="round" />
-        <path className="draw" style={{ '--len': 260 } as Vars} d="M70 110 C 100 110, 100 50, 140 50 H 230" stroke="#b0653f" strokeWidth="3" strokeLinecap="round" />
+        <path d="M10 110 H290" stroke="#b3c6db" strokeWidth="3" strokeLinecap="round" />
+        <path className="draw" style={{ '--len': 260 } as Vars} d="M70 110 C 100 110, 100 50, 140 50 H 230" stroke="#2f6bd8" strokeWidth="3" strokeLinecap="round" />
         {[40, 110, 260].map((x) => (
-          <circle key={x} cx={x} cy={110} r="6" fill="#fbf9f6" stroke="#c9b6a3" strokeWidth="3" />
+          <circle key={x} cx={x} cy={110} r="6" fill="#f8fbfe" stroke="#b3c6db" strokeWidth="3" />
         ))}
         {[150, 190].map((x) => (
-          <circle key={x} cx={x} cy={50} r="6" fill="#fbf9f6" stroke="#b0653f" strokeWidth="3" />
+          <circle key={x} cx={x} cy={50} r="6" fill="#f8fbfe" stroke="#2f6bd8" strokeWidth="3" />
         ))}
-        <text x="14" y="134" className="fill-[#9d8f83] font-mono text-[10px]">main</text>
-        <text x="132" y="34" className="fill-[#94502f] font-mono text-[10px]">neuroflow/agent/fix-add</text>
+        <text x="14" y="134" className="fill-[#8a9bb0] font-mono text-[10px]">main</text>
+        <text x="132" y="34" className="fill-[#2357bb] font-mono text-[10px]">neuroflow/agent/fix-add</text>
       </svg>
       <div className="glass absolute bottom-6 right-6 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-ink">
         <GitPullRequest className="size-3.5 text-mint" /> Draft PR #12
@@ -215,7 +215,7 @@ function VaultVisual() {
     <div className="absolute inset-0 flex items-center justify-center">
       <div className="relative size-40" style={{ transform: 'perspective(600px) rotateX(18deg) rotateY(-16deg)' }}>
         <div className="absolute inset-0 overflow-hidden rounded-[28px] shadow-2xl">
-          <Terrazzo className="absolute inset-0 size-full" seed={42} base="#e9dccd" />
+          <Terrazzo className="absolute inset-0 size-full" seed={42} base="#e3ebf5" />
         </div>
         <div className="glass absolute inset-4 flex flex-col items-center justify-center gap-2 rounded-[20px]">
           <KeyRound className="size-7 text-accent" />
