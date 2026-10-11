@@ -2,7 +2,7 @@ import { keys, type Redis } from './redis';
 
 export type ControlMessage =
   | { type: 'cancel'; reason?: string }
-  | { type: 'approval'; toolCallId: string; approved: boolean; reason?: string };
+  | { type: 'approval'; toolCallId: string; approved: boolean; reason?: string; data?: unknown };
 
 const APPROVAL_TTL_S = 3600;
 
@@ -15,8 +15,8 @@ export class RunControlPublisher {
   }
 
   /** Approval decisions are also stored so a worker that subscribes late still sees them. */
-  async approval(runId: string, toolCallId: string, approved: boolean, reason?: string): Promise<void> {
-    const msg: ControlMessage = { type: 'approval', toolCallId, approved, reason };
+  async approval(runId: string, toolCallId: string, approved: boolean, reason?: string, data?: unknown): Promise<void> {
+    const msg: ControlMessage = { type: 'approval', toolCallId, approved, reason, ...(data !== undefined ? { data } : {}) };
     await this.redis.set(keys.approval(runId, toolCallId), JSON.stringify(msg), 'EX', APPROVAL_TTL_S);
     await this.redis.publish(keys.control(runId), JSON.stringify(msg));
   }
@@ -67,10 +67,10 @@ export class RunControlListener {
     toolCallId: string,
     timeoutMs: number,
     signal: AbortSignal,
-  ): Promise<{ approved: boolean; reason?: string } | 'timeout'> {
+  ): Promise<{ approved: boolean; reason?: string; data?: unknown } | 'timeout'> {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (v: { approved: boolean; reason?: string } | 'timeout' | Error) => {
+      const finish = (v: { approved: boolean; reason?: string; data?: unknown } | 'timeout' | Error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);

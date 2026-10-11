@@ -25,6 +25,8 @@ export const WorkspaceContext = z.object({
   /** Extra files the user pinned as context. */
   relatedFiles: z.array(z.string().max(500)).max(20).optional(),
   approvalMode: ApprovalMode.default('review'),
+  /** Plan Review: the Code Agent's plan waits for the user's approval (and edits) before any work. */
+  planReview: z.boolean().optional(),
   /** Structured context action (Explain, Fix, …) that produced this request, if any. */
   action: z.enum(['ask', 'explain', 'fix', 'refactor', 'optimize', 'write_tests', 'find_bug', 'find_security_issue', 'document', 'search']).optional(),
 });
@@ -174,6 +176,7 @@ export const CodeRunRequestBody = z.object({
   selection: z.object({ startLine: z.number().int().min(1), endLine: z.number().int().min(1) }).optional(),
   context: z.array(z.string().max(500)).max(20).optional(),
   approvalMode: ApprovalMode.optional(),
+  planReview: z.boolean().optional(),
   action: WorkspaceContext.shape.action,
   conversationId: z.string().uuid().optional(),
   selectedModel: z.string().optional(),
@@ -183,3 +186,17 @@ export const CodeRunRequestBody = z.object({
 export type CodeRunRequestBody = z.input<typeof CodeRunRequestBody>;
 
 export const PatchDecisionBody = z.object({ patchId: z.string().uuid().optional(), toolCallId: z.string().optional(), reason: z.string().max(500).optional() });
+
+/** The user's decision on a plan waiting for review. */
+export const PlanDecisionBody = z.discriminatedUnion('decision', [
+  z.object({
+    decision: z.literal('approve'),
+    planId: z.string().min(1).max(100),
+    /** Edited steps (omit to approve the plan as proposed). */
+    steps: z.array(z.string().trim().min(3).max(300)).min(1).max(12).optional(),
+    summary: z.string().trim().max(500).optional(),
+  }),
+  z.object({ decision: z.literal('revise'), planId: z.string().min(1).max(100), feedback: z.string().trim().min(3).max(2000) }),
+  z.object({ decision: z.literal('reject'), planId: z.string().min(1).max(100), feedback: z.string().trim().max(2000).optional() }),
+]);
+export type PlanDecisionBody = z.infer<typeof PlanDecisionBody>;

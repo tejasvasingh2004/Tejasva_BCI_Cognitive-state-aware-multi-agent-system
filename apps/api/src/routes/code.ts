@@ -11,6 +11,7 @@ import {
   CreateCodeWorkspaceBody,
   CreatePullRequestBody,
   PatchDecisionBody,
+  PlanDecisionBody,
   RunCommandBody,
   RunRequest,
   SaveFileBody,
@@ -402,6 +403,7 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
         ...(body.selection ? { selectedLines: { start: body.selection.startLine, end: Math.max(body.selection.endLine, body.selection.startLine) } } : {}),
         ...(body.context?.length ? { relatedFiles: body.context.map(normalizeRepoPath) } : {}),
         ...(body.action ? { action: body.action } : {}),
+        ...(body.planReview ? { planReview: true } : {}),
       },
     });
     const result = await runs.create(p, request, { source: 'workspace', idempotencyKey: req.headers['idempotency-key'] as string | undefined });
@@ -464,6 +466,14 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     await runs.approve(p, id, toolCallId, approved, body.reason);
     return { ok: true };
   };
+  /** Plan Review: approve (optionally edited), request changes, or stop. */
+  app.post('/v1/code/runs/:id/plan', async (req) => {
+    const p = requireScope(req, Scopes.runsWrite);
+    const { id } = IdParams.parse(req.params);
+    await codeRunOf(p, id);
+    await runs.decidePlan(p, id, PlanDecisionBody.parse(req.body));
+    return { ok: true };
+  });
   app.post('/v1/code/runs/:id/approve', async (req) => decide(req, true));
   app.post('/v1/code/runs/:id/reject', async (req) => decide(req, false));
 

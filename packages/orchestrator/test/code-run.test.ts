@@ -32,26 +32,36 @@ afterAll(async () => {
   await fixture?.cleanup();
 });
 
-function setup(mode: 'review' | 'auto' | 'suggest' | 'restricted') {
+type PlanDecision = { approved: boolean; reason?: string; data?: unknown } | 'timeout';
+
+function setup(mode: 'review' | 'auto' | 'suggest' | 'restricted', opts: { planReview?: boolean; decisions?: PlanDecision[] } = {}) {
+  const decisions = [...(opts.decisions ?? [])];
+  const planWaits: string[] = [];
   const services = localCodeServices({ checkout, sandbox });
   const registry = new ToolRegistry().registerAll([...builtinTools, ...createCodeTools(services)]);
   const orchestrator = new Orchestrator({
     gateway: makeGateway(qwen),
     tools: new ToolRuntime(registry, { approvals: { wait: async () => ({ approved: true }) } }),
     store: new MemoryStore(),
+    approvals: {
+      wait: async (_runId, id) => {
+        planWaits.push(id);
+        return decisions.shift() ?? 'timeout';
+      },
+    },
   });
   const events: RunEvent[] = [];
   let seq = 0;
   const input = {
     run: { id: 'run-1', workspaceId: 'ws', userId: 'u', conversationId: 'c', mode: 'standard' as const },
-    request: { mode: 'standard', agentStrategy: 'auto', modelStrategy: 'auto', workspaceContext: { codeWorkspaceId: CW, approvalMode: mode } } as Omit<RunRequest, 'messages'>,
+    request: { mode: 'standard', agentStrategy: 'auto', modelStrategy: 'auto', workspaceContext: { codeWorkspaceId: CW, approvalMode: mode, ...(opts.planReview ? { planReview: true } : {}) } } as Omit<RunRequest, 'messages'>,
     history: [{ role: 'user' as const, content: 'Fix the failing add() test' }],
     scopes: [...ALL_SCOPES],
     signal: new AbortController().signal,
     emit: (type: RunEventType, data: unknown) => events.push({ runId: 'run-1', seq: ++seq, ts: '', type, data } as RunEvent),
     context: { code: { repository: 'Repository: acme/calc (branch main)\nProject: node', instructions: 'Keep functions small.' } },
   };
-  return { orchestrator, services, events, input, registry };
+  return { orchestrator, services, events, input, registry, planWaits };
 }
 
 describe('Code Agent run (orchestrator + real tools)', () => {
@@ -134,5 +144,73 @@ describe('Code Agent run (orchestrator + real tools)', () => {
     // Either finished with a forced final answer or stopped by a budget — never unbounded.
     if (out instanceof StageError) expect(String(out.message)).toMatch(/budget/);
     expect(events.filter((e) => e.type === 'tool.started').length).toBeLessThanOrEqual(80);
+  });
+});
+
+describe('Plan Review', () => {
+  const plannerAnd = (agentReply: string) => {
+    const planCalls: string[] = [];
+    const agentCalls: string[] = [];
+    qwen.setScript((body) => {
+      const sys = String(body.messages[0]?.content ?? '');
+      if (body.response_format && sys.includes('You plan a coding task')) {
+        const all = JSON.stringify(body.messages);
+        planCalls.push(all);
+        return textReply(JSON.stringify(all.includes('asked for changes') ? { steps: ['Read src/math.js', 'Fix add()', 'Update README.md'] } : { steps: ['Read src/math.js', 'Fix add()'] }));
+      }
+      if (body.response_format) return textReply(JSON.stringify({ verdict: 'passed', score: 0.9, issues: [] }));
+      agentCalls.push(JSON.stringify(body.messages));
+      return textReply(agentReply);
+    });
+    return { planCalls, agentCalls };
+  };
+  const types = (events: RunEvent[]) => events.map((e) => e.type);
+
+  it('the user requests changes, then approves an edited plan that the agent follows', async () => {
+    const calls = plannerAnd('Proposed the fix.');
+    const edited = ['Read src/math.js', 'Fix add()', 'Update README.md', 'Add a test for negative numbers'];
+    const { orchestrator, events, input, planWaits } = setup('suggest', {
+      planReview: true,
+      decisions: [
+        { approved: false, reason: 'Also document the change in the README', data: { decision: 'revise' } },
+        { approved: true, data: { decision: 'approve', steps: edited } },
+      ],
+    });
+    const out = await orchestrator.execute(input);
+    expect(planWaits).toEqual(['plan-1', 'plan-2']);
+    const reviews = events.filter((e) => e.type === 'plan.review_required').map((e) => (e.data as { revision: number; steps: string[] }));
+    expect(reviews.map((r) => r.revision)).toEqual([1, 2]);
+    expect(reviews[1]!.steps).toContain('Update README.md');
+    expect(events.find((e) => e.type === 'plan.rejected')?.data).toMatchObject({ planId: 'plan-1', willRevise: true, feedback: 'Also document the change in the README' });
+    expect(events.find((e) => e.type === 'plan.approved')?.data).toMatchObject({ planId: 'plan-2', edited: true, steps: edited });
+    // The revision prompt carried the user's feedback; the agent received the edited plan.
+    expect(calls.planCalls[1]).toContain('Also document the change in the README');
+    expect(calls.agentCalls[0]).toContain('Plan approved by the user');
+    expect(calls.agentCalls[0]).toContain('Add a test for negative numbers');
+    expect(out.output).toContain('Proposed the fix.');
+  });
+
+  it('stopping at the plan does no repository work', async () => {
+    const calls = plannerAnd('should never run');
+    const { orchestrator, events, input } = setup('review', { planReview: true, decisions: [{ approved: false, reason: 'Not now', data: { decision: 'reject' } }] });
+    const out = await orchestrator.execute(input);
+    expect(out.output).toMatch(/Stopped before making any changes/);
+    expect(events.find((e) => e.type === 'plan.rejected')?.data).toMatchObject({ willRevise: false, feedback: 'Not now' });
+    expect(calls.agentCalls).toHaveLength(0);
+    expect(types(events)).not.toContain('agent.started');
+    expect(types(events)).not.toContain('tool.started');
+  });
+
+  it('an unreviewed plan expires without changes; without Plan Review the agent proceeds directly', async () => {
+    plannerAnd('Proposed the fix.');
+    const expired = setup('review', { planReview: true, decisions: ['timeout'] });
+    expect((await expired.orchestrator.execute(expired.input)).output).toMatch(/not reviewed in time/);
+
+    const direct = setup('suggest');
+    const out = await direct.orchestrator.execute(direct.input);
+    expect(direct.planWaits).toEqual([]);
+    expect(types(direct.events)).toContain('agent.plan.created');
+    expect(types(direct.events)).not.toContain('plan.review_required');
+    expect(out.output).toContain('Proposed the fix.');
   });
 });

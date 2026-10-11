@@ -238,6 +238,42 @@ describe.skipIf(!reachable || !dockerOk)('Product Phase 2: GitHub → workspace 
     expect(execs[0]).toMatchObject({ command: 'node --version', status: 'passed', triggeredBy: 'user' });
   }, 120_000);
 
+  it('Plan Review: the plan waits for the user, who approves an edited version over the API', async () => {
+    h.qwen.setScript((body) => {
+      const sys = String(body.messages[0]?.content ?? '');
+      if (body.response_format && sys.includes('You plan a coding task')) return textReply(JSON.stringify({ steps: ['Read src/math.js', 'Explain add()'] }));
+      if (body.response_format) return textReply(JSON.stringify({ verdict: 'passed', score: 0.9, issues: [] }));
+      return textReply('Explained add() as planned.');
+    });
+    const created = await api(h, '/v1/code/runs', {
+      method: 'POST',
+      json: { codeWorkspaceId: workspaceId, instruction: 'Improve the add function', approvalMode: 'suggest', planReview: true },
+    });
+    expect(created.status).toBe(201);
+    const { run } = await created.json();
+    const edited = ['Read src/math.js', 'Explain add()', 'Suggest a docstring'];
+    const events: RunEvent[] = [];
+    let decided: Promise<Response> | undefined;
+    await readSse(await api(h, `/v1/runs/${run.id}/events`), (d) => {
+      const e = JSON.parse(d) as RunEvent;
+      events.push(e);
+      if (e.type === 'plan.review_required' && !decided) {
+        decided = api(h, `/v1/code/runs/${run.id}/plan`, { method: 'POST', json: { decision: 'approve', planId: e.data.planId, steps: edited } });
+      }
+    });
+    expect((await decided!).status).toBe(200);
+    expect(events.find((e) => e.type === 'plan.approved')?.data).toMatchObject({ planId: 'plan-1', edited: true, steps: edited });
+    expect(events.at(-1)?.type).toBe('run.completed');
+    // The agent received the approved plan.
+    const agentRequest = h.qwen.requests.map((r) => JSON.stringify(r.messages)).find((m) => m.includes('Plan approved by the user'));
+    expect(agentRequest).toContain('Suggest a docstring');
+    const approvals = await h.db.pool.query("SELECT subject_type, decision FROM code_approvals WHERE run_id = $1 AND subject_type = 'plan'", [run.id]);
+    expect(approvals.rows).toEqual([{ subject_type: 'plan', decision: 'approved' }]);
+    // A finished run no longer accepts plan decisions; malformed decisions are rejected.
+    expect((await api(h, `/v1/code/runs/${run.id}/plan`, { method: 'POST', json: { decision: 'approve', planId: 'plan-1' } })).status).toBe(409);
+    expect((await api(h, `/v1/code/runs/${run.id}/plan`, { method: 'POST', json: { decision: 'revise', planId: 'plan-1' } })).status).toBe(400);
+  }, 60_000);
+
   it('enforces workspace isolation and scopes', async () => {
     const other = await authRepo.ensureUserWithWorkspace(h.db.pool, { email: 'other-coder@x.io', displayName: 'O', workspaceName: 'O' });
     const { key } = await authRepo.createApiKey(h.db.pool, { ...other, name: 'k', scopes: ['runs:read', 'runs:write', 'code:read', 'code:write'] });

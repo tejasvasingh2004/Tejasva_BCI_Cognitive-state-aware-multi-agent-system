@@ -1,4 +1,4 @@
-import type { AuditAction, Principal, RunRequest } from '@neuroflow/contracts';
+import type { AuditAction, PlanDecisionBody, Principal, RunRequest } from '@neuroflow/contracts';
 import { RunEventEmitter, runPriority, UsageMeter } from '@neuroflow/bus';
 import {
   auditRepo,
@@ -124,6 +124,38 @@ export class RunManager {
     await this.deps.control.approval(runId, toolCallId, approved, reason);
     void this.audit(principal, 'tool.approval_decided', runId, { toolCallId, approved });
     if (run.request.workspaceContext) void this.recordCodeApproval(principal, runId, toolCallId, approved, reason);
+  }
+
+  /**
+   * Plan Review decision: approve (optionally with edited steps), request a revision with
+   * feedback, or stop. Delivered over the same control channel as tool approvals.
+   */
+  async decidePlan(principal: Principal, runId: string, decision: PlanDecisionBody) {
+    const run = await runsRepo.get(this.deps.pool, runId, principal.workspaceId);
+    if (!run) throw notFound('Run');
+    if (run.status !== 'running') throw new HttpError('conflict', 'Run is not awaiting a plan decision');
+    if (run.userId !== principal.userId) throw new HttpError('forbidden', 'Only the run owner can review its plan');
+    const approved = decision.decision === 'approve';
+    const feedback = decision.decision === 'approve' ? undefined : decision.feedback;
+    const data = {
+      decision: decision.decision,
+      ...(decision.decision === 'approve' && decision.steps ? { steps: decision.steps } : {}),
+      ...(decision.decision === 'approve' && decision.summary ? { summary: decision.summary } : {}),
+    };
+    await this.deps.control.approval(runId, decision.planId, approved, feedback, data);
+    void this.audit(principal, 'tool.approval_decided', runId, { toolCallId: decision.planId, approved, plan: decision.decision });
+    void codeApprovalsRepo
+      .record(this.deps.pool, {
+        workspaceId: principal.workspaceId,
+        runId,
+        subjectType: 'plan',
+        subjectId: decision.planId,
+        toolCallId: decision.planId,
+        decision: approved ? 'approved' : 'rejected',
+        decidedBy: principal.userId,
+        ...(feedback ? { reason: feedback } : {}),
+      })
+      .catch(() => {});
   }
 
   /** Explicit record of a human decision on a Code Agent action (patch, command, git, PR). */

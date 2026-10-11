@@ -151,6 +151,10 @@ export const RunEventData = {
     instructions: z.boolean(),
   }),
   'agent.plan.created': z.object({ steps: z.array(z.string()), summary: z.string().optional() }),
+  /** Plan Review: the plan waits for the user (approve, edit, request changes or stop). */
+  'plan.review_required': z.object({ planId: z.string(), steps: z.array(z.string()), summary: z.string().optional(), revision: z.number().int(), expiresAt: z.string() }),
+  'plan.approved': z.object({ planId: z.string(), steps: z.array(z.string()), edited: z.boolean() }),
+  'plan.rejected': z.object({ planId: z.string(), feedback: z.string().optional(), willRevise: z.boolean() }),
   'file.search.started': z.object({ query: z.string(), kind: z.string() }),
   'file.search.completed': z.object({ query: z.string(), kind: z.string(), matches: z.number().int(), files: z.array(z.string()) }),
   'file.read': z.object({ path: z.string(), startLine: z.number().int().optional(), endLine: z.number().int().optional(), bytes: z.number().int() }),

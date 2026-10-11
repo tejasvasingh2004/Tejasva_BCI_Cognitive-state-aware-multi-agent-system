@@ -67,9 +67,94 @@ const PLAN_PROMPT = `You plan a coding task for an engineer who will use reposit
 Write 2-7 concrete steps (which files/symbols to inspect, what to change, how to validate). Do not write code.
 Respond with only JSON: {"summary":"one sentence","steps":["..."]}`;
 
+/** Plan revisions the user can request before the run stops. */
+export const MAX_PLAN_REVISIONS = 3;
+const PlanEdit = z.object({ steps: z.array(z.string().trim().min(3).max(300)).min(1).max(12).optional(), summary: z.string().max(500).optional(), decision: z.string().optional() });
+
+/** Asks the model for a plan (optionally revising a previous one with the user's feedback). */
+async function proposePlan(ctx: RunContext, task: string, revise?: { previous: string[]; feedback: string }): Promise<z.infer<typeof CodePlan> | null> {
+  const code = ctx.extras.code;
+  const res = await callModel(ctx, {
+    role: 'agent',
+    streamToUser: false,
+    responseFormat: 'json',
+    maxOutputTokens: 600,
+    messages: [
+      { role: 'system', content: [PLAN_PROMPT, code?.repository, code?.instructions && `Repository instructions:
+${code.instructions.slice(0, 3000)}`, code?.editor && `Editor context:
+${code.editor.slice(0, 4000)}`].filter(Boolean).join('\n\n') },
+      { role: 'user', content: task.slice(0, 8000) },
+      ...(revise
+        ? [
+            { role: 'assistant' as const, content: JSON.stringify({ steps: revise.previous }) },
+            { role: 'user' as const, content: `The user asked for changes to this plan:
+${revise.feedback.slice(0, 2000)}
+Write the revised plan as JSON in the same format.` },
+          ]
+        : []),
+    ],
+  });
+  const parsed = CodePlan.safeParse(parseJsonObject(res.text));
+  return parsed.success ? parsed.data : null;
+}
+
 /**
- * Code runs: repository understanding (context) → plan → Code Agent with tools (search, read,
- * patch, validate) → bounded validation/repair loop driven by real test results.
+ * Plan Review: the plan waits for the user, who can approve it (optionally edited), ask for a
+ * revised plan with feedback, or stop the run. Returns the approved plan, or null when stopped.
+ */
+async function reviewPlan(ctx: RunContext, task: string, first: z.infer<typeof CodePlan>): Promise<z.infer<typeof CodePlan> | null> {
+  const gate = ctx.deps.approvals!;
+  const timeoutMs = ctx.deps.planReviewTimeoutMs ?? 15 * 60_000;
+  let plan = first;
+  for (let revision = 1; ; revision++) {
+    const planId = `plan-${revision}`;
+    ctx.stage = 'plan_review';
+    ctx.emit('plan.review_required', {
+      planId,
+      steps: plan.steps,
+      ...(plan.summary ? { summary: plan.summary } : {}),
+      revision,
+      expiresAt: new Date(Date.now() + timeoutMs).toISOString(),
+    });
+    const decision = await gate.wait(ctx.run.id, planId, timeoutMs, ctx.signal).catch((err: unknown) => {
+      throwIfCancelled(ctx.signal);
+      throw err;
+    });
+    throwIfCancelled(ctx.signal);
+    if (decision === 'timeout') {
+      ctx.emit('plan.rejected', { planId, feedback: 'No decision before the review expired', willRevise: false });
+      ctx.response.write('The plan was not reviewed in time, so nothing was changed. Ask again when you are ready.');
+      return null;
+    }
+    const edit = PlanEdit.safeParse(decision.data ?? {});
+    if (decision.approved) {
+      const steps = edit.success && edit.data.steps ? edit.data.steps : plan.steps;
+      const edited = JSON.stringify(steps) !== JSON.stringify(plan.steps);
+      plan = { steps, ...(edit.success && edit.data.summary ? { summary: edit.data.summary } : plan.summary ? { summary: plan.summary } : {}) };
+      ctx.emit('plan.approved', { planId, steps, edited });
+      return plan;
+    }
+    const feedback = decision.reason?.trim();
+    const wantsRevision = edit.success && edit.data.decision === 'revise' && Boolean(feedback) && revision < MAX_PLAN_REVISIONS;
+    ctx.emit('plan.rejected', { planId, ...(feedback ? { feedback } : {}), willRevise: wantsRevision });
+    if (!wantsRevision) {
+      ctx.response.write(feedback ? `Stopped before making any changes. Your note: “${feedback}”` : 'Stopped before making any changes.');
+      return null;
+    }
+    ctx.stage = 'planning';
+    const next = await proposePlan(ctx, task, { previous: plan.steps, feedback: feedback! });
+    if (!next) {
+      ctx.response.write('I could not produce a revised plan, so nothing was changed.');
+      return null;
+    }
+    plan = next;
+    ctx.emit('agent.plan.created', { steps: plan.steps, ...(plan.summary ? { summary: plan.summary } : {}) });
+  }
+}
+
+/**
+ * Code runs: repository understanding (context) → plan (optionally reviewed and edited by the
+ * user) → Code Agent with tools (search, read, patch, validate) → bounded validation/repair loop.
  */
 async function codeAgent(ctx: RunContext, task: string): Promise<StrategyResult> {
   const wc = ctx.request.workspaceContext!;
@@ -80,24 +165,16 @@ async function codeAgent(ctx: RunContext, task: string): Promise<StrategyResult>
   const informational = wc.action === 'explain' || wc.action === 'search' || ctx.plan.taskClass === 'conversational';
   if (!informational && wc.approvalMode !== 'restricted') {
     ctx.stage = 'planning';
-    const code = ctx.extras.code;
-    const res = await callModel(ctx, {
-      role: 'agent',
-      streamToUser: false,
-      responseFormat: 'json',
-      maxOutputTokens: 600,
-      messages: [
-        { role: 'system', content: [PLAN_PROMPT, code?.repository, code?.instructions && `Repository instructions:
-${code.instructions.slice(0, 3000)}`, code?.editor && `Editor context:
-${code.editor.slice(0, 4000)}`].filter(Boolean).join('\n\n') },
-        { role: 'user', content: task.slice(0, 8000) },
-      ],
-    });
-    const parsed = CodePlan.safeParse(parseJsonObject(res.text));
-    if (parsed.success) {
-      ctx.emit('agent.plan.created', { steps: parsed.data.steps, ...(parsed.data.summary ? { summary: parsed.data.summary } : {}) });
-      notes.push({ role: 'user', content: `[Plan]
-${parsed.data.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` });
+    let plan = await proposePlan(ctx, task);
+    if (plan) {
+      ctx.emit('agent.plan.created', { steps: plan.steps, ...(plan.summary ? { summary: plan.summary } : {}) });
+      if (wc.planReview && ctx.deps.approvals) {
+        plan = await reviewPlan(ctx, task, plan);
+        // Stopped at plan review: no repository work happens.
+        if (!plan) return { evaluated: true };
+      }
+      notes.push({ role: 'user', content: `[${wc.planReview ? 'Plan approved by the user — follow it' : 'Plan'}]
+${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` });
     }
   }
 

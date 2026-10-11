@@ -382,7 +382,7 @@ export const codeApprovalsRepo = {
     input: {
       workspaceId: string;
       runId: string | null;
-      subjectType: 'patch' | 'command' | 'delete' | 'commit' | 'push' | 'pull_request' | 'other';
+      subjectType: 'patch' | 'command' | 'delete' | 'commit' | 'push' | 'pull_request' | 'plan' | 'other';
       subjectId?: string;
       toolCallId?: string;
       decision: 'approved' | 'rejected';

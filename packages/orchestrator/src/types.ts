@@ -9,7 +9,7 @@ import type {
 } from '@neuroflow/contracts';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { ModelGateway } from '@neuroflow/models';
-import type { EmitFn, ToolRuntime } from '@neuroflow/tools';
+import type { EmitFn, ToolRuntime, ApprovalGate } from '@neuroflow/tools';
 import type { AgentDefinition } from './agents/definitions';
 import type { CodeContext } from './context';
 
@@ -57,6 +57,9 @@ export type OrchestratorDeps = {
   agents?: AgentDefinition[];
   /** Loads the workspace's custom agents for each run. */
   loadAgents?: (workspaceId: string) => Promise<AgentDefinition[]>;
+  /** Human decisions outside tool calls (Plan Review). Without it, plans are never held. */
+  approvals?: ApprovalGate;
+  planReviewTimeoutMs?: number;
 };
 
 export type RunIdentity = {

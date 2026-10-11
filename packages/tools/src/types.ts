@@ -77,7 +77,7 @@ export type ApprovalGate = {
     toolCallId: string,
     timeoutMs: number,
     signal: AbortSignal,
-  ): Promise<{ approved: boolean; reason?: string } | 'timeout'>;
+  ): Promise<{ approved: boolean; reason?: string; data?: unknown } | 'timeout'>;
 };
 
 /** Persistence hooks for tool calls (implemented with the db package by the worker). */

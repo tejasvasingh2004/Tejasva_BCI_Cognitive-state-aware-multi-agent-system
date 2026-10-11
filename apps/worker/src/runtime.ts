@@ -95,6 +95,8 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     store,
     cognitive: new ChainedProvider(providers),
     loadAgents: async (workspaceId) => (await agentsRepo.listForWorkspace(pool, workspaceId)).map(agentFromSpec),
+    approvals: { wait: (runId, id, timeout, signal) => control.waitForApproval(runId, id, timeout, signal) },
+    planReviewTimeoutMs: Math.max(opts.approvalTimeoutMs ?? 0, 15 * 60_000),
   });
   return { orchestrator, control, gateway: opts.gateway, memory, code };
 }
