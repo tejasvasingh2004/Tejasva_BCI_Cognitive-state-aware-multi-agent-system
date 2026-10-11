@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/* NeuroFlow site: night-lavender canvas, violet accent, quiet typography (matches the app's dark theme). */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --color-canvas: #0b0a14;
+  --color-panel: #13111f;
+  --color-raised: #1a1729;
+  --color-line: #262238;
+  --color-ink: #eeedf7;
+  --color-ink-soft: #c4c1da;
+  --color-muted: #8f8bab;
+  --color-faint: #5f5b7a;
+  --color-accent: #8b5cf6;
+  --color-accent-soft: #a78bfa;
+  --color-mint: #34d399;
+  --color-rose: #fb7185;
+  --color-amber: #fbbf24;
+  --animate-caret: caret 1s steps(2) infinite;
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-in: fade-in 0.35s ease-out both;
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes caret {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  ::selection {
+    background: rgb(139 92 246 / 0.35);
+  }
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, #f5f3ff 0%, #c4b5fd 45%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow {
+  box-shadow: 0 0 0 1px rgb(139 92 246 / 0.25), 0 30px 80px -30px rgb(139 92 246 / 0.55);
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
