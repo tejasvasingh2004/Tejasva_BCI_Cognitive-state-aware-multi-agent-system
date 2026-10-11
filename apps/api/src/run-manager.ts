@@ -1,5 +1,5 @@
 import type { AuditAction, Principal, RunRequest } from '@neuroflow/contracts';
-import { RunEventEmitter, runPriority } from '@neuroflow/bus';
+import { RunEventEmitter, runPriority, UsageMeter } from '@neuroflow/bus';
 import {
   auditRepo,
   codeApprovalsRepo,
@@ -33,7 +33,7 @@ export class RunManager {
     opts: { source: RunSource; idempotencyKey?: string },
   ): Promise<CreateRunResult> {
     return withSpan('run.create', { 'workspace.id': principal.workspaceId, 'run.source': opts.source }, async (span) => {
-      await this.admit(principal);
+      const admission = await this.admit(principal);
       request = await this.applyModelLab(principal, request);
 
       const result = await withTransaction(this.deps.pool, async (tx) => {
@@ -73,7 +73,7 @@ export class RunManager {
       try {
         await this.deps.queue.enqueue(
           { runId: result.run.id, workspaceId: principal.workspaceId, trace: injectTraceContext() },
-          { priority: runPriority(opts.source) },
+          { priority: runPriority(opts.source, admission.queuePriority) },
         );
       } catch (err) {
         this.deps.logger.error({ err, runId: result.run.id }, 'failed to enqueue run');
@@ -202,21 +202,42 @@ export class RunManager {
     return r;
   }
 
-  /** Backpressure: bounded active runs per workspace and per user, and bounded queue backlog. */
-  private async admit(principal: Principal) {
-    const [active, activeForUser, backlog] = await Promise.all([
+  /**
+   * Admission control (back-pressure) by plan: bounded active runs per workspace and per user,
+   * the daily model-token quota, and a bounded global queue backlog. Returns the plan's queue
+   * priority for the accepted run.
+   */
+  private async admit(principal: Principal): Promise<{ queuePriority: number }> {
+    const [{ plan, limits }, active, activeForUser, backlog, tokensToday] = await Promise.all([
+      this.deps.plans.limits(principal.workspaceId),
       runsRepo.countActive(this.deps.pool, principal.workspaceId),
       runsRepo.countActiveForUser(this.deps.pool, principal.userId),
       this.deps.queue.backlog(),
+      this.deps.usage.tokensToday(principal.workspaceId),
     ]);
-    if (active >= this.deps.config.MAX_ACTIVE_RUNS_PER_WORKSPACE) {
-      throw new HttpError('rate_limited', 'Too many active runs in this workspace. Wait for one to finish.', undefined, true);
+    if (active >= limits.activeRunsPerWorkspace) {
+      throw new HttpError('rate_limited', `Your ${plan} plan allows ${limits.activeRunsPerWorkspace} active runs per workspace. Wait for one to finish.`, undefined, true, {
+        retryAfterMs: 5_000,
+      });
     }
-    if (activeForUser >= this.deps.config.MAX_ACTIVE_RUNS_PER_USER) {
-      throw new HttpError('rate_limited', 'You already have the maximum number of active runs. Wait for one to finish.', undefined, true);
+    if (activeForUser >= limits.activeRunsPerUser) {
+      throw new HttpError('rate_limited', 'You already have the maximum number of active runs. Wait for one to finish.', undefined, true, {
+        retryAfterMs: 5_000,
+      });
+    }
+    if (limits.dailyTokens !== null && tokensToday >= limits.dailyTokens) {
+      const resetsAt = UsageMeter.resetsAt();
+      throw new HttpError(
+        'quota_exceeded',
+        `Daily model-token quota of your ${plan} plan reached (${limits.dailyTokens.toLocaleString('en-US')} tokens). It resets at ${resetsAt.toISOString()}.`,
+        { plan, dailyTokens: limits.dailyTokens, tokensToday, resetsAt: resetsAt.toISOString() },
+        false,
+        { retryAfterMs: resetsAt.getTime() - Date.now() },
+      );
     }
     if (backlog >= this.deps.config.MAX_QUEUE_BACKLOG) {
-      throw new HttpError('overloaded', 'NeuroFlow is at capacity. Please retry shortly.', undefined, true);
+      throw new HttpError('overloaded', 'NeuroFlow is at capacity. Please retry shortly.', undefined, true, { retryAfterMs: 10_000 });
     }
+    return { queuePriority: limits.queuePriority };
   }
 }

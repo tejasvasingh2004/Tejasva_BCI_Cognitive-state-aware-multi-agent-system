@@ -1,4 +1,4 @@
-import { createRedis, RunControlPublisher, RunEventHub, RunQueue, WorkspaceEventHub } from '@neuroflow/bus';
+import { createRedis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, UsageMeter, WorkspaceEventHub } from '@neuroflow/bus';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox } from '@neuroflow/code';
 import { BciHttpProvider } from '@neuroflow/cognitive';
 import { createPool, migrate, seedDev } from '@neuroflow/db';
@@ -8,6 +8,7 @@ import type { Logger } from '@neuroflow/observability';
 import { builtinTools, createWebSearchTool, ToolRegistry, webSearchProviderFromEnv } from '@neuroflow/tools';
 import type { ApiConfig } from './config';
 import type { AppDeps } from './deps';
+import { PlanResolver } from './plans';
 
 /** Creates production dependencies (connections, registries). Returns a closer for shutdown. */
 export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.ProcessEnv = process.env) {
@@ -51,6 +52,9 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     code,
     secrets,
     workspaceHub: new WorkspaceEventHub(workspaceSubscriber),
+    limiter: new RedisRateLimiter(redis),
+    usage: new UsageMeter(redis),
+    plans: new PlanResolver(pool, config),
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };
 

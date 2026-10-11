@@ -7,8 +7,10 @@ import {
   UpdateWorkspaceSettingsBody,
   UpsertAgentBody,
   type AgentSpec,
+  type WorkspaceUsage,
 } from '@neuroflow/contracts';
-import { agentsRepo, auditRepo, authRepo, workspaceRepo } from '@neuroflow/db';
+import { UsageMeter } from '@neuroflow/bus';
+import { agentsRepo, auditRepo, authRepo, runsRepo, workspaceRepo } from '@neuroflow/db';
 import { BUILTIN_AGENTS } from '@neuroflow/orchestrator';
 import { audit } from '../audit';
 import { requirePrincipal, requireScope } from '../auth';
@@ -78,6 +80,18 @@ export async function adminRoutes(app: FastifyInstance, deps: AppDeps) {
   });
 
   // ---- workspace settings ----
+  /** Plan, effective limits and today's metered usage of the caller's workspace. */
+  app.get('/v1/workspace/usage', async (req) => {
+    const p = requireScope(req, Scopes.runsRead);
+    const [{ plan, limits }, tokensToday, activeRuns] = await Promise.all([
+      deps.plans.limits(p.workspaceId),
+      deps.usage.tokensToday(p.workspaceId),
+      runsRepo.countActive(deps.pool, p.workspaceId),
+    ]);
+    const { queuePriority: _priority, ...publicLimits } = limits;
+    return { plan, limits: publicLimits, usage: { tokensToday, activeRuns, resetsAt: UsageMeter.resetsAt().toISOString() } } satisfies WorkspaceUsage;
+  });
+
   app.get('/v1/workspace/settings', async (req) => {
     const p = requireScope(req, Scopes.runsRead);
     const settings = await workspaceRepo.getSettings(deps.pool, p.workspaceId);

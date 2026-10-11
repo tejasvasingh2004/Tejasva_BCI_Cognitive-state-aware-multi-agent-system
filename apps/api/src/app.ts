@@ -1,7 +1,6 @@
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
-import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { ZodError } from 'zod';
 import type { ApiError } from '@neuroflow/contracts';
@@ -9,6 +8,7 @@ import { audit } from './audit';
 import { AuthFailureLimiter, authenticate, InvalidCredentialsError } from './auth';
 import type { AppDeps } from './deps';
 import { HttpError } from './errors';
+import { httpRateLimiter } from './rate-limit';
 import { RunManager } from './run-manager';
 import { openaiRoutes } from './routes/openai';
 import { runRoutes } from './routes/runs';
@@ -60,23 +60,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
   });
 
-  await app.register(rateLimit, {
-    global: true,
-    hook: 'onRequest',
-    max: deps.config.RATE_LIMIT_PER_MINUTE,
-    timeWindow: '1 minute',
-    redis: deps.redis,
-    nameSpace: 'nf:rl:',
-    keyGenerator: (req) => req.principal?.workspaceId ?? req.ip,
-    allowList: (req) => req.url === '/health' || req.url === '/ready',
-    errorResponseBuilder: (_req, ctx) =>
-      new HttpError('rate_limited', `Rate limit exceeded. Retry in ${Math.ceil(ctx.ttl / 1000)}s.`, undefined, true),
-  });
+  // Runs after authentication: limits depend on the tenant's plan and the route.
+  app.addHook('onRequest', httpRateLimiter(deps));
 
   app.setErrorHandler((err: FastifyError | Error, req, reply) => {
     const body = toApiError(err);
     const status = err instanceof HttpError ? err.statusCode : body.error.code === 'bad_request' ? 400 : statusOf(err);
     if (status >= 500) req.log.error({ err }, 'request failed');
+    if (err instanceof HttpError && err.opts.retryAfterMs !== undefined) {
+      void reply.header('retry-after', Math.max(1, Math.ceil(err.opts.retryAfterMs / 1000)));
+    }
     void reply.code(status).send(body);
   });
   app.setNotFoundHandler((_req, reply) => {

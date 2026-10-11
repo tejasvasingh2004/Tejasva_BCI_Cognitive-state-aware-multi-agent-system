@@ -17,12 +17,16 @@ const Env = z.object({
   SESSION_SECRET: z.string().min(32).default('dev-only-session-secret-change-me-please-0123456789'),
   DEV_API_KEY: z.string().optional(),
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
-  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(240),
+  /** Overrides (all plans) — normally limits come from the workspace plan (packages/contracts/src/plans.ts). */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().optional(),
+  RUN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().optional(),
+  /** Daily model-token quota override; 0 = unlimited. */
+  DAILY_TOKEN_QUOTA: z.coerce.number().int().min(0).optional(),
   /** Failed logins / invalid API keys allowed per client IP per window before 429. */
   AUTH_FAILURE_LIMIT: z.coerce.number().int().positive().default(20),
   AUTH_FAILURE_WINDOW_S: z.coerce.number().int().positive().default(600),
-  MAX_ACTIVE_RUNS_PER_WORKSPACE: z.coerce.number().int().positive().default(8),
-  MAX_ACTIVE_RUNS_PER_USER: z.coerce.number().int().positive().default(4),
+  MAX_ACTIVE_RUNS_PER_WORKSPACE: z.coerce.number().int().positive().optional(),
+  MAX_ACTIVE_RUNS_PER_USER: z.coerce.number().int().positive().optional(),
   MAX_QUEUE_BACKLOG: z.coerce.number().int().positive().default(1000),
   BCI_SERVICE_URL: z.string().optional(),
   RUN_WAIT_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
