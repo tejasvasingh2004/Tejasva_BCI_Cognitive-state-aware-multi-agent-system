@@ -7,6 +7,7 @@ const STATUS: Record<ApiErrorCode, number> = {
   not_found: 404,
   conflict: 409,
   rate_limited: 429,
+  quota_exceeded: 429,
   overloaded: 503,
   unavailable: 503,
   internal: 500,
@@ -20,6 +21,7 @@ export class HttpError extends Error {
     message: string,
     readonly details?: unknown,
     readonly retryable?: boolean,
+    readonly opts: { retryAfterMs?: number } = {},
   ) {
     super(message);
     this.statusCode = STATUS[code];

@@ -9,3 +9,4 @@ export * from './api';
 export * from './openai';
 export * from './code';
 export * from './model-lab';
+export * from './plans';

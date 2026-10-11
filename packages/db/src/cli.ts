@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { ALL_SCOPES, PASSWORD_MIN_LENGTH } from '@neuroflow/contracts';
+import { ALL_SCOPES, PASSWORD_MIN_LENGTH, Plan } from '@neuroflow/contracts';
 import { authRepo } from './auth';
 import { createPool } from './client';
 import { migrate } from './migrate';
@@ -10,12 +10,13 @@ const USAGE = `Usage:
   cli.ts seed
   cli.ts create-user --email <email> --name <display name> [--workspace <name>]   (password read from NEUROFLOW_PASSWORD)
   cli.ts set-password --email <email>                                           (password read from NEUROFLOW_PASSWORD)
-  cli.ts create-api-key --email <email> --name <key name>                       (prints the key once)`;
+  cli.ts create-api-key --email <email> --name <key name>                       (prints the key once)
+  cli.ts set-plan --email <owner email> --plan <free|pro|team|enterprise>      (plan of the owner's workspaces)`;
 
 const cmd = process.argv[2];
 const { values } = parseArgs({
   args: process.argv.slice(3),
-  options: { email: { type: 'string' }, name: { type: 'string' }, workspace: { type: 'string' } },
+  options: { email: { type: 'string' }, name: { type: 'string' }, workspace: { type: 'string' }, plan: { type: 'string' } },
   strict: false,
 });
 const url = process.env.DATABASE_URL ?? 'postgres://neuroflow:neuroflow@localhost:5433/neuroflow';
@@ -52,6 +53,15 @@ try {
     });
     await authRepo.setPassword(pool, ids.userId, pw);
     console.log(`User ${email} ready (user ${ids.userId}, workspace ${ids.workspaceId}).`);
+  } else if (cmd === 'set-plan') {
+    const email = required(values.email, 'email');
+    const plan = Plan.parse(required(values.plan, 'plan'));
+    const { rows } = await pool.query(
+      'UPDATE workspaces SET plan = $2 WHERE owner_id = (SELECT id FROM users WHERE email = $1) RETURNING id, name',
+      [email.toLowerCase(), plan],
+    );
+    if (!rows.length) throw new Error(`No workspaces owned by ${email}`);
+    console.log(`Plan "${plan}" set for ${rows.map((r) => r.name).join(', ')}.`);
   } else if (cmd === 'set-password') {
     const email = required(values.email, 'email');
     const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);

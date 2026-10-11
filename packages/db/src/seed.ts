@@ -14,6 +14,8 @@ export const DEV_USER = {
  */
 export async function seedDev(db: Queryable, opts: { apiKey?: string } = {}) {
   const ids = await authRepo.ensureUserWithWorkspace(db, DEV_USER);
+  // Local development runs on the team plan so limits stay out of the way (still enforced).
+  await db.query(`UPDATE workspaces SET plan = 'team' WHERE id = $1 AND plan = 'free'`, [ids.workspaceId]);
   if (opts.apiKey) {
     await authRepo.createApiKey(db, {
       ...ids,

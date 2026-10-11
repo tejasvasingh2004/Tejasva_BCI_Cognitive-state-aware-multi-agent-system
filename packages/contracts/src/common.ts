@@ -46,6 +46,7 @@ export const ApiErrorCode = z.enum([
   'not_found',
   'conflict',
   'rate_limited',
+  'quota_exceeded',
   'overloaded',
   'unavailable',
   'internal',
