@@ -8,7 +8,7 @@ export type FaqItem = { q: string; a: string };
 export function Faq({ items }: { items: FaqItem[] }) {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <div className="divide-y divide-line rounded-2xl border border-line bg-panel/50">
+    <div className="glass divide-y divide-white/70 rounded-[26px]">
       {items.map((item, i) => (
         <div key={item.q}>
           <button

@@ -35,7 +35,7 @@ export function App({ path }: { path: string }) {
   return (
     <MotionConfig reducedMotion="user">
       <Router initialPath={path}>
-        <div className="relative min-h-screen overflow-x-hidden">
+        <div className="relative min-h-screen overflow-x-clip">
           <Nav />
           <main>
             <Page />

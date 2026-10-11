@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import { PLAN_LIMITS, type Plan } from '@neuroflow/contracts/plans';
 import { APP_URL } from '../site';
+import { Tilt } from './depth';
 import { ButtonLink, cn } from './ui';
 
 /** Plan presentation. Limits come from the same definitions the API enforces. */
@@ -30,16 +31,14 @@ export function PlanCards({ plans = ['free', 'pro', 'team', 'enterprise'] }: { p
       {plans.map((plan) => {
         const c = PLAN_COPY[plan];
         return (
-          <div
+          <Tilt
             key={plan}
-            className={cn(
-              'flex flex-col rounded-2xl border p-6',
-              c.featured ? 'border-accent/60 bg-gradient-to-b from-accent/12 to-panel glow' : 'border-line bg-panel/60',
-            )}
+            max={5}
+            className={cn('glass flex flex-col rounded-[26px] p-6', c.featured && 'bg-gradient-to-b from-peach/45 to-white/50 outline-1 outline-accent/30 glow')}
           >
             <div className="flex items-center justify-between">
               <p className="text-[15px] font-semibold text-ink">{c.name}</p>
-              {c.featured && <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-medium text-accent-soft">Most popular</span>}
+              {c.featured && <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-accent-soft">Most popular</span>}
             </div>
             <p className="mt-4 text-3xl font-bold tracking-tight text-ink">{c.price}</p>
             <p className="text-xs text-faint">{c.note}</p>
@@ -53,12 +52,12 @@ export function PlanCards({ plans = ['free', 'pro', 'team', 'enterprise'] }: { p
             </ul>
             <ButtonLink
               {...(plan === 'enterprise' ? { to: '/download#self-host' } : { href: `${APP_URL}/code` })}
-              variant={c.featured ? 'primary' : 'outline'}
+              variant={c.featured ? 'accent' : 'outline'}
               className="mt-6 w-full"
             >
               {c.cta}
             </ButtonLink>
-          </div>
+          </Tilt>
         );
       })}
     </div>

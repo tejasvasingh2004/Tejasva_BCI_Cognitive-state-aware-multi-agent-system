@@ -25,7 +25,7 @@ const COLUMNS = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-line/70">
+    <footer className="relative mt-10 overflow-hidden border-t border-white/70 bg-gradient-to-b from-white/40 to-blush/40">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-2.5">

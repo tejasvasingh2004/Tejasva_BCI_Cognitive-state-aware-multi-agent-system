@@ -15,9 +15,9 @@ export function Download() {
         Use it in the browser today, or run the whole platform on your own infrastructure. The desktop app is in development.
       </PageHeader>
 
-      <Section className="pt-10">
+      <Section className="pt-10 md:pt-10">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <Reveal className="flex flex-col rounded-2xl border border-accent/50 bg-gradient-to-b from-accent/12 to-panel p-8 glow">
+          <Reveal className="flex flex-col glass rounded-[28px] bg-gradient-to-b from-peach/45 to-white/50 p-8 glow">
             <Globe className="size-6 text-accent-soft" />
             <div className="mt-5 flex items-center gap-2">
               <h2 className="text-2xl font-bold">Web app</h2>
@@ -26,12 +26,12 @@ export function Download() {
             <p className="mt-3 flex-1 text-[15px] leading-7 text-muted">
               Everything in one place: chat, the Code Agent with Monaco, terminal and diff review, and Model Lab. Nothing to install.
             </p>
-            <ButtonLink href={`${APP_URL}/code`} size="lg" className="mt-8 self-start">
+            <ButtonLink href={`${APP_URL}/code`} variant="accent" size="lg" className="mt-8 self-start">
               Open in browser <ArrowRight className="size-4" />
             </ButtonLink>
           </Reveal>
 
-          <Reveal delay={0.08} className="rounded-2xl border border-line bg-panel/60 p-8">
+          <Reveal delay={0.08} className="glass rounded-[28px] p-8">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold">Desktop app</h2>
               <span className="rounded-full bg-amber/15 px-2 py-0.5 text-[11px] font-medium text-amber">In development</span>
@@ -41,7 +41,7 @@ export function Download() {
             </p>
             <div className="mt-6 space-y-2">
               {DESKTOP.map((d) => (
-                <div key={d.name} className="flex items-center gap-3 rounded-xl border border-line bg-canvas/40 px-4 py-3">
+                <div key={d.name} className="flex items-center gap-3 rounded-xl border border-white/70 bg-white/50 px-4 py-3">
                   <d.icon className="size-4 text-muted" />
                   <span className="text-sm font-medium text-ink-soft">{d.name}</span>
                   <span className="text-xs text-faint">{d.note}</span>
@@ -53,8 +53,8 @@ export function Download() {
         </div>
       </Section>
 
-      <Section id="self-host" className="pt-0">
-        <Reveal className="rounded-2xl border border-line bg-panel/50 p-8">
+      <Section id="self-host" className="pt-0 md:pt-0">
+        <Reveal className="glass rounded-[28px] p-8">
           <Server className="size-6 text-accent-soft" />
           <h2 className="mt-5 text-2xl font-bold">Self-host</h2>
           <p className="mt-3 max-w-2xl text-[15px] leading-7 text-muted">

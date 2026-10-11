@@ -21,17 +21,17 @@ export function Pricing() {
       <PageHeader eyebrow="Pricing" title="Simple plans, clear limits">
         Every plan includes the Code Agent, sandboxed test runs, diff review and Model Lab. Paid plans are coming soon — start free today.
       </PageHeader>
-      <Section className="pt-10">
+      <Section className="pt-10 md:pt-10">
         <PlanCards plans={PLANS} />
       </Section>
 
-      <Section className="pt-0">
+      <Section className="pt-0 md:pt-0">
         <Reveal>
           <h2 className="text-2xl font-bold tracking-tight">Compare limits</h2>
           <p className="mt-2 text-sm text-muted">These are the limits NeuroFlow enforces today; daily token quotas reset at midnight UTC.</p>
-          <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
+          <div className="mt-6 overflow-x-auto glass rounded-[24px]">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="bg-panel/80 text-ink">
+              <thead className="bg-white/60 text-ink">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Limit</th>
                   {PLANS.map((p) => (
@@ -58,7 +58,7 @@ export function Pricing() {
         </Reveal>
       </Section>
 
-      <Section className="pt-0">
+      <Section className="pt-0 md:pt-0">
         <h2 className="mb-6 text-2xl font-bold tracking-tight">Billing questions</h2>
         <Faq
           items={[

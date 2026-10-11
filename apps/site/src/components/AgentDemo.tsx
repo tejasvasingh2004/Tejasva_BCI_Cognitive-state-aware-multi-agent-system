@@ -37,17 +37,17 @@ export function AgentDemo() {
   const view = step < 3 ? 'code' : step < 5 ? 'diff' : step < 7 ? 'terminal' : 'pr';
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-panel/90 text-left glow backdrop-blur" aria-label="A Code Agent run, step by step">
-      <div className="flex h-10 items-center gap-2 border-b border-line px-4">
-        <span className="size-2.5 rounded-full bg-[#3a3550]" />
-        <span className="size-2.5 rounded-full bg-[#3a3550]" />
-        <span className="size-2.5 rounded-full bg-[#3a3550]" />
+    <div className="glass-strong overflow-hidden rounded-[26px] text-left" aria-label="A Code Agent run, step by step">
+      <div className="flex h-11 items-center gap-2 border-b border-white/70 px-4">
+        <span className="size-2.5 rounded-full bg-[#eea08b]" />
+        <span className="size-2.5 rounded-full bg-[#efcf8e]" />
+        <span className="size-2.5 rounded-full bg-[#a9cf9c]" />
         <span className="ml-3 truncate font-mono text-[11px] text-faint">acme/calc · main · Review mode</span>
       </div>
       <div className="grid md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         {/* Agent panel */}
-        <div className="border-b border-line p-4 md:border-b-0 md:border-r">
-          <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-accent/20 px-3 py-2 text-[13px] text-ink">Fix the failing add test</div>
+        <div className="border-b border-white/70 p-4 md:border-b-0 md:border-r">
+          <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-ink px-3 py-2 text-[13px] text-canvas">Fix the failing add test</div>
           <div className="mt-4 space-y-2">
             {STEPS.map((s, i) => {
               const state = i < step ? 'done' : i === step ? 'active' : 'pending';
@@ -82,7 +82,7 @@ export function AgentDemo() {
           </div>
         </div>
         {/* Artifact panel */}
-        <div className="min-h-[270px] bg-canvas/40 p-4 font-mono text-[12px] leading-[20px]">
+        <div className="min-h-[270px] bg-white/45 p-4 font-mono text-[12px] leading-[20px]">
           <div key={view} className="animate-fade-up [animation-duration:350ms]">
               {view === 'code' && (
                 <div>
@@ -140,7 +140,7 @@ export function AgentDemo() {
               )}
               {view === 'pr' && (
                 <div className="font-sans">
-                  <div className="rounded-xl border border-line bg-panel p-3">
+                  <div className="glass rounded-xl p-3">
                     <div className="flex items-center gap-2 text-[13px] font-semibold text-ink">
                       <GitPullRequest className="size-4 text-mint" /> Fix add() to add its arguments
                     </div>

@@ -27,7 +27,7 @@ export function Docs() {
       <PageHeader eyebrow="Docs" title="NeuroFlow documentation">
         Everything you need to use the Code Agent, connect your repositories and run NeuroFlow yourself.
       </PageHeader>
-      <Section className="pt-10">
+      <Section className="pt-10 md:pt-10">
         <div className="grid gap-12 md:grid-cols-[200px_minmax(0,1fr)]">
           <nav className="md:sticky md:top-24 md:self-start" aria-label="Docs sections">
             <ul className="space-y-1.5 text-sm">

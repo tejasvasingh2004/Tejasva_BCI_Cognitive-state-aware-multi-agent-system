@@ -20,7 +20,7 @@ export function Changelog() {
       <PageHeader eyebrow="Changelog" title="What’s new">
         Generated from the commit history, so it always matches what shipped.
       </PageHeader>
-      <Section className="pt-10">
+      <Section className="pt-10 md:pt-10">
         <div className="mx-auto max-w-3xl">
           {list.length === 0 && <p className="text-center text-sm text-muted">No entries yet.</p>}
           <ol className="relative space-y-12 border-l border-line pl-8">

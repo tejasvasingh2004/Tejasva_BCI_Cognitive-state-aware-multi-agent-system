@@ -26,8 +26,9 @@ export function Nav() {
   useEffect(() => setOpen(false), [path]);
 
   return (
-    <header className={cn('fixed inset-x-0 top-0 z-40 transition-colors duration-300', scrolled || open ? 'border-b border-line/70 bg-canvas/80 backdrop-blur-xl' : 'border-b border-transparent')}>
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-5 sm:px-8">
+    <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5">
+      <div className={cn('glass mx-auto max-w-6xl overflow-hidden rounded-[22px] transition-shadow duration-300', (scrolled || open) && 'shadow-[0_20px_50px_-24px_rgb(100_60_30/0.45)]')} style={{ backgroundColor: 'rgb(250 247 243 / 0.82)' }}>
+      <div className="flex h-14 items-center gap-6 px-4 sm:px-5">
         <Link to="/" className="flex items-center gap-2.5" aria-label="NeuroFlow home">
           <Logo />
           <span className="text-[15px] font-bold tracking-tight text-ink">NeuroFlow</span>
@@ -37,7 +38,7 @@ export function Nav() {
             <Link
               key={l.to}
               to={l.to}
-              className={cn('rounded-full px-3 py-1.5 text-sm transition-colors', path === l.to ? 'text-ink' : 'text-muted hover:text-ink')}
+              className={cn('rounded-full px-3 py-1.5 text-sm transition-colors', path === l.to ? 'bg-white/70 text-ink shadow-sm' : 'text-muted hover:bg-white/50 hover:text-ink')}
             >
               {l.label}
             </Link>
@@ -59,12 +60,12 @@ export function Nav() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden border-t border-line md:hidden"
+            className="overflow-hidden border-t border-white/70 md:hidden"
             aria-label="Mobile"
           >
             <div className="flex flex-col gap-1 px-5 py-4">
               {LINKS.map((l) => (
-                <Link key={l.to} to={l.to} className="rounded-lg px-3 py-2 text-[15px] text-ink-soft hover:bg-raised">
+                <Link key={l.to} to={l.to} className="rounded-lg px-3 py-2 text-[15px] text-ink-soft hover:bg-white/60">
                   {l.label}
                 </Link>
               ))}
@@ -80,6 +81,7 @@ export function Nav() {
           </motion.nav>
         )}
       </AnimatePresence>
+      </div>
     </header>
   );
 }

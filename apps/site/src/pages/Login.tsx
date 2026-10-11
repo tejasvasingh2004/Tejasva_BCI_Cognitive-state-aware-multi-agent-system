@@ -11,7 +11,7 @@ export function Login() {
   }, []);
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-5 pt-24">
-      <div className="w-full max-w-sm rounded-2xl border border-line bg-panel/70 p-8 text-center">
+      <div className="w-full max-w-sm glass rounded-[28px] p-8 text-center">
         <Logo className="mx-auto size-10" />
         <h1 className="mt-5 text-xl font-bold">Taking you to NeuroFlow…</h1>
         <p className="mt-2 text-sm text-muted">Sign in happens in the app.</p>
