@@ -274,6 +274,56 @@ describe.skipIf(!reachable || !dockerOk)('Product Phase 2: GitHub → workspace 
     expect((await api(h, `/v1/code/runs/${run.id}/plan`, { method: 'POST', json: { decision: 'revise', planId: 'plan-1' } })).status).toBe(400);
   }, 60_000);
 
+  it('Workspace Settings drive new runs, and the task history lists every run with its outcome', async () => {
+    const base = `/v1/code/workspaces/${workspaceId}`;
+    const beforeRes = await api(h, base);
+    const before = await beforeRes.json();
+    expect(before.detected).toMatchObject({ kind: 'node', commands: { test: 'npm test' } });
+    expect(before.sandboxImages).toContain('node:22-bookworm-slim');
+    expect(before.settings).toEqual({ defaultModel: null, planReviewDefault: false, sandboxImage: null });
+
+    expect((await api(h, base, { method: 'PATCH', json: { settings: { defaultModel: 'nope/model' } } })).status).toBe(400);
+    expect((await api(h, base, { method: 'PATCH', json: { settings: { sandboxImage: 'evil/image:latest' } } })).status).toBe(400);
+    const patched = await api(h, base, {
+      method: 'PATCH',
+      json: { settings: { planReviewDefault: true, defaultModel: 'qwen/qwen3:8b', sandboxImage: 'node:22-bookworm-slim' }, commands: { lint: 'npm run lint' } },
+    });
+    expect(patched.status).toBe(200);
+    const after = await (await api(h, base)).json();
+    expect(after.settings).toEqual({ defaultModel: 'qwen/qwen3:8b', planReviewDefault: true, sandboxImage: 'node:22-bookworm-slim' });
+    expect(after.commands.lint).toBe('npm run lint');
+    // An empty value removes the override (the detected command applies again).
+    await api(h, base, { method: 'PATCH', json: { commands: { lint: '' } } });
+    expect((await (await api(h, base)).json()).commands.lint).toBeUndefined();
+
+    // The workspace default turns on Plan Review for a run that does not ask for it; stop at the plan.
+    h.qwen.setScript((body) => {
+      const sys = String(body.messages[0]?.content ?? '');
+      if (body.response_format && sys.includes('You plan a coding task')) return textReply(JSON.stringify({ steps: ['Read src/math.js', 'Explain add()'] }));
+      if (body.response_format) return textReply(JSON.stringify({ verdict: 'passed', score: 0.9, issues: [] }));
+      return textReply('ok');
+    });
+    const { run } = await (await api(h, '/v1/code/runs', { method: 'POST', json: { codeWorkspaceId: workspaceId, instruction: 'Tidy up math.js', approvalMode: 'suggest' } })).json();
+    const events: RunEvent[] = [];
+    await readSse(await api(h, `/v1/runs/${run.id}/events`), (d) => {
+      const e = JSON.parse(d) as RunEvent;
+      events.push(e);
+      if (e.type === 'plan.review_required') void api(h, `/v1/code/runs/${run.id}/plan`, { method: 'POST', json: { decision: 'reject', planId: e.data.planId } });
+    });
+    expect(events.some((e) => e.type === 'plan.review_required')).toBe(true);
+    expect(h.qwen.requests.at(-1)?.model).toBe('qwen3:8b');
+    await api(h, base, { method: 'PATCH', json: { settings: { planReviewDefault: false, defaultModel: null, sandboxImage: null } } });
+
+    // Task history: newest first, with the instruction, outcome, plan review and PR link.
+    const tasks = (await (await api(h, `${base}/runs`)).json()).runs;
+    expect(tasks[0]).toMatchObject({ runId: run.id, instruction: 'Tidy up math.js', status: 'completed', planApproved: false });
+    expect(tasks.some((t: { planApproved: boolean }) => t.planApproved)).toBe(true);
+    expect(tasks.some((t: { pullRequest: { number: number } | null }) => t.pullRequest?.number === 12)).toBe(true);
+    expect(tasks.every((t: { tokens: number }) => typeof t.tokens === 'number')).toBe(true);
+    const failedOnly = (await (await api(h, `${base}/runs?status=failed`)).json()).runs;
+    expect(failedOnly.every((t: { status: string }) => t.status === 'failed')).toBe(true);
+  }, 60_000);
+
   it('enforces workspace isolation and scopes', async () => {
     const other = await authRepo.ensureUserWithWorkspace(h.db.pool, { email: 'other-coder@x.io', displayName: 'O', workspaceName: 'O' });
     const { key } = await authRepo.createApiKey(h.db.pool, { ...other, name: 'k', scopes: ['runs:read', 'runs:write', 'code:read', 'code:write'] });

@@ -200,3 +200,14 @@ export const PlanDecisionBody = z.discriminatedUnion('decision', [
   z.object({ decision: z.literal('reject'), planId: z.string().min(1).max(100), feedback: z.string().trim().max(2000).optional() }),
 ]);
 export type PlanDecisionBody = z.infer<typeof PlanDecisionBody>;
+
+/** Per code-workspace defaults (Workspace Settings). */
+export const CodeWorkspaceSettings = z.object({
+  /** Model for Code Agent runs when the request does not choose one ("auto" when null). */
+  defaultModel: z.string().max(200).nullable().default(null),
+  /** Start every Code Agent run with Plan Review unless the request says otherwise. */
+  planReviewDefault: z.boolean().default(false),
+  /** Sandbox image override (one of the supported images); null = detected from the project. */
+  sandboxImage: z.string().max(200).nullable().default(null),
+});
+export type CodeWorkspaceSettings = z.infer<typeof CodeWorkspaceSettings>;

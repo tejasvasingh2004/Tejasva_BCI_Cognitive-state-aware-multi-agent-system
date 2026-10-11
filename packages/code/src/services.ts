@@ -23,6 +23,8 @@ export type OpenCodeWorkspace = {
   baseCommit: string | null;
   /** Workspace-level command overrides (test/lint/build/install). */
   commands: Record<string, string>;
+  /** Sandbox image override from Workspace Settings (otherwise detected from the project). */
+  sandboxImage?: string;
   checkout: RepoCheckout;
   /** GitHub API client with the connection's token, when the repository is on GitHub. */
   github(): Promise<GitHubClient | null>;

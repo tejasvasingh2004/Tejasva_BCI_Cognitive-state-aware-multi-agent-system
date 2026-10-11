@@ -7,6 +7,7 @@ import {
   ApprovalMode,
   CodeRunRequestBody,
   CodeSearchBody,
+  CodeWorkspaceSettings,
   CommitBody,
   CreateCodeWorkspaceBody,
   CreatePullRequestBody,
@@ -30,6 +31,7 @@ import {
   normalizeRepoPath,
   PathPolicyError,
   publicCodeWorkspace,
+  SANDBOX_IMAGE_CHOICES,
   summarizePatch,
 } from '@neuroflow/code';
 import {
@@ -157,20 +159,53 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     const { id } = IdParams.parse(req.params);
     const row = await workspaceOf(p, id);
     const sandbox = await deps.code.env.sandbox.available();
-    return { workspace: publicCodeWorkspace(row), commands: row.commands, sandboxAvailable: sandbox };
+    // What NeuroFlow detected from the project (shown as defaults in Workspace Settings).
+    const detected =
+      row.status === 'ready'
+        ? await code
+            .checkout(id)
+            .understand()
+            .then(({ profile }) => ({ kind: profile.kind, packageManager: profile.packageManager, image: profile.image, commands: profile.commands }))
+            .catch(() => null)
+        : null;
+    return { workspace: publicCodeWorkspace(row), commands: row.commands, settings: row.settings, detected, sandboxImages: SANDBOX_IMAGE_CHOICES, sandboxAvailable: sandbox };
   });
 
   app.patch('/v1/code/workspaces/:id', async (req) => {
     const p = requireScope(req, Scopes.codeWrite);
     const { id } = IdParams.parse(req.params);
-    const body = z.object({ approvalMode: ApprovalMode.optional(), commands: z.record(z.enum(['install', 'test', 'lint', 'build']), z.string().max(500)).optional() }).parse(req.body);
+    const body = z
+      .object({
+        approvalMode: ApprovalMode.optional(),
+        commands: z.partialRecord(z.enum(['install', 'test', 'lint', 'build']), z.string().max(500)).optional(),
+        settings: CodeWorkspaceSettings.partial().optional(),
+      })
+      .parse(req.body);
     await workspaceOf(p, id);
     if (body.approvalMode) await codeWorkspacesRepo.setApprovalMode(deps.pool, id, p.workspaceId, body.approvalMode);
+    if (body.settings) {
+      const s = body.settings;
+      if (s.defaultModel && !s.defaultModel.startsWith('deployment/') && !deps.gateway.listModels().some((m) => m.ref === s.defaultModel)) {
+        throw new HttpError('bad_request', `Unknown model "${s.defaultModel}"`);
+      }
+      if (s.sandboxImage && !SANDBOX_IMAGE_CHOICES.includes(s.sandboxImage)) {
+        throw new HttpError('bad_request', `Sandbox image must be one of: ${SANDBOX_IMAGE_CHOICES.join(', ')}`);
+      }
+      await codeWorkspacesRepo.updateSettings(deps.pool, id, p.workspaceId, s);
+    }
     if (body.commands) {
-      for (const cmd of Object.values(body.commands)) {
+      // An empty value removes the override, so the detected command applies again.
+      const set = Object.fromEntries(Object.entries(body.commands).filter(([, v]) => v.trim()));
+      const unset = Object.entries(body.commands).filter(([, v]) => !v.trim()).map(([k]) => k);
+      for (const cmd of Object.values(set)) {
         if (classifyCommand(cmd, 'auto').decision === 'deny') throw new HttpError('bad_request', `Command not allowed: ${cmd}`);
       }
-      await deps.pool.query('UPDATE code_workspaces SET commands = commands || $3::jsonb WHERE id = $1 AND workspace_id = $2', [id, p.workspaceId, JSON.stringify(body.commands)]);
+      await deps.pool.query('UPDATE code_workspaces SET commands = (commands - $4::text[]) || $3::jsonb WHERE id = $1 AND workspace_id = $2', [
+        id,
+        p.workspaceId,
+        JSON.stringify(set),
+        unset,
+      ]);
     }
     return { workspace: publicCodeWorkspace(await workspaceOf(p, id)) };
   });
@@ -375,7 +410,13 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     const p = requireScope(req, Scopes.codeRead);
     const { id } = IdParams.parse(req.params);
     await workspaceOf(p, id);
-    return { runs: await codeRunsRepo.listForWorkspace(deps.pool, id) };
+    const q = z
+      .object({
+        status: z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']).optional(),
+        limit: z.coerce.number().int().min(1).max(200).default(50),
+      })
+      .parse(req.query);
+    return { runs: await codeRunsRepo.listForWorkspace(deps.pool, id, q) };
   });
 
   // ------------------------------------------------------------------ code runs
@@ -387,6 +428,8 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     const body = CodeRunRequestBody.parse(req.body);
     const row = await readyWorkspace(p, body.codeWorkspaceId);
     const approvalMode = body.approvalMode ?? row.approvalMode;
+    const selectedModel = body.selectedModel ?? row.settings.defaultModel ?? undefined;
+    const planReview = body.planReview ?? row.settings.planReviewDefault;
     if (approvalMode !== 'restricted' && !p.scopes.includes(Scopes.codeWrite)) {
       throw forbidden('Only Restricted (read-only) code runs are allowed without the "code:write" scope');
     }
@@ -394,7 +437,7 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
       messages: [{ role: 'user', content: body.instruction }],
       conversationId: body.conversationId,
       mode: body.mode,
-      ...(body.selectedModel ? { selectedModel: body.selectedModel } : {}),
+      ...(selectedModel ? { selectedModel } : {}),
       ...(body.reasoningBudget ? { reasoningBudget: body.reasoningBudget } : {}),
       workspaceContext: {
         codeWorkspaceId: row.id,
@@ -403,7 +446,7 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
         ...(body.selection ? { selectedLines: { start: body.selection.startLine, end: Math.max(body.selection.endLine, body.selection.startLine) } } : {}),
         ...(body.context?.length ? { relatedFiles: body.context.map(normalizeRepoPath) } : {}),
         ...(body.action ? { action: body.action } : {}),
-        ...(body.planReview ? { planReview: true } : {}),
+        ...(planReview ? { planReview: true } : {}),
       },
     });
     const result = await runs.create(p, request, { source: 'workspace', idempotencyKey: req.headers['idempotency-key'] as string | undefined });

@@ -36,7 +36,7 @@ export async function runInSandbox(
     runId,
     kind: input.kind,
     command: input.command,
-    image: profile.image,
+    image: ws.sandboxImage ?? profile.image,
     network: input.network,
     triggeredBy: input.triggeredBy,
   });
@@ -61,7 +61,7 @@ export async function runInSandbox(
       workspacePath: ws.checkout.root,
       cachePath: ws.checkout.cacheDir,
       command: input.command,
-      image: profile.image,
+      image: ws.sandboxImage ?? profile.image,
       network: input.network,
       signal: ctx.signal,
       onOutput: (chunk) => {

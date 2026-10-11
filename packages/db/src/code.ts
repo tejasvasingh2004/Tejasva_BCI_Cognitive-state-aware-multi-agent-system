@@ -9,6 +9,7 @@ import type {
   RepositoryBinding,
   SandboxExecution,
 } from '@neuroflow/contracts';
+import { CodeWorkspaceSettings } from '@neuroflow/contracts';
 import { iso, type Queryable } from './client';
 
 // ---------------------------------------------------------------- GitHub connections
@@ -116,6 +117,7 @@ export type CodeWorkspaceRow = CodeWorkspace & {
   createdBy: string;
   repository: RepositoryRow;
   commands: Record<string, string>;
+  settings: CodeWorkspaceSettings;
 };
 
 const toCodeWorkspace = (r: Record<string, unknown>, repo: RepositoryRow): CodeWorkspaceRow => ({
@@ -131,6 +133,7 @@ const toCodeWorkspace = (r: Record<string, unknown>, repo: RepositoryRow): CodeW
   error: (r.error as string | null) ?? null,
   approvalMode: r.approval_mode as ApprovalMode,
   commands: (r.commands as Record<string, string>) ?? {},
+  settings: CodeWorkspaceSettings.parse(r.settings ?? {}),
   lastSyncedAt: iso((r.last_synced_at as Date | null) ?? null),
   createdAt: iso(r.created_at as Date)!,
 });
@@ -215,6 +218,16 @@ export const codeWorkspacesRepo = {
     return (res.rowCount ?? 0) > 0;
   },
 
+  /** Merges a settings patch (Workspace Settings). */
+  async updateSettings(db: Queryable, id: string, workspaceId: string, patch: Partial<CodeWorkspaceSettings>): Promise<boolean> {
+    const res = await db.query('UPDATE code_workspaces SET settings = settings || $3::jsonb, updated_at = now() WHERE id = $1 AND workspace_id = $2', [
+      id,
+      workspaceId,
+      JSON.stringify(patch),
+    ]);
+    return (res.rowCount ?? 0) > 0;
+  },
+
   async archive(db: Queryable, id: string, workspaceId: string): Promise<boolean> {
     const res = await db.query(`UPDATE code_workspaces SET status = 'archived', updated_at = now() WHERE id = $1 AND workspace_id = $2`, [id, workspaceId]);
     return (res.rowCount ?? 0) > 0;
@@ -262,14 +275,32 @@ export const codeRunsRepo = {
     const { rows } = await db.query('SELECT * FROM code_runs WHERE run_id = $1', [runId]);
     return rows[0] ? toCodeRun(rows[0]) : null;
   },
-  async listForWorkspace(db: Queryable, codeWorkspaceId: string, limit = 50) {
+  /** Task history of a code workspace: one row per agent run with its outcome and artifacts. */
+  async listForWorkspace(db: Queryable, codeWorkspaceId: string, opts: { limit?: number; status?: string } = {}) {
     const { rows } = await db.query(
-      `SELECT c.*, r.status, r.request_options, r.output, r.error_message, r.created_at AS run_created_at
+      `SELECT c.*, r.status, r.error_message, r.started_at, r.completed_at, r.cost_usd,
+              (SELECT m.content FROM messages m WHERE m.run_id = c.run_id AND m.role = 'user' ORDER BY m.position LIMIT 1) AS instruction,
+              (SELECT p.url FROM pull_request_refs p WHERE p.run_id = c.run_id ORDER BY p.created_at DESC LIMIT 1) AS pr_url,
+              (SELECT p.number FROM pull_request_refs p WHERE p.run_id = c.run_id ORDER BY p.created_at DESC LIMIT 1) AS pr_number,
+              (SELECT COALESCE(SUM(COALESCE(mc.prompt_tokens, 0) + COALESCE(mc.completion_tokens, 0)), 0) FROM model_calls mc WHERE mc.run_id = c.run_id) AS tokens,
+              EXISTS (SELECT 1 FROM code_approvals a WHERE a.run_id = c.run_id AND a.subject_type = 'plan' AND a.decision = 'approved') AS plan_approved
          FROM code_runs c JOIN runs r ON r.id = c.run_id
-        WHERE c.code_workspace_id = $1 ORDER BY c.created_at DESC LIMIT $2`,
-      [codeWorkspaceId, limit],
+        WHERE c.code_workspace_id = $1 AND ($3::text IS NULL OR r.status = $3)
+        ORDER BY c.created_at DESC LIMIT $2`,
+      [codeWorkspaceId, Math.min(opts.limit ?? 50, 200), opts.status ?? null],
     );
-    return rows.map((r) => ({ ...toCodeRun(r), status: r.status as string, error: (r.error_message as string | null) ?? null }));
+    return rows.map((r) => ({
+      ...toCodeRun(r),
+      status: r.status as string,
+      error: (r.error_message as string | null) ?? null,
+      instruction: (r.instruction as string | null) ?? null,
+      startedAt: iso(r.started_at as Date | null),
+      completedAt: iso(r.completed_at as Date | null),
+      costUsd: r.cost_usd === null || r.cost_usd === undefined ? null : Number(r.cost_usd),
+      tokens: Number(r.tokens ?? 0),
+      pullRequest: r.pr_url ? { url: r.pr_url as string, number: Number(r.pr_number) } : null,
+      planApproved: Boolean(r.plan_approved),
+    }));
   },
   async update(db: Queryable, runId: string, patch: Partial<Pick<CodeRunRow, 'agentBranch' | 'finalCommit' | 'filesChanged' | 'additions' | 'deletions' | 'testsPassed'>>): Promise<void> {
     await db.query(

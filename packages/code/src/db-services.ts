@@ -36,7 +36,7 @@ const DEFAULT_AUTHOR = { name: 'NeuroFlow Agent', email: 'agent@neuroflow.local'
 
 /** Public shape of a code workspace (no internal ids / credentials). */
 export function publicCodeWorkspace(row: CodeWorkspaceRow): CodeWorkspace {
-  const { workspaceId: _w, createdBy: _c, commands: _cmd, repository, ...rest } = row;
+  const { workspaceId: _w, createdBy: _c, commands: _cmd, settings: _s, repository, ...rest } = row;
   const { workspaceId: _rw, connectionId: _cid, cloneUrl: _url, ...repo } = repository;
   return { ...rest, repository: repo };
 }
@@ -224,6 +224,7 @@ export class CodeWorkspaceService {
       baseBranch: row.baseBranch,
       baseCommit: row.baseCommit,
       commands: row.commands,
+      ...(row.settings.sandboxImage ? { sandboxImage: row.settings.sandboxImage } : {}),
       checkout: this.checkout(id),
       github: () => this.github(row),
       gitAuth: () => this.gitAuth(row),

@@ -117,3 +117,6 @@ export async function detectProject(files: string[], read: (p: string) => Promis
 
   return { kind: 'unknown', image: SANDBOX_IMAGES.unknown, manifests, dependencies, commands: {} };
 }
+
+/** Images a workspace may choose in Workspace Settings (curated; arbitrary images are not allowed). */
+export const SANDBOX_IMAGE_CHOICES: string[] = [...new Set(Object.values(SANDBOX_IMAGES))];
