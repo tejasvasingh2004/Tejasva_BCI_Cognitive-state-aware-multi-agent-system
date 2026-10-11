@@ -199,7 +199,12 @@ function ProvidersSection() {
             <div className="flex items-center gap-2">
               <StatusDot status={p.available ? 'ready' : p.configured ? 'error' : 'cancelled'} />
               <div className="text-sm font-semibold text-ink">{p.displayName}</div>
-              <span className="ml-auto text-xs text-muted">{p.available ? 'reachable' : p.configured ? 'unreachable' : 'not configured'}</span>
+              <span className="ml-auto text-xs text-muted">
+                {p.circuit === 'open' ? 'paused after repeated failures' : p.available ? 'reachable' : p.configured ? 'unreachable' : 'not configured'}
+              </span>
+              {p.circuit && p.circuit !== 'closed' && (
+                <Tag tone={p.circuit === 'open' ? 'rose' : 'peach'}>{p.circuit === 'open' ? 'circuit open' : 'trial request'}</Tag>
+              )}
             </div>
             <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
               <dt className="text-muted">Kind</dt>

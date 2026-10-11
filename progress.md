@@ -1,5 +1,5 @@
 # NeuroFlow — Implementation Progress
-Version 5 · updated 2026-10-02
+Version 6 · updated 2026-10-11
 
 Legend: `[x]` done and tested · `[~]` partial (see note) · `[ ]` not started · `[-]` deferred by design (documented as future)
 
@@ -199,6 +199,19 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 | Final diff → commit → push | ✅ real Git push to a remote |
 | Optional PR | ✅ against the mock GitHub API |
 | **Same flow on github.com with a real repository** | ⏳ needs a GitHub token + test repository |
+
+## Scalability and reliability foundation
+
+- [x] Shared provider budgets: tokens/requests per minute per API key and provider concurrency in
+      Redis (atomic token buckets, expiring leases), key pools, provider retry-after honoured by
+      every worker, `model.throttled` events
+- [x] Circuit breaker per provider (closed / open / half-open with backoff), visible in Model Lab
+- [x] Workspace plans (free / pro / team / enterprise) with per-tenant, per-route HTTP rate limits,
+      RateLimit headers and Retry-After, admission caps and daily token quotas, usage endpoint
+- [x] Separate queues (runs / workspace / evals) with priorities and per-tenant fair scheduling
+- [ ] Load-balanced deployment (2+ API servers and workers behind Nginx) and k6 load test
+- [ ] Workspace service (checkouts not tied to one host) and isolated sandbox pool
+- [ ] CI pipeline, dashboards and alerts
 
 ## Remaining (needs input or is post-MVP)
 

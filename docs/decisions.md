@@ -140,3 +140,51 @@ The completion-gate flow (GitHub → repository → Code Agent → plan → edit
 fix → commit → push → PR) is verified by integration and Playwright tests, using a real Git remote,
 real Docker sandbox and a mock GitHub REST API. The same flow against github.com needs a GitHub
 token and a test repository.
+
+## Scalability and reliability foundation (rate limiting, circuit breaking, plans, queues)
+
+### Model provider budgets (shared token buckets)
+- **Problem:** provider concurrency was an in-process semaphore, so N workers allowed N× the
+  limit, and per-minute token quotas (e.g. Groq on_demand: 8 000 tokens/minute) were only
+  discovered through 429 responses.
+- **Design:** a `RateLimiter` interface in `@neuroflow/models` with a Redis implementation in
+  `@neuroflow/bus`. Each provider API key has a token bucket and a request bucket that refill
+  continuously (capacity = per-minute limit), checked and updated in one Lua script on the Redis
+  clock (atomic, no clock skew between machines). Concurrency uses sorted-set leases with expiry,
+  so a crashed holder cannot keep a slot.
+- **Flow per attempt:** estimate tokens → reserve on the first key of the pool with capacity
+  (round-robin) → wait (emits `model.throttled`) or, beyond `MODEL_MAX_RATE_LIMIT_WAIT_MS`, fall
+  back to the next model → send → correct the bucket with real usage (refund on failure). A
+  provider "retry after" blocks that key for every worker.
+
+### Circuit breaker
+- Per provider, per process: closed → open after `MODEL_CIRCUIT_FAILURES` consecutive health
+  failures (unavailable, timeout, provider error, interrupted) → half-open after the open period
+  (one trial request) → closed on success, or open again for twice as long.
+- Rate limits, bad requests, auth errors and cancellations do not count: they are not health
+  signals. An open provider is reported unavailable, so routing and fallbacks avoid it.
+- Per-process state is deliberate: each worker learns within a few requests, and no shared
+  dependency is added to the hot path.
+
+### Plans, HTTP rate limits and admission control
+- `workspaces.plan` (free / pro / team / enterprise) is the single source of limits
+  (`packages/contracts/src/plans.ts`); environment values are optional overrides for operators
+  and tests. Plans are cached 30 s per API process.
+- HTTP: token buckets per tenant and route class (general requests, run creation, sandbox
+  commands) through the same Redis limiter, plus per-IP limits before authentication. Responses
+  carry `RateLimit-Limit`/`RateLimit-Remaining`; rejections are 429 with `Retry-After`.
+- Admission (back-pressure) at run creation: active runs per workspace and per user, daily model
+  tokens (`quota_exceeded`, resets at UTC midnight), global backlog (503). Token usage is metered
+  by the worker per workspace per UTC day in Redis, which is also the input for billing.
+- This replaces `@fastify/rate-limit`'s flat per-minute counter.
+
+### Separate queues and fair scheduling
+- Bulkheads: `neuroflow-runs`, `neuroflow-workspace` (repo sync, terminal commands) and
+  `neuroflow-evals` (Model Lab), each with its own worker and concurrency; `WORKER_QUEUES` lets a
+  process serve a subset, so tiers scale independently.
+- Priority = plan priority × 10 + source offset (interactive workspace before API traffic).
+- Fairness: BullMQ OSS has no per-group concurrency, so the worker takes a Redis slot
+  `running:<workspace>` (heartbeat-renewed lease, plan `runningPerWorkspace`) before executing a
+  run; without a slot the job is delayed 1–2 s (`DelayedError`, no attempt used) and other
+  tenants' jobs proceed. Admission caps bound how many jobs a tenant can queue in the first place.
+- Jobs left on the old single queue are still processed by the runs worker.
