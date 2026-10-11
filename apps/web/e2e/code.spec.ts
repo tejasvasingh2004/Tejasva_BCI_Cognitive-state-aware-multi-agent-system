@@ -88,6 +88,34 @@ test('GitHub → repository → workspace → Code Agent → review → tests �
   await expect(page.getByTestId('replay-view')).toContainText('return a + b');
 });
 
+test('Plan Review: edit and approve the agent plan before it touches the repository', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto('/code');
+  await page.getByTestId('workspace-list').getByText('acme/calc').first().click();
+  await expect(page.getByTestId('explorer')).toContainText('src', { timeout: 60_000 });
+  await page.getByTestId('plan-first').click();
+  await expect(page.getByTestId('plan-first')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('agent-input').fill('Make add() easier to understand');
+  await page.getByTestId('agent-send').click();
+
+  const review = page.getByTestId('plan-review');
+  await expect(review).toBeVisible({ timeout: 60_000 });
+  await expect(review.getByTestId('plan-step-0')).toHaveValue('Read src/math.js');
+  await review.getByTestId('plan-step-1').fill('Fix add() and keep it a one-liner');
+  await review.getByTestId('plan-add-step').click();
+  await review.getByTestId('plan-step-3').fill('Summarise the change for the reviewer');
+  await expect(review.getByTestId('plan-approve')).toHaveText(/Approve edited plan/);
+  await review.getByTestId('plan-approve').click();
+
+  await page.getByTestId('agent-chat').click();
+  await expect(page.getByTestId('agent-thread')).toContainText('Fixed add()', { timeout: 120_000 });
+  await page.getByTestId('agent-activity').click();
+  await expect(page.getByTestId('activity-list')).toContainText('You approved an edited plan');
+  await page.getByTestId('agent-plan').click();
+  await expect(page.getByTestId('agent-panel')).toContainText('Summarise the change for the reviewer');
+  await expect(page.getByTestId('agent-panel')).toContainText('Approved by you');
+});
+
 test('Model Lab: providers state fine-tuning honestly; deployments, datasets and evaluations work', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto('/lab/providers');

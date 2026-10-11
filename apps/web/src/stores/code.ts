@@ -54,6 +54,8 @@ type CodeState = {
   conversation: Record<string, string | null>;
   /** Approval mode chosen for the next agent request (defaults to the workspace's mode). */
   approvalMode: Record<string, ApprovalMode>;
+  /** Plan Review ("plan first") for the next agent request, per workspace. */
+  planReview: Record<string, boolean>;
 
   open(workspaceId: string): void;
   openFile(path: string, mode?: EditorTab['mode']): void;
@@ -80,6 +82,7 @@ type CodeState = {
   setActiveRun(workspaceId: string, runId: string | null): void;
   setConversation(workspaceId: string, conversationId: string | null): void;
   setApprovalMode(workspaceId: string, mode: ApprovalMode): void;
+  setPlanReview(workspaceId: string, on: boolean): void;
 };
 
 const TERMINAL_LIMIT = 200_000;
@@ -104,6 +107,7 @@ export const useCode = create<CodeState>()(
       activeRun: {},
       conversation: {},
       approvalMode: {},
+      planReview: {},
 
       open: (workspaceId) => {
         if (get().workspaceId === workspaceId) return;
@@ -195,6 +199,7 @@ export const useCode = create<CodeState>()(
       setActiveRun: (workspaceId, runId) => set((s) => ({ activeRun: { ...s.activeRun, [workspaceId]: runId } })),
       setConversation: (workspaceId, conversationId) => set((s) => ({ conversation: { ...s.conversation, [workspaceId]: conversationId } })),
       setApprovalMode: (workspaceId, mode) => set((s) => ({ approvalMode: { ...s.approvalMode, [workspaceId]: mode } })),
+      setPlanReview: (workspaceId, on) => set((s) => ({ planReview: { ...s.planReview, [workspaceId]: on } })),
     }),
     {
       name: 'neuroflow-code',
@@ -206,6 +211,7 @@ export const useCode = create<CodeState>()(
         conversation: s.conversation,
         activeRun: s.activeRun,
         approvalMode: s.approvalMode,
+        planReview: s.planReview,
       }),
     },
   ),

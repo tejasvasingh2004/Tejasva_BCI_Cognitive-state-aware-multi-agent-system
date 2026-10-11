@@ -39,6 +39,7 @@ import { Sparkle } from '@/components/ui/sparkle';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Markdown } from '@/components/workspace/Markdown';
 import { DiffStat, DiffView } from './DiffView';
+import { PlanReviewer } from './PlanReviewer';
 import { AGENT_ACTIONS, type AgentAction } from './EditorArea';
 import { APPROVAL_MODES, errorMessage, Segmented } from './shared';
 
@@ -64,6 +65,7 @@ export function useAgentRunner(workspace: CodeWorkspace) {
           ...(sel ? { selection: { startLine: sel.startLine, endLine: sel.endLine } } : {}),
           ...(s.pinned.length ? { context: s.pinned } : {}),
           ...(input.action ? { action: input.action } : {}),
+          ...(s.planReview[workspace.id] ? { planReview: true } : {}),
           ...(input.model && input.model !== 'auto' ? { selectedModel: input.model } : {}),
           ...(s.conversation[workspace.id] ? { conversationId: s.conversation[workspace.id]! } : {}),
         },
@@ -96,6 +98,13 @@ export const AgentPanel = forwardRef<AgentPanelHandle, { workspace: CodeWorkspac
     if (pending > lastPending.current) setTab('approvals');
     lastPending.current = pending;
   }, [pending, setTab]);
+  // A plan waiting for review opens the Plan tab (once per plan revision).
+  const pendingPlanId = code?.pendingPlan?.planId;
+  const lastPlan = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (pendingPlanId && pendingPlanId !== lastPlan.current) setTab('plan');
+    lastPlan.current = pendingPlanId;
+  }, [pendingPlanId, setTab]);
 
   const ask = useCallback(
     (action: AgentAction) => {
@@ -120,7 +129,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, { workspace: CodeWorkspac
           onChange={setTab}
           options={[
             { id: 'chat', label: 'Chat', testId: 'agent-chat' },
-            { id: 'plan', label: 'Plan', testId: 'agent-plan' },
+            { id: 'plan', label: 'Plan', badge: code?.pendingPlan ? 1 : undefined, testId: 'agent-plan' },
             { id: 'activity', label: 'Activity', testId: 'agent-activity' },
             { id: 'context', label: 'Context', testId: 'agent-context' },
             { id: 'approvals', label: 'Approvals', badge: pending, testId: 'agent-approvals' },
@@ -129,7 +138,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, { workspace: CodeWorkspac
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'chat' && <ChatTab workspace={workspace} conversationId={conversationId} runId={runId} view={view} code={code} pendingText={runner.isPending ? runner.variables?.instruction : undefined} />}
-        {tab === 'plan' && <PlanTab view={view} code={code} />}
+        {tab === 'plan' && <PlanTab view={view} code={code} runId={runId} />}
         {tab === 'activity' && <ActivityTab view={view} code={code} />}
         {tab === 'context' && <ContextTab workspace={workspace} runId={runId} code={code} />}
         {tab === 'approvals' && <ApprovalsTab runId={runId} code={code} />}
@@ -291,7 +300,18 @@ function LiveTurn({ workspace, run, view, code, assistant }: { workspace: CodeWo
           </span>
         </div>
       )}
-      {code?.plan && live && (
+      {code?.pendingPlan && (
+        <button
+          onClick={() => useCode.getState().setAgentTab('plan')}
+          className="flex items-center gap-2 rounded-xl border border-accent/30 bg-violet-soft/40 px-3 py-2 text-left text-xs text-ink hover:bg-violet-soft/60"
+          data-testid="open-plan-review"
+        >
+          <ListChecks className="size-4 shrink-0 text-accent" />
+          <span className="flex-1">The plan is ready for your review — nothing changes until you approve.</span>
+          <span className="font-medium text-accent">Review plan</span>
+        </button>
+      )}
+      {code?.plan && live && !code.pendingPlan && (
         <div className="rounded-xl bg-surface/60 px-3 py-2">
           <div className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">Plan</div>
           <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs text-ink-soft">
@@ -494,13 +514,21 @@ function ApprovalsTab({ runId, code }: { runId: string | null; code: CodeRunView
 
 // ---------------------------------------------------------------------------------------- plan / activity / context
 
-function PlanTab({ view, code }: { view: RunView | null; code: CodeRunView | null }) {
+function PlanTab({ view, code, runId }: { view: RunView | null; code: CodeRunView | null; runId: string | null }) {
+  if (code?.pendingPlan && runId) {
+    return (
+      <div className="px-3 py-3">
+        <PlanReviewer runId={runId} plan={code.pendingPlan} />
+      </div>
+    );
+  }
   if (!code?.plan) {
     return <Empty text={view && (view.status === 'running' || view.status === 'queued') ? 'The agent is understanding the repository…' : 'The agent’s plan for the current task appears here.'} />;
   }
   const finished = view?.status === 'completed';
   return (
     <div className="px-4 py-4">
+      {code.plan.approved && <p className="mb-2 text-[11px] font-medium text-emerald-600">Approved by you</p>}
       {code.plan.summary && <p className="mb-3 text-[13px] leading-5 text-ink">{code.plan.summary}</p>}
       <ol className="flex flex-col gap-2">
         {code.plan.steps.map((s, i) => (
@@ -664,6 +692,8 @@ const AgentComposer = forwardRef<ComposerHandle, { workspace: CodeWorkspace; run
     useImperativeHandle(ref, () => ({ focus: () => area.current?.focus() }), []);
     const mode = useCode((s) => s.approvalMode[workspace.id] ?? workspace.approvalMode);
     const setMode = useCode((s) => s.setApprovalMode);
+    const planFirst = useCode((s) => s.planReview[workspace.id] ?? false);
+    const setPlanFirst = useCode((s) => s.setPlanReview);
     const activePath = useCode((s) => s.activePath);
     const selection = useCode((s) => s.selection);
     const pinned = useCode((s) => s.pinned);
@@ -733,6 +763,20 @@ const AgentComposer = forwardRef<ComposerHandle, { workspace: CodeWorkspace; run
                   </option>
                 ))}
               </select>
+            </Tooltip>
+            <Tooltip content="Plan first: review and edit the agent's plan before it changes anything" side="top">
+              <button
+                onClick={() => setPlanFirst(workspace.id, !planFirst)}
+                disabled={mode === 'restricted'}
+                aria-pressed={planFirst}
+                className={cn(
+                  'flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition disabled:opacity-40',
+                  planFirst ? 'bg-violet-soft/70 text-accent' : 'bg-surface text-muted hover:text-ink',
+                )}
+                data-testid="plan-first"
+              >
+                <ListChecks className="size-3" /> Plan first
+              </button>
             </Tooltip>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="h-6 max-w-32 truncate rounded-full bg-surface px-2 text-[11px] text-muted outline-none" aria-label="Model">
               <option value="auto">Auto model</option>

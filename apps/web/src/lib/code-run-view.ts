@@ -53,9 +53,13 @@ export type TestRecord = {
   durationMs?: number;
 };
 
+export type PlanReview = { planId: string; steps: string[]; summary?: string; revision: number; expiresAt: string };
+
 export type CodeRunView = {
   repository?: RunEventOf<'repository.loaded'>['data'];
-  plan?: { steps: string[]; summary?: string };
+  plan?: { steps: string[]; summary?: string; approved?: boolean };
+  /** A plan waiting for the user's decision (Plan Review). */
+  pendingPlan?: PlanReview;
   activity: CodeActivity[];
   reviews: PatchReview[];
   approvals: ActionApproval[];
@@ -118,6 +122,24 @@ export function applyCodeEvent(view: CodeRunView, e: RunEvent): CodeRunView {
     case 'agent.plan.created':
       v.plan = { steps: e.data.steps, ...(e.data.summary ? { summary: e.data.summary } : {}) };
       push({ key: `plan-${e.seq}`, kind: 'plan', title: 'Created a plan', detail: plural(e.data.steps.length, 'step'), status: 'done' });
+      break;
+    case 'plan.review_required':
+      v.pendingPlan = e.data;
+      v.plan = { steps: e.data.steps, ...(e.data.summary ? { summary: e.data.summary } : {}) };
+      push({ key: `plan-review-${e.data.planId}`, kind: 'approval', title: 'Plan waiting for your review', detail: `revision ${e.data.revision}`, status: 'waiting' });
+      break;
+    case 'plan.approved':
+      v.pendingPlan = undefined;
+      v.plan = { ...(v.plan ?? {}), steps: e.data.steps, approved: true };
+      update(`plan-review-${e.data.planId}`, { status: 'done', title: e.data.edited ? 'You approved an edited plan' : 'You approved the plan' });
+      break;
+    case 'plan.rejected':
+      v.pendingPlan = undefined;
+      update(`plan-review-${e.data.planId}`, {
+        status: e.data.willRevise ? 'done' : 'failed',
+        title: e.data.willRevise ? 'You asked for a revised plan' : 'You stopped the run at the plan',
+        ...(e.data.feedback ? { detail: e.data.feedback } : {}),
+      });
       break;
     case 'file.search.started':
       push({ key: `search-${e.data.kind}-${e.data.query}`, kind: 'search', title: `Searching ${e.data.kind === 'text' ? '' : `${e.data.kind} `}“${e.data.query}”`, status: 'active' });
@@ -258,6 +280,7 @@ export function applyCodeEvent(view: CodeRunView, e: RunEvent): CodeRunView {
       break;
     case 'run.cancelled':
     case 'run.failed':
+      v.pendingPlan = undefined;
       v.approvals = [];
       v.reviews = v.reviews.map((r) => (r.status === 'pending' ? { ...r, status: 'rejected', reason: 'Run ended' } : r));
       v.activity = v.activity.map((a) => (a.status === 'active' || a.status === 'waiting' ? { ...a, status: 'failed' } : a));

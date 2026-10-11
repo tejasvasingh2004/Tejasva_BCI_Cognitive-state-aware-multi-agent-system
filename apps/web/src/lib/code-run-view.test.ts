@@ -109,3 +109,25 @@ describe('parseUnifiedDiff', () => {
     expect(files[0]!.lines.find((l) => l.kind === 'del')).toMatchObject({ oldNo: 2 });
   });
 });
+
+describe('Plan Review events', () => {
+  it('tracks a pending plan through revision and approval', () => {
+    seq = 0;
+    const pending = reduceCodeEvents([
+      ev('agent.plan.created', { steps: ['Read a', 'Fix b'] }),
+      ev('plan.review_required', { planId: 'plan-1', steps: ['Read a', 'Fix b'], revision: 1, expiresAt: '2030-01-01T00:00:00Z' }),
+    ]);
+    expect(pending.pendingPlan).toMatchObject({ planId: 'plan-1', revision: 1 });
+    expect(pending.activity.at(-1)).toMatchObject({ status: 'waiting', title: 'Plan waiting for your review' });
+
+    const approved = reduceCodeEvents([
+      ev('plan.review_required', { planId: 'plan-1', steps: ['Read a'], revision: 1, expiresAt: '2030-01-01T00:00:00Z' }),
+      ev('plan.rejected', { planId: 'plan-1', feedback: 'More detail', willRevise: true }),
+      ev('plan.review_required', { planId: 'plan-2', steps: ['Read a', 'Fix b'], revision: 2, expiresAt: '2030-01-01T00:00:00Z' }),
+      ev('plan.approved', { planId: 'plan-2', steps: ['Read a', 'Fix b', 'Test'], edited: true }),
+    ]);
+    expect(approved.pendingPlan).toBeUndefined();
+    expect(approved.plan).toMatchObject({ steps: ['Read a', 'Fix b', 'Test'], approved: true });
+    expect(approved.activity.map((a) => a.title)).toEqual(['You asked for a revised plan', 'You approved an edited plan']);
+  });
+});

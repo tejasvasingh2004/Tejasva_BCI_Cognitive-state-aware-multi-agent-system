@@ -14,6 +14,7 @@ import type {
   ModelInfo,
   ModelLabConfig,
   ModelLabScope,
+  PlanDecisionBody,
   ProviderInfo,
   RunEvent,
   SandboxExecution,
@@ -133,6 +134,7 @@ export const codeApi = {
   approve: (runId: string, input: { patchId?: string; toolCallId?: string }) => request<{ ok: true }>(`/v1/code/runs/${runId}/approve`, { method: 'POST', json: input }),
   reject: (runId: string, input: { patchId?: string; toolCallId?: string; reason?: string }) => request<{ ok: true }>(`/v1/code/runs/${runId}/reject`, { method: 'POST', json: input }),
   cancel: (runId: string) => request<unknown>(`/v1/code/runs/${runId}/cancel`, { method: 'POST', json: {} }),
+  decidePlan: (runId: string, body: PlanDecisionBody) => request<{ ok: true }>(`/v1/code/runs/${runId}/plan`, { method: 'POST', json: body }),
   replay: (runId: string) => request<Replay>(`/v1/code/runs/${runId}/replay`),
   evaluation: (runId: string) => request<CodingEvaluation>(`/v1/code/runs/${runId}/evaluation`),
 };
