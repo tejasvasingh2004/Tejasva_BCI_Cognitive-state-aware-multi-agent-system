@@ -31,7 +31,7 @@ export function App() {
               </div>
             }
           >
-            {route.app === 'code' ? <CodeApp workspaceId={route.workspaceId} replayRunId={route.replayRunId} /> : <ModelLab section={route.section} />}
+            {route.app === 'code' ? <CodeApp workspaceId={route.workspaceId} replayRunId={route.replayRunId} view={route.view} /> : <ModelLab section={route.section} />}
           </Suspense>
         ) : (
           <Workspace />

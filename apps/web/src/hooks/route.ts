@@ -6,19 +6,23 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
  *   /code                      code home               /code/:id            code workspace
  *   /code/:id/replay/:runId    code run replay         /lab[/:section]      Model Lab
  */
+export type CodeView = 'workspace' | 'tasks' | 'settings';
+
 export type AppRoute =
   | { app: 'chat'; conversationId: string | null }
-  | { app: 'code'; workspaceId: string | null; replayRunId: string | null }
+  | { app: 'code'; workspaceId: string | null; replayRunId: string | null; view: CodeView }
   | { app: 'lab'; section: string | null };
 
 const UUID = '[0-9a-f-]{36}';
 
 export function parseRoute(pathname: string): AppRoute {
   let m = new RegExp(`^/code/(${UUID})/replay/(${UUID})`).exec(pathname);
-  if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: m[2]! };
+  if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: m[2]!, view: 'workspace' };
+  m = new RegExp(`^/code/(${UUID})/(tasks|settings)\\b`).exec(pathname);
+  if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: null, view: m[2] as CodeView };
   m = new RegExp(`^/code/(${UUID})`).exec(pathname);
-  if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: null };
-  if (/^\/code\/?$/.test(pathname)) return { app: 'code', workspaceId: null, replayRunId: null };
+  if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: null, view: 'workspace' };
+  if (/^\/code\/?$/.test(pathname)) return { app: 'code', workspaceId: null, replayRunId: null, view: 'workspace' };
   m = /^\/lab(?:\/([a-z-]+))?/.exec(pathname);
   if (m) return { app: 'lab', section: m[1] ?? null };
   m = new RegExp(`^/c/(${UUID})`).exec(pathname);

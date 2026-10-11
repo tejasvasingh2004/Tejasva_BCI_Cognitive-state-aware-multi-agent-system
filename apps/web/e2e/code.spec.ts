@@ -116,6 +116,55 @@ test('Plan Review: edit and approve the agent plan before it touches the reposit
   await expect(page.getByTestId('agent-panel')).toContainText('Approved by you');
 });
 
+test('Tasks lists every run with its outcome; Workspace Settings set the defaults for new tasks', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/code');
+  await page.getByTestId('workspace-list').getByText('acme/calc').first().click();
+  await expect(page.getByTestId('explorer')).toContainText('src', { timeout: 60_000 });
+
+  // Tasks: both earlier runs, with outcome and artifacts; filter, search and replay.
+  await page.getByTestId('ws-nav-tasks').click();
+  await expect(page).toHaveURL(/\/code\/[0-9a-f-]{36}\/tasks$/);
+  const rows = page.getByTestId('task-row');
+  await expect(rows).toHaveCount(2);
+  await expect(page.getByTestId('tasks-list')).toContainText('Fix the failing add test');
+  await expect(page.getByTestId('tasks-list')).toContainText('PR #12');
+  await expect(page.getByTestId('tasks-list')).toContainText('plan reviewed');
+  await page.getByTestId('tasks-search').fill('easier');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Make add() easier to understand');
+  await page.getByTestId('tasks-search').fill('');
+  await page.getByTestId('tasks-filter-failed').click();
+  await expect(page.getByTestId('tasks-list')).toContainText('No tasks match.');
+  await page.getByTestId('tasks-filter-all').click();
+  await rows.filter({ hasText: 'Fix the failing add test' }).getByTestId('task-replay').click();
+  await expect(page.getByTestId('replay-view')).toContainText('Recorded history');
+
+  // Settings: defaults persist and drive the composer.
+  await page.goBack();
+  await page.getByTestId('ws-nav-settings').click();
+  await expect(page).toHaveURL(/\/code\/[0-9a-f-]{36}\/settings$/);
+  await expect(page.getByTestId('settings-command-test')).toHaveAttribute('placeholder', /npm/);
+  await page.getByTestId('settings-plan-review').check();
+  await page.getByTestId('settings-command-lint').fill('npm run lint');
+  await page.getByTestId('settings-sandbox-image').selectOption('node:22-bookworm-slim');
+  await page.getByTestId('settings-save').click();
+  await expect(page.getByText('Workspace settings saved')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('settings-plan-review')).toBeChecked();
+  await expect(page.getByTestId('settings-command-lint')).toHaveValue('npm run lint');
+  await expect(page.getByTestId('settings-sandbox-image')).toHaveValue('node:22-bookworm-slim');
+
+  // Repository instructions are written to the working tree.
+  await page.getByTestId('settings-instructions').fill('- Keep functions small.');
+  await page.getByTestId('settings-instructions-save').click();
+  await expect(page.getByText('Instructions saved')).toBeVisible();
+
+  await page.getByTestId('ws-nav-workspace').click();
+  await expect(page.getByTestId('plan-first')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('explorer')).toContainText('.neuroflow', { timeout: 30_000 });
+});
+
 test('Model Lab: providers state fine-tuning honestly; deployments, datasets and evaluations work', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto('/lab/providers');

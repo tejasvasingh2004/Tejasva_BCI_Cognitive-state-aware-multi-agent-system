@@ -3,6 +3,7 @@ import type {
   CodePatch,
   CodeRunRequestBody,
   CodeWorkspace,
+  CodeWorkspaceSettings,
   CreateCodeWorkspaceBody,
   Dataset,
   DatasetExample,
@@ -48,7 +49,26 @@ export type GitHubRepo = { owner: string; name: string; fullName: string; privat
 export type GitStatusEntry = { path: string; code: string; kind: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'; oldPath?: string };
 export type TreeEntry = { path: string; status?: GitStatusEntry['kind'] };
 export type SearchHit = { path: string; line: number; text: string };
-export type CodeRunSummary = { runId: string; status: string; approvalMode: ApprovalMode; filesChanged: number; additions: number; deletions: number; testsPassed: boolean | null; agentBranch: string | null; finalCommit: string | null; createdAt: string; error: string | null };
+export type CodeRunSummary = {
+  runId: string;
+  status: string;
+  approvalMode: ApprovalMode;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  testsPassed: boolean | null;
+  agentBranch: string | null;
+  finalCommit: string | null;
+  createdAt: string;
+  error: string | null;
+  instruction: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  costUsd: number | null;
+  tokens: number;
+  pullRequest: { url: string; number: number } | null;
+  planApproved: boolean;
+};
 export type CodeRunDetail = {
   run: Run;
   codeRun: CodeRunSummary | null;
@@ -95,8 +115,16 @@ export const codeApi = {
   // Workspaces
   workspaces: () => request<{ workspaces: CodeWorkspace[] }>('/v1/code/workspaces').then((r) => r.workspaces),
   createWorkspace: (body: CreateCodeWorkspaceBody) => request<{ workspace: CodeWorkspace }>('/v1/code/workspaces', { method: 'POST', json: body }),
-  workspace: (id: string) => request<{ workspace: CodeWorkspace; commands: Record<string, string>; sandboxAvailable: boolean }>(`/v1/code/workspaces/${id}`),
-  updateWorkspace: (id: string, patch: { approvalMode?: ApprovalMode; commands?: Record<string, string> }) =>
+  workspace: (id: string) =>
+    request<{
+      workspace: CodeWorkspace;
+      commands: Record<string, string>;
+      settings: CodeWorkspaceSettings;
+      detected: { kind: string; packageManager: string | null; image: string; commands: Partial<Record<'install' | 'test' | 'lint' | 'build', string>> } | null;
+      sandboxImages: string[];
+      sandboxAvailable: boolean;
+    }>(`/v1/code/workspaces/${id}`),
+  updateWorkspace: (id: string, patch: { approvalMode?: ApprovalMode; commands?: Record<string, string>; settings?: Partial<CodeWorkspaceSettings> }) =>
     request<{ workspace: CodeWorkspace }>(`/v1/code/workspaces/${id}`, { method: 'PATCH', json: patch }),
   archiveWorkspace: (id: string) => request<void>(`/v1/code/workspaces/${id}`, { method: 'DELETE' }),
   sync: (id: string) => request<{ ok: true }>(`/v1/code/workspaces/${id}/sync`, { method: 'POST', json: {} }),
@@ -125,7 +153,10 @@ export const codeApi = {
     request<{ correlationId: string; network: boolean }>(`/v1/code/workspaces/${id}/commands`, { method: 'POST', json: { command, kind } }),
   executions: (id: string, runId?: string) =>
     request<{ executions: SandboxExecution[] }>(`/v1/code/workspaces/${id}/executions${runId ? `?runId=${runId}` : ''}`).then((r) => r.executions),
-  runs: (id: string) => request<{ runs: CodeRunSummary[] }>(`/v1/code/workspaces/${id}/runs`).then((r) => r.runs),
+  runs: (id: string, opts: { status?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams({ ...(opts.status ? { status: opts.status } : {}), ...(opts.limit ? { limit: String(opts.limit) } : {}) }).toString();
+    return request<{ runs: CodeRunSummary[] }>(`/v1/code/workspaces/${id}/runs${q ? `?${q}` : ''}`).then((r) => r.runs);
+  },
 
   // Code runs
   startRun: (body: CodeRunRequestBody, idempotencyKey: string) =>

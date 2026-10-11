@@ -18,6 +18,7 @@ import { CommandBar } from './CommandBar';
 import { disposeWorkspaceModels, EditorArea, type AgentAction } from './EditorArea';
 import { Explorer } from './Explorer';
 import { APPROVAL_MODES, errorMessage, StatusDot } from './shared';
+import { WorkspaceNav } from './WorkspacePage';
 
 /**
  * The Phase 2 code workspace:
@@ -52,10 +53,24 @@ export function CodeWorkspace({ id }: { id: string }) {
       </div>
     );
   }
-  return <WorkspaceShell workspace={data.workspace} commands={data.commands} sandboxAvailable={data.sandboxAvailable} />;
+  return <WorkspaceShell workspace={data.workspace} commands={data.commands} sandboxAvailable={data.sandboxAvailable} planReviewDefault={data.settings.planReviewDefault} />;
 }
 
-function WorkspaceShell({ workspace, commands, sandboxAvailable }: { workspace: CodeWorkspaceT; commands: Record<string, string>; sandboxAvailable: boolean }) {
+function WorkspaceShell({
+  workspace,
+  commands,
+  sandboxAvailable,
+  planReviewDefault,
+}: {
+  workspace: CodeWorkspaceT;
+  commands: Record<string, string>;
+  sandboxAvailable: boolean;
+  planReviewDefault: boolean;
+}) {
+  // "Plan first" starts from the workspace default until the user flips it in the composer.
+  useEffect(() => {
+    if (useCode.getState().planReview[workspace.id] === undefined) useCode.getState().setPlanReview(workspace.id, planReviewDefault);
+  }, [workspace.id, planReviewDefault]);
   const connection = useWorkspaceEvents(workspace.id);
   const bottomOpen = useCode((s) => s.bottomOpen);
   const setBottomOpen = useCode((s) => s.setBottomOpen);
@@ -194,6 +209,7 @@ function TopBar({ workspace, connection }: { workspace: CodeWorkspaceT; connecti
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
+        <WorkspaceNav workspaceId={workspace.id} className="mr-1 hidden xl:flex" />
         <Tooltip content="Default approval mode for this workspace">
           <select
             value={workspace.approvalMode}

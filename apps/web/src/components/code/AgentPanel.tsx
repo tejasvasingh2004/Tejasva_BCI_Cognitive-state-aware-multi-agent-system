@@ -65,7 +65,8 @@ export function useAgentRunner(workspace: CodeWorkspace) {
           ...(sel ? { selection: { startLine: sel.startLine, endLine: sel.endLine } } : {}),
           ...(s.pinned.length ? { context: s.pinned } : {}),
           ...(input.action ? { action: input.action } : {}),
-          ...(s.planReview[workspace.id] ? { planReview: true } : {}),
+          // Explicit either way, so turning it off overrides a workspace default of "on".
+          ...(s.planReview[workspace.id] !== undefined ? { planReview: s.planReview[workspace.id] } : {}),
           ...(input.model && input.model !== 'auto' ? { selectedModel: input.model } : {}),
           ...(s.conversation[workspace.id] ? { conversationId: s.conversation[workspace.id]! } : {}),
         },

@@ -75,9 +75,11 @@ describe('parseRoute', () => {
   it('maps paths to apps', () => {
     expect(parseRoute('/')).toEqual({ app: 'chat', conversationId: null });
     expect(parseRoute(`/c/${id}`)).toEqual({ app: 'chat', conversationId: id });
-    expect(parseRoute('/code')).toEqual({ app: 'code', workspaceId: null, replayRunId: null });
-    expect(parseRoute(`/code/${id}`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null });
-    expect(parseRoute(`/code/${id}/replay/${id}`)).toEqual({ app: 'code', workspaceId: id, replayRunId: id });
+    expect(parseRoute('/code')).toEqual({ app: 'code', workspaceId: null, replayRunId: null, view: 'workspace' });
+    expect(parseRoute(`/code/${id}`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null, view: 'workspace' });
+    expect(parseRoute(`/code/${id}/tasks`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null, view: 'tasks' });
+    expect(parseRoute(`/code/${id}/settings`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null, view: 'settings' });
+    expect(parseRoute(`/code/${id}/replay/${id}`)).toEqual({ app: 'code', workspaceId: id, replayRunId: id, view: 'workspace' });
     expect(parseRoute('/lab/datasets')).toEqual({ app: 'lab', section: 'datasets' });
   });
 });
