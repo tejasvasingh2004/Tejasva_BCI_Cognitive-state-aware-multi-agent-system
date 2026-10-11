@@ -23,6 +23,8 @@ export interface RunStore {
   ): Promise<void>;
   recordModelCall(input: {
     runId: string;
+    /** Tenant of the run (usage metering). */
+    workspaceId?: string;
     agentExecutionId?: string;
     role: string;
     provider: string;

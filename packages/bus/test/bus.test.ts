@@ -9,6 +9,7 @@ import {
   RunControlPublisher,
   RunEventEmitter,
   RunEventHub,
+  RedisRateLimiter,
   RunQueue,
   type Redis,
 } from '../src';
@@ -132,5 +133,83 @@ describe.skipIf(!reachable)('bus (Redis + Postgres)', () => {
     expect(await q.removeIfWaiting(runId)).toBe(true);
     expect(await q.isActive(runId)).toBe(false);
     await q.close();
+  });
+});
+
+describe.skipIf(!reachable)('RedisRateLimiter (shared token buckets and slots)', () => {
+  let a: Redis;
+  let b: Redis;
+  const scope = () => `test:${Math.random().toString(36).slice(2)}`;
+
+  beforeAll(() => {
+    a = createRedis(TEST_REDIS_URL);
+    b = createRedis(TEST_REDIS_URL);
+  });
+  afterAll(() => {
+    a.disconnect();
+    b.disconnect();
+  });
+
+  it('two processes share one budget: tokens and requests per minute are never over-committed', async () => {
+    const s = scope();
+    const p1 = new RedisRateLimiter(a);
+    const p2 = new RedisRateLimiter(b);
+    const limits = { tokensPerMinute: 1_000, requestsPerMinute: 3 };
+    // Concurrent reservations from two "workers": exactly one of the 600-token requests fits.
+    const results = await Promise.all([p1.reserve(s, limits, 600), p2.reserve(s, limits, 600)]);
+    expect(results.filter((r) => r.waitMs === 0)).toHaveLength(1);
+    const denied = results.find((r) => r.waitMs > 0)!;
+    // 400 tokens left, 200 missing → ~12s at 1000 tokens/minute.
+    expect(denied.waitMs).toBeGreaterThan(10_000);
+    expect(denied.waitMs).toBeLessThanOrEqual(12_100);
+    // Requests per minute: two small requests fit, the next one waits.
+    expect((await p1.reserve(s, limits, 1)).waitMs).toBe(0);
+    expect((await p2.reserve(s, limits, 1)).waitMs).toBe(0);
+    expect((await p1.reserve(s, limits, 1)).waitMs).toBeGreaterThan(0);
+  });
+
+  it('refunds and debts adjust the bucket; a provider retry-after blocks the scope', async () => {
+    const s = scope();
+    const rl = new RedisRateLimiter(a);
+    const limits = { tokensPerMinute: 1_000 };
+    expect((await rl.reserve(s, limits, 900)).waitMs).toBe(0);
+    await rl.adjust(s, limits, -900); // the call failed before producing anything
+    expect((await rl.reserve(s, limits, 900)).waitMs).toBe(0);
+    await rl.adjust(s, limits, 500); // it actually used 1 400 tokens: the bucket is in debt
+    expect((await rl.reserve(s, limits, 100)).waitMs).toBeGreaterThan(25_000);
+
+    const blocked = scope();
+    await rl.block(blocked, 5_000);
+    const r = await rl.reserve(blocked, {}, 0);
+    expect(r.waitMs).toBeGreaterThan(4_000);
+  });
+
+  it('slots are shared across processes and expire if the holder dies', async () => {
+    const s = scope();
+    const p1 = new RedisRateLimiter(a);
+    const p2 = new RedisRateLimiter(b);
+    const r1 = await p1.tryAcquireSlot(s, 1, 60_000);
+    expect(r1).not.toBeNull();
+    expect(await p2.tryAcquireSlot(s, 1, 60_000)).toBeNull();
+    await r1!();
+    const crashed = await p2.tryAcquireSlot(s, 1, 150);
+    expect(crashed).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 250));
+    // The lease expired without a release: the slot is free again.
+    expect(await p1.tryAcquireSlot(s, 1, 60_000)).not.toBeNull();
+  });
+
+  it('a waiting acquire is granted when a slot frees up, and can be cancelled', async () => {
+    const s = scope();
+    const rl = new RedisRateLimiter(a);
+    const held = await rl.acquireSlot(s, 1, 60_000);
+    const waiting = rl.acquireSlot(s, 1, 60_000);
+    setTimeout(() => void held(), 100);
+    const got = await waiting;
+    expect(typeof got).toBe('function');
+    const ctrl = new AbortController();
+    const cancelled = rl.acquireSlot(s, 1, 60_000, ctrl.signal);
+    setTimeout(() => ctrl.abort(), 50);
+    await expect(cancelled).rejects.toThrow(/Cancelled/);
   });
 });

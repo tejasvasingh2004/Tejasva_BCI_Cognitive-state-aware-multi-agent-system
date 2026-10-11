@@ -46,6 +46,8 @@ export const ProviderInfo = z.object({
   configured: z.boolean(),
   /** Configured and (last health check) reachable. */
   available: z.boolean(),
+  /** Circuit breaker state: `open` = skipped after repeated failures, `half_open` = trial request allowed. */
+  circuit: z.enum(['closed', 'open', 'half_open']).optional(),
   kind: z.string(),
   /** Endpoint host only — never full URLs with credentials. */
   endpoint: z.string(),

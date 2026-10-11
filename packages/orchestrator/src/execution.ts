@@ -248,6 +248,9 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
             runtimeMetrics.modelRetries.add(1, { model: ev.ref });
             ctx.emit('model.retry', { callId, attempt: ev.attempt, reason: ev.reason, delayMs: ev.delayMs });
             break;
+          case 'throttled':
+            ctx.emit('model.throttled', { callId, provider: ev.provider, waitMs: ev.waitMs, reason: ev.reason });
+            break;
           case 'fallback':
             runtimeMetrics.modelFallbacks.add(1, { from: ev.from, to: ev.to });
             ctx.emit('model.fallback', { callId, from: ev.from, to: ev.to, reason: ev.reason });
@@ -285,6 +288,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
       });
       await ctx.deps.store.recordModelCall({
         runId: ctx.run.id,
+        workspaceId: ctx.run.workspaceId,
         agentExecutionId: opts.agentExecutionId,
         role: opts.role,
         provider: response.provider,
@@ -319,6 +323,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
       await ctx.deps.store
         .recordModelCall({
           runId: ctx.run.id,
+          workspaceId: ctx.run.workspaceId,
           agentExecutionId: opts.agentExecutionId,
           role: opts.role,
           provider: current.split('/')[0]!,

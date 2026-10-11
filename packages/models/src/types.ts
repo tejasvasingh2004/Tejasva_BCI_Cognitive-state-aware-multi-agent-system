@@ -56,6 +56,8 @@ export type ModelResponse = {
 export type ModelEvent =
   | { type: 'attempt'; ref: string; provider: string; model: string; attempt: number }
   | { type: 'retry'; ref: string; attempt: number; reason: string; delayMs: number }
+  /** Waiting for provider budget (tokens/requests per minute or a concurrency slot) before sending. */
+  | { type: 'throttled'; ref: string; provider: string; waitMs: number; reason: string }
   | { type: 'fallback'; from: string; to: string; reason: string }
   | { type: 'delta'; text: string }
   | { type: 'tool_call'; call: ToolCall }
@@ -90,6 +92,8 @@ export type CatalogEntry = {
 export type ProviderRequest = Omit<ModelRequest, 'model' | 'fallbacks' | 'signal' | 'timeoutMs'> & {
   model: string;
   entry: CatalogEntry;
+  /** Which API key of the provider's key pool to use (chosen by the gateway's rate limiter). */
+  keyIndex?: number;
 };
 
 export type ProviderDescription = {
@@ -109,6 +113,8 @@ export interface ProviderAdapter {
   isAvailable(): boolean;
   /** Refresh reachability; adapters without a health probe may no-op. */
   checkHealth?(signal?: AbortSignal): Promise<boolean>;
+  /** Number of API keys in the provider's key pool (each key has its own provider quota). */
+  keyCount?(): number;
   stream(req: ProviderRequest, signal: AbortSignal): AsyncIterable<ProviderEvent>;
 }
 

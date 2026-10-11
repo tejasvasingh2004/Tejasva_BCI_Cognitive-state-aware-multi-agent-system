@@ -23,6 +23,21 @@ afterAll(async () => {
   await qwen.close();
   await groq.close();
 });
+/** Virtual clock: the gateway's sleeps advance time instead of waiting. */
+function virtualTime() {
+  const t = { now: 1_000_000, slept: [] as number[] };
+  return {
+    t,
+    opts: {
+      now: () => t.now,
+      sleep: async (ms: number) => {
+        t.slept.push(ms);
+        t.now += ms;
+      },
+    },
+  };
+}
+
 beforeEach(() => {
   qwen.requests.length = 0;
   groq.requests.length = 0;
@@ -117,24 +132,39 @@ describe('ModelGateway', () => {
     expect(done?.type === 'done' && done.response.attempts).toBe(3);
   });
 
-  it('waits as long as a rate-limiting provider asks (bounded) instead of falling back early', async () => {
-    const slept: number[] = [];
+  it('honours a provider retry-after by holding that key, then retries', async () => {
+    const { t, opts } = virtualTime();
     const gw = new DefaultModelGateway(
       [new GroqAdapter({ baseUrl: groq.url, apiKey: 'test-key', models: buildCatalog('llama-3.3-70b-versatile') })],
       { baseBackoffMs: 1, maxBackoffMs: 5, maxRateLimitWaitMs: 60_000 },
-      { sleep: async (ms) => void slept.push(ms) },
+      opts,
     );
     groq.setScript((_b, i) =>
-      i === 0
-        ? { kind: 'error', status: 429, message: 'Rate limit reached on tokens per minute (TPM). Please try again in 39.12s.' }
-        : i === 1
-          ? { kind: 'error', status: 429, message: 'slow down', retryAfter: '120' }
-          : textReply('ok'),
+      i === 0 ? { kind: 'error', status: 429, message: 'Rate limit reached on tokens per minute (TPM). Please try again in 39.12s.' } : textReply('ok'),
     );
     const events = await collect(gw.stream({ model: 'groq/llama-3.3-70b-versatile', messages: user }));
     expect(events.at(-1)?.type).toBe('done');
-    // Hint parsed from the message (39.12s), then a Retry-After header capped at the policy limit.
-    expect(slept).toEqual([39_370, 60_000]);
+    // Hint parsed from the message; the wait happens once, as a throttle before the next send.
+    expect(t.slept).toEqual([39_120]);
+    expect(events.some((e) => e.type === 'throttled')).toBe(true);
+  });
+
+  it('falls back instead of waiting longer than the rate-limit wait cap', async () => {
+    const { t, opts } = virtualTime();
+    const gw = new DefaultModelGateway(
+      [
+        new GroqAdapter({ baseUrl: groq.url, apiKey: 'test-key', models: buildCatalog('llama-3.3-70b-versatile') }),
+        new QwenAdapter({ baseUrl: qwen.url, flavor: 'ollama', models: buildCatalog('qwen3:8b', 'toggle') }),
+      ],
+      { baseBackoffMs: 1, maxBackoffMs: 5, maxRateLimitWaitMs: 60_000 },
+      opts,
+    );
+    groq.setScript(() => ({ kind: 'error', status: 429, message: 'slow down', retryAfter: '120' }));
+    qwen.setScript(() => textReply('from qwen'));
+    const res = await gw.complete({ model: 'groq/llama-3.3-70b-versatile', fallbacks: ['qwen/qwen3:8b'], messages: user });
+    expect(res.text).toBe('from qwen');
+    expect(t.slept).toEqual([]);
+    expect(groq.requests).toHaveLength(1);
   });
 
   it('does not retry non-retryable errors, but falls back to another provider', async () => {
@@ -277,5 +307,89 @@ describe('ModelGateway cost and concurrency', () => {
     ctrl.abort();
     await expect(second).rejects.toMatchObject({ code: 'cancelled' });
     await expect(first).resolves.toMatchObject({ text: 'ok' });
+  });
+
+  describe('provider budgets, key pools and circuit breaker', () => {
+    /** Adapter that records which key served each call and can be told to fail. */
+    function pooledProvider(opts: { keys?: number; fail?: () => boolean; tokens?: number } = {}) {
+      const calls: number[] = [];
+      const adapter: ProviderAdapter = {
+        id: 'pool',
+        displayName: 'Pool',
+        catalog: () => buildCatalog('m1|strong'),
+        isAvailable: () => true,
+        keyCount: () => opts.keys ?? 1,
+        async *stream(req) {
+          calls.push(req.keyIndex ?? 0);
+          if (opts.fail?.()) throw new ModelError('unavailable', 'provider down');
+          yield { type: 'delta' as const, text: 'ok' };
+          yield { type: 'usage' as const, usage: { promptTokens: (opts.tokens ?? 1000) - 10, completionTokens: 10, totalTokens: opts.tokens ?? 1000 } };
+          yield { type: 'finish' as const, reason: 'stop' as const };
+        },
+      };
+      return { adapter, calls };
+    }
+
+    it('waits for tokens-per-minute budget before sending, and corrects it with real usage', async () => {
+      const { t, opts } = virtualTime();
+      const { adapter, calls } = pooledProvider({ tokens: 3_990 });
+      const gw = new DefaultModelGateway([adapter], { providerLimits: { pool: { tokensPerMinute: 4_000 } } }, opts);
+      await gw.complete({ model: 'pool/m1', messages: user, maxOutputTokens: 100 });
+      expect(t.slept).toEqual([]);
+      // 3 990 of 4 000 tokens were really used, so the next call waits for the bucket to refill.
+      const events = await collect(gw.stream({ model: 'pool/m1', messages: user, maxOutputTokens: 100 }));
+      expect(events.some((e) => e.type === 'throttled')).toBe(true);
+      expect(t.slept.length).toBe(1);
+      expect(t.slept[0]).toBeGreaterThan(0);
+      expect(calls).toHaveLength(2);
+    });
+
+    it('spreads calls across a key pool before waiting', async () => {
+      const { t, opts } = virtualTime();
+      const { adapter, calls } = pooledProvider({ keys: 2 });
+      const gw = new DefaultModelGateway([adapter], { providerLimits: { pool: { requestsPerMinute: 1 } } }, opts);
+      await gw.complete({ model: 'pool/m1', messages: user });
+      await gw.complete({ model: 'pool/m1', messages: user });
+      expect(new Set(calls)).toEqual(new Set([0, 1]));
+      expect(t.slept).toEqual([]);
+      await gw.complete({ model: 'pool/m1', messages: user });
+      expect(t.slept).toHaveLength(1);
+    });
+
+    it('opens the circuit after repeated failures, skips the provider, then recovers through a trial request', async () => {
+      const { t, opts } = virtualTime();
+      let down = true;
+      const { adapter, calls } = pooledProvider({ fail: () => down });
+      const gw = new DefaultModelGateway(
+        [adapter],
+        { maxRetries: 0, circuitBreaker: { failureThreshold: 3, openMs: 30_000, maxOpenMs: 120_000 } },
+        opts,
+      );
+      for (let i = 0; i < 3; i++) await expect(gw.complete({ model: 'pool/m1', messages: user })).rejects.toMatchObject({ code: 'unavailable' });
+      expect(gw.circuits().pool?.state).toBe('open');
+      expect(gw.listModels().find((m) => m.ref === 'pool/m1')?.available).toBe(false);
+      // While open, no request reaches the provider.
+      await expect(gw.complete({ model: 'pool/m1', messages: user })).rejects.toThrow(/circuit open/);
+      expect(calls).toHaveLength(3);
+
+      t.now += 30_000;
+      expect(gw.circuits().pool?.state).toBe('half_open');
+      down = false;
+      await expect(gw.complete({ model: 'pool/m1', messages: user })).resolves.toMatchObject({ text: 'ok' });
+      expect(gw.circuits().pool?.state).toBe('closed');
+    });
+
+    it('a failed trial re-opens the circuit for longer', async () => {
+      const { t, opts } = virtualTime();
+      const { adapter } = pooledProvider({ fail: () => true });
+      const gw = new DefaultModelGateway([adapter], { maxRetries: 0, circuitBreaker: { failureThreshold: 1, openMs: 10_000, maxOpenMs: 60_000 } }, opts);
+      await expect(gw.complete({ model: 'pool/m1', messages: user })).rejects.toBeTruthy();
+      t.now += 10_000;
+      await expect(gw.complete({ model: 'pool/m1', messages: user })).rejects.toBeTruthy();
+      t.now += 10_000;
+      expect(gw.circuits().pool?.state).toBe('open');
+      t.now += 10_000;
+      expect(gw.circuits().pool?.state).toBe('half_open');
+    });
   });
 });

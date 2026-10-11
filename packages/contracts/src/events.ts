@@ -60,6 +60,13 @@ export const RunEventData = {
     reason: z.string(),
     delayMs: z.number().nonnegative(),
   }),
+  /** Waiting for provider budget (rate limit or concurrency) before the request is sent. */
+  'model.throttled': z.object({
+    callId: z.string(),
+    provider: z.string(),
+    waitMs: z.number().nonnegative(),
+    reason: z.string(),
+  }),
   'model.fallback': z.object({
     callId: z.string(),
     from: z.string(),

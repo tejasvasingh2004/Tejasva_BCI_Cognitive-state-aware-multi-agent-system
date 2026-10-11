@@ -165,6 +165,9 @@ export function applyRunEvent(view: RunView, e: RunEvent): RunView {
     case 'model.retry':
       v.retries++;
       break;
+    case 'model.throttled':
+      v.phase = `Waiting for ${e.data.provider} capacity (~${Math.max(1, Math.round(e.data.waitMs / 1000))}s)`;
+      break;
     case 'model.fallback':
       v.fallbacks++;
       v.phase = `Switching to ${modelName(e.data.to)}`;

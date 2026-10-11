@@ -1,6 +1,8 @@
 export * from './types';
 export * from './errors';
 export * from './gateway';
+export * from './rate-limit';
+export * from './circuit-breaker';
 export * from './catalog';
 export * from './factory';
 export { QwenAdapter, type QwenAdapterConfig, type QwenFlavor } from './adapters/qwen';
