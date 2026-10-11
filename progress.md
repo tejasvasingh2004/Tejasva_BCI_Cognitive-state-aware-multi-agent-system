@@ -185,6 +185,13 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
       Ctrl+S), AI Agent (Chat, Plan, Activity, Context, Approvals with diff review), bottom panel
       (Terminal, Problems, Tests, Git Diff with commit/push/PR, Agent Logs), Ctrl+K command bar,
       Replay view; dark mode
+- [x] Plan Review: opt-in per task or per workspace; the agent proposes a plan and waits; the user
+      approves it as is, edits the steps, asks for a revision (max 3) or rejects it
+      (`plan.review_required` / `plan.approved` / `plan.rejected`, `POST /v1/code/runs/:id/plan`)
+- [x] Tasks page: every run in a workspace with status, duration, diff stats, tests, agent branch,
+      tokens, cost and PR; filter, search, open and replay
+- [x] Workspace Settings: approval mode, default model, Plan Review default, project commands,
+      sandbox image, `.neuroflow/instructions.md` editor, archive
 - [x] Tests: code package (real Git + Docker), orchestrator code runs, API integration (mock GitHub
       API + real Git remote + Docker), Playwright E2E for the full browser flow and Model Lab
 
@@ -198,7 +205,7 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 | Test → fix (bounded repair loop) | ✅ real Docker sandbox |
 | Final diff → commit → push | ✅ real Git push to a remote |
 | Optional PR | ✅ against the mock GitHub API |
-| **Same flow on github.com with a real repository** | ⏳ needs a GitHub token + test repository |
+| **Same flow on github.com with a real repository** | ⏳ verified on a real repository with Groq up to the local commit; push and PR need a token with Contents + Pull requests write |
 
 ## Scalability and reliability foundation
 
@@ -211,12 +218,20 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Separate queues (runs / workspace / evals) with priorities and per-tenant fair scheduling
 - [ ] Load-balanced deployment (2+ API servers and workers behind Nginx) and k6 load test
 - [ ] Workspace service (checkouts not tied to one host) and isolated sandbox pool
-- [ ] CI pipeline, dashboards and alerts
+- [x] CI: GitHub Actions for typecheck, lint, unit, integration (Postgres + Redis services), E2E
+      and image builds
+- [ ] Dashboards and alerts
+
+## Website
+
+- [x] Marketing site (`apps/site`, pre-rendered static pages): home, download, pricing, docs,
+      changelog generated from Git history; links into the app
+- [ ] Desktop download builds and payments (later phase)
 
 ## Remaining (needs input or is post-MVP)
 
-1. Live GitHub verification of the Phase 2 gate — a fine-grained token for a test repository.
-2. Live Groq verification — add a `GROQ_API_KEY`.
+1. Live push/PR on github.com — grant the fine-grained token Contents and Pull requests write.
+2. Live Groq: configured and used for the real-repository run.
 3. Web search — add a Tavily/Brave key or a SearXNG URL to enable the tool.
 4. OIDC/SSO, pgvector memory, interaction-based cognitive signal, mid-graph resume (post-MVP).
 5. Phase 2 non-goals stay out of scope: VS Code parity, unrestricted shell, automatic deployment,
