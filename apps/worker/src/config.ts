@@ -3,7 +3,20 @@ import { z } from 'zod';
 const Env = z.object({
   DATABASE_URL: z.string().default('postgres://neuroflow:neuroflow@localhost:5433/neuroflow'),
   REDIS_URL: z.string().default('redis://127.0.0.1:6380'),
+  /** Concurrent runs (agent/model executions) per worker process. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /** Concurrent repository syncs / terminal commands per worker process. */
+  WORKER_WORKSPACE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /** Concurrent Model Lab evaluations per worker process. */
+  WORKER_EVAL_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
+  /** Queues served by this process: runs, workspace, evals (comma separated). */
+  WORKER_QUEUES: z
+    .string()
+    .default('runs,workspace,evals')
+    .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean))
+    .pipe(z.array(z.enum(['runs', 'workspace', 'evals'])).min(1)),
+  /** Overrides the plan's per-workspace running cap (operators/tests). */
+  MAX_RUNNING_PER_WORKSPACE: z.coerce.number().int().positive().optional(),
   WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   BCI_SERVICE_URL: z.string().optional(),

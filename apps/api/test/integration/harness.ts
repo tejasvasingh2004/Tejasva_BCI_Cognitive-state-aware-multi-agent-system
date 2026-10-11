@@ -1,12 +1,11 @@
-import { Worker } from 'bullmq';
 import type { FastifyInstance } from 'fastify';
 import type { RunEvent } from '@neuroflow/contracts';
-import { createRedis, RUN_QUEUE_NAME, type Redis, type RunJobData, type WorkspaceJobData } from '@neuroflow/bus';
+import { createRedis, RedisRateLimiter, type Redis } from '@neuroflow/bus';
 import { createTestDatabase } from '@neuroflow/db/testing';
 import { createGatewayFromEnv } from '@neuroflow/models';
 import { startMockOpenAIServer, type MockOpenAIServer } from '@neuroflow/models/testing';
 import { createLogger } from '@neuroflow/observability';
-import { createWorkerRuntime, processRun, processWorkspaceJob } from '@neuroflow/worker';
+import { createWorkerRuntime, startQueueWorkers } from '@neuroflow/worker';
 import { buildApp, createDeps, loadConfig } from '../../src';
 
 export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://127.0.0.1:6380/1';
@@ -19,7 +18,7 @@ export type Harness = {
   groq: MockOpenAIServer;
   db: Awaited<ReturnType<typeof createTestDatabase>>;
   shutdown: AbortController;
-  worker: Worker<RunJobData | WorkspaceJobData>;
+  worker: ReturnType<typeof startQueueWorkers>;
   runtime: Awaited<ReturnType<typeof createWorkerRuntime>>;
   redisUrl: string;
   restartWorker(): Promise<void>;
@@ -51,7 +50,9 @@ export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<H
     MODEL_DEFAULT: 'qwen/qwen3:8b',
     MODEL_MAX_RETRIES: '1',
     MAX_ACTIVE_RUNS_PER_WORKSPACE: '50',
+    MAX_RUNNING_PER_WORKSPACE: '50',
     RATE_LIMIT_PER_MINUTE: '10000',
+    RUN_RATE_LIMIT_PER_MINUTE: '10000',
     LOG_LEVEL: 'warn',
     ...overrides,
   } as NodeJS.ProcessEnv;
@@ -68,7 +69,8 @@ export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<H
     workerRedis.push(r);
     return r;
   };
-  const gateway = createGatewayFromEnv(env);
+  // Provider budgets shared through Redis, as in the production worker.
+  const gateway = createGatewayFromEnv(env, { limiter: new RedisRateLimiter(mk()) });
   const runtime = await createWorkerRuntime({
     pool: db.pool,
     redis: mk(),
@@ -80,15 +82,18 @@ export async function startHarness(overrides: NodeJS.ProcessEnv = {}): Promise<H
   });
 
   let shutdown = new AbortController();
+  // Same topology as production: one worker per queue, per-tenant fairness on runs.
   const newWorker = () =>
-    new Worker<RunJobData | WorkspaceJobData>(
-      RUN_QUEUE_NAME,
-      (job) =>
-        job.name === 'run'
-          ? processRun(job.data as RunJobData, { pool: db.pool, redis: workerRedis[0]!, runtime, logger, shutdownSignal: shutdown.signal })
-          : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis: workerRedis[0]!, logger, signal: shutdown.signal, pool: db.pool }),
-      { connection: mk(), concurrency: 4, lockDuration: 30_000 },
-    );
+    startQueueWorkers({
+      pool: db.pool,
+      redis: workerRedis[0]!,
+      connection: mk,
+      runtime,
+      logger,
+      shutdownSignal: shutdown.signal,
+      concurrency: { runs: 4, workspace: 4, evals: 2 },
+      ...(env.MAX_RUNNING_PER_WORKSPACE ? { maxRunningPerWorkspace: Number(env.MAX_RUNNING_PER_WORKSPACE) } : {}),
+    });
 
   const harness: Harness = {
     runtime,

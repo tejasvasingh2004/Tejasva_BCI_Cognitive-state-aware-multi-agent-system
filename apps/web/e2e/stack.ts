@@ -6,15 +6,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Worker } from 'bullmq';
-import { createRedis, RUN_QUEUE_NAME, type RunJobData, type WorkspaceJobData } from '@neuroflow/bus';
+import { createRedis, RedisRateLimiter } from '@neuroflow/bus';
 import { createFixtureRepo, startMockGitHub } from '@neuroflow/code/testing';
 import { createTestDatabase } from '@neuroflow/db/testing';
 import { createGatewayFromEnv } from '@neuroflow/models';
 import { defaultScript, startMockOpenAIServer, textReply, toolCallReply, type MockScript } from '@neuroflow/models/testing';
 import { createLogger } from '@neuroflow/observability';
 import { buildApp, createDeps, loadConfig } from '@neuroflow/api';
-import { createWorkerRuntime, processRun, processWorkspaceJob } from '@neuroflow/worker';
+import { createWorkerRuntime, startQueueWorkers } from '@neuroflow/worker';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 8090);
 const REDIS_URL = process.env.E2E_REDIS_URL ?? 'redis://127.0.0.1:6380/2';
@@ -91,6 +90,7 @@ const env = {
   MODEL_DEFAULT: 'qwen/qwen3:8b',
   MODEL_MAX_RETRIES: '0',
   RATE_LIMIT_PER_MINUTE: '10000',
+  RUN_RATE_LIMIT_PER_MINUTE: '10000',
   MAX_ACTIVE_RUNS_PER_WORKSPACE: '50',
   CORS_ORIGINS: 'http://localhost:5190',
   CODE_DATA_DIR: codeDir,
@@ -108,20 +108,21 @@ const runtime = await createWorkerRuntime({
   pool: db.pool,
   redis,
   controlSubscriber: createRedis(REDIS_URL),
-  gateway: createGatewayFromEnv(env),
+  gateway: createGatewayFromEnv(env, { limiter: new RedisRateLimiter(redis) }),
   approvalTimeoutMs: 120_000,
   env,
   code: { dataDir: codeDir, githubApiUrl: github.url, secretsKey: env.SECRETS_KEY },
 });
 const shutdown = new AbortController();
-const worker = new Worker<RunJobData | WorkspaceJobData>(
-  RUN_QUEUE_NAME,
-  (job) =>
-    job.name === 'run'
-      ? processRun(job.data as RunJobData, { pool: db.pool, redis, runtime, logger, shutdownSignal: shutdown.signal })
-      : processWorkspaceJob(job.data as WorkspaceJobData, { runtime, redis, logger, signal: shutdown.signal, pool: db.pool }),
-  { connection: createRedis(REDIS_URL), concurrency: 4 },
-);
+const worker = startQueueWorkers({
+  pool: db.pool,
+  redis,
+  connection: () => createRedis(REDIS_URL),
+  runtime,
+  logger,
+  shutdownSignal: shutdown.signal,
+  maxRunningPerWorkspace: 50,
+});
 console.log(`e2e stack ready on http://127.0.0.1:${PORT}`);
 
 let stopping = false;

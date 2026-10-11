@@ -1,16 +1,26 @@
 import { Queue, type ConnectionOptions } from 'bullmq';
 
 export const RUN_QUEUE_NAME = 'neuroflow-runs';
+/** Repository sync/clone and user terminal commands (short, interactive). */
+export const WORKSPACE_QUEUE_NAME = 'neuroflow-workspace';
+/** Model Lab evaluations (long, batch, lowest urgency). */
+export const EVAL_QUEUE_NAME = 'neuroflow-evals';
+
+export type QueueKind = 'runs' | 'workspace' | 'evals';
+export const QUEUE_NAMES: Record<QueueKind, string> = { runs: RUN_QUEUE_NAME, workspace: WORKSPACE_QUEUE_NAME, evals: EVAL_QUEUE_NAME };
 
 /**
- * BullMQ priority (1 = highest). Interactive workspace runs are served before programmatic
- * API traffic when the queue is backed up.
+ * BullMQ priority (1 = highest). The tenant's plan sets the base; interactive workspace runs are
+ * served before programmatic API traffic of the same plan when the queue is backed up.
  */
-export function runPriority(source: 'workspace' | 'api' | 'openai'): number {
-  return source === 'workspace' ? 1 : 5;
+export function runPriority(source: 'workspace' | 'api' | 'openai', planPriority = 1): number {
+  return planPriority * 10 + (source === 'workspace' ? 0 : 5);
 }
 
-/** Code-workspace background tasks share the run queue and worker pool (job name = task kind). */
+/**
+ * Bulkheads: runs, workspace tasks and evaluations live in separate queues so each has its own
+ * workers and concurrency, and a slow batch job can never delay an interactive one.
+ */
 export type WorkspaceJobData =
   | { kind: 'workspace.sync'; codeWorkspaceId: string; workspaceId: string; enqueuedAt: number }
   | { kind: 'model.evaluate'; evaluationId: string; workspaceId: string; enqueuedAt: number }
@@ -41,17 +51,20 @@ export type RunJobData = {
  */
 export class RunQueue {
   readonly queue: Queue<RunJobData>;
+  readonly workspaceQueue: Queue<WorkspaceJobData>;
+  readonly evalQueue: Queue<WorkspaceJobData>;
 
   constructor(connection: ConnectionOptions) {
-    this.queue = new Queue<RunJobData>(RUN_QUEUE_NAME, {
-      connection,
-      defaultJobOptions: {
-        attempts: 2,
-        backoff: { type: 'exponential', delay: 2000 },
-        removeOnComplete: { age: 3600, count: 1000 },
-        removeOnFail: { age: 24 * 3600 },
-      },
-    });
+    const defaultJobOptions = {
+      attempts: 2,
+      backoff: { type: 'exponential' as const, delay: 2000 },
+      removeOnComplete: { age: 3600, count: 1000 },
+      removeOnFail: { age: 24 * 3600 },
+    };
+    this.queue = new Queue<RunJobData>(RUN_QUEUE_NAME, { connection, defaultJobOptions });
+    this.workspaceQueue = new Queue<WorkspaceJobData>(WORKSPACE_QUEUE_NAME, { connection, defaultJobOptions });
+    // An evaluation is not retried automatically (it would re-spend model tokens).
+    this.evalQueue = new Queue<WorkspaceJobData>(EVAL_QUEUE_NAME, { connection, defaultJobOptions: { ...defaultJobOptions, attempts: 1 } });
   }
 
   async enqueue(data: Omit<RunJobData, 'enqueuedAt'>, opts: { priority?: number } = {}): Promise<void> {
@@ -62,9 +75,12 @@ export class RunQueue {
     );
   }
 
-  /** Enqueues a code-workspace task (clone/sync or a user terminal command). */
+  /** Enqueues a code-workspace task (clone/sync, terminal command) or a Model Lab evaluation. */
   async enqueueWorkspaceJob(data: WorkspaceJobData extends infer T ? (T extends { enqueuedAt: number } ? Omit<T, 'enqueuedAt'> : never) : never, jobId: string): Promise<void> {
-    await (this.queue as unknown as Queue<WorkspaceJobData>).add(data.kind, { ...data, enqueuedAt: Date.now() } as WorkspaceJobData, { jobId, priority: 1 });
+    const queue = data.kind === 'model.evaluate' ? this.evalQueue : this.workspaceQueue;
+    // A user's own terminal command is more urgent than a background sync.
+    const priority = data.kind === 'workspace.command' ? 1 : 5;
+    await queue.add(data.kind, { ...data, enqueuedAt: Date.now() } as WorkspaceJobData, { jobId, priority });
   }
 
   /** Removes a job that has not started yet. Returns true if it was removed. */
@@ -79,10 +95,23 @@ export class RunQueue {
     return false;
   }
 
-  /** Backlog size used for admission control / backpressure. */
+  /** Run backlog used for admission control / backpressure. */
   async backlog(): Promise<number> {
-    const counts = await this.queue.getJobCounts('waiting', 'delayed', 'prioritized');
-    return (counts.waiting ?? 0) + (counts.delayed ?? 0) + (counts.prioritized ?? 0);
+    return waitingCount(this.queue);
+  }
+
+  /** Waiting and active jobs per queue (capacity planning, autoscaling signals). */
+  async stats(): Promise<Record<QueueKind, { waiting: number; active: number }>> {
+    const entries = await Promise.all(
+      (
+        [
+          ['runs', this.queue],
+          ['workspace', this.workspaceQueue],
+          ['evals', this.evalQueue],
+        ] as const
+      ).map(async ([kind, q]) => [kind, { waiting: await waitingCount(q), active: (await q.getJobCounts('active')).active ?? 0 }] as const),
+    );
+    return Object.fromEntries(entries) as Record<QueueKind, { waiting: number; active: number }>;
   }
 
   async isActive(runId: string): Promise<boolean> {
@@ -92,7 +121,12 @@ export class RunQueue {
     return state === 'active' || state === 'waiting' || state === 'delayed' || state === 'prioritized';
   }
 
-  close(): Promise<void> {
-    return this.queue.close();
+  async close(): Promise<void> {
+    await Promise.all([this.queue.close(), this.workspaceQueue.close(), this.evalQueue.close()]);
   }
+}
+
+async function waitingCount(q: Queue): Promise<number> {
+  const counts = await q.getJobCounts('waiting', 'delayed', 'prioritized');
+  return (counts.waiting ?? 0) + (counts.delayed ?? 0) + (counts.prioritized ?? 0);
 }

@@ -1,5 +1,5 @@
 import type { Pool } from '@neuroflow/db';
-import { RunControlListener, type Redis } from '@neuroflow/bus';
+import { RunControlListener, UsageMeter, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
 import { agentsRepo, cognitiveRepo, executionRepo, runsRepo } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
@@ -45,6 +45,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   await control.start();
 
   const memory = new PgMemoryService(pool);
+  const usage = new UsageMeter(opts.redis);
   const code = new CodeWorkspaceService({
     pool,
     redis: opts.redis,
@@ -74,7 +75,11 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     setPlan: (runId, plan) => runsRepo.setPlan(pool, runId, plan),
     startAgent: (i) => executionRepo.startAgent(pool, i),
     finishAgent: (id, i) => executionRepo.finishAgent(pool, id, i),
-    recordModelCall: (i) => executionRepo.recordModelCall(pool, i),
+    recordModelCall: async (i) => {
+      await executionRepo.recordModelCall(pool, i);
+      // Daily token metering per workspace (plan quotas now, billing later).
+      if (i.workspaceId && i.usage?.totalTokens) await usage.addTokens(i.workspaceId, i.usage.totalTokens).catch(() => {});
+    },
     recordEvaluation: (i) => executionRepo.recordEvaluation(pool, i),
   };
 

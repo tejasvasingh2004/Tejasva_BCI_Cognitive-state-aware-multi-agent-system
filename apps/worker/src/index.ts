@@ -3,3 +3,4 @@ export { createWorkerRuntime, type WorkerRuntime } from './runtime';
 export { purgeExpiredMemories, reconcileRuns } from './reconciler';
 export { refreshSummary } from './processor';
 export { processWorkspaceJob } from './workspace-jobs';
+export { startQueueWorkers, type QueueWorkersOptions } from './workers';
