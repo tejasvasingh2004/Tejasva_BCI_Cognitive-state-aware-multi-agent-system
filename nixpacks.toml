@@ -1,0 +1,12 @@
+# Railway uses Nixpacks to build. This config ensures it uses pnpm (not npm).
+[phases.setup]
+nixPkgs = ["nodejs_22", "corepack"]
+
+[phases.install]
+cmds = ["corepack enable && corepack prepare pnpm@9.15.4 --activate && pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm build"]
+
+[start]
+cmd = "node apps/api/dist/main.js"

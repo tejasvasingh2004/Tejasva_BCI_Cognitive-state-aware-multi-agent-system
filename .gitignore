@@ -73,3 +73,19 @@ workload_classifier/plots/preprocessing/
 workload_classifier/plots/features/
 workload_classifier/plots/optimization/
 workload_classifier/plots/evaluation/
+
+# NeuroFlow monorepo
+.turbo/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# local dev logs
+.api-dev.log
+.worker-dev.log
+
+# local env backups
+.env.*.bak
+
+# code workspaces (checkouts, sandbox caches)
+.data/

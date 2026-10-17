@@ -1,0 +1,485 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plus, ScrollText, Sun, Trash2 } from 'lucide-react';
+import type { AgentSpec } from '@neuroflow/contracts';
+import { api, ApiRequestError } from '@/lib/api';
+import { cn, relativeTime } from '@/lib/utils';
+import { keys, useAgents, useApiKeys, useAudit, useSession, useSettings, useTools } from '@/hooks/queries';
+import { useUi } from '@/stores/ui';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+
+type Tab = 'general' | 'workspace' | 'agents' | 'keys' | 'audit';
+
+const input =
+  'w-full rounded-2xl border border-line bg-surface/80 px-3.5 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-accent/50';
+
+export function SettingsDialog() {
+  const open = useUi((s) => s.settingsOpen);
+  const setOpen = useUi((s) => s.setSettingsOpen);
+  const { data: me } = useSession();
+  const isAdmin = Boolean(me?.scopes.includes('admin'));
+  const [tab, setTab] = useState<Tab>('general');
+
+  const tabs: Array<{ id: Tab; label: string; icon: typeof Bell; admin?: boolean }> = [
+    { id: 'general', label: 'General', icon: Sun },
+    { id: 'workspace', label: 'Workspace', icon: Building2 },
+    { id: 'agents', label: 'Agents', icon: Bot },
+    { id: 'keys', label: 'API keys', icon: KeyRound },
+    { id: 'audit', label: 'Audit log', icon: ScrollText, admin: true },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen} title="Settings" className="w-[min(860px,calc(100vw-32px))]">
+      <div className="flex min-h-[460px] flex-col gap-4 md:flex-row" data-testid="settings">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto md:w-44 md:flex-col" aria-label="Settings sections">
+          {tabs
+            .filter((t) => !t.admin || isAdmin)
+            .map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  'flex items-center gap-2.5 whitespace-nowrap rounded-2xl px-3 py-2 text-sm transition',
+                  tab === t.id ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:bg-surface/60 hover:text-ink',
+                )}
+              >
+                <t.icon className={cn('size-4', tab === t.id ? 'text-accent' : 'text-faint')} />
+                {t.label}
+              </button>
+            ))}
+        </nav>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
+          {tab === 'general' && <GeneralTab authMode={me?.authMode} />}
+          {tab === 'workspace' && <WorkspaceTab />}
+          {tab === 'agents' && <AgentsTab />}
+          {tab === 'keys' && <ApiKeysTab />}
+          {tab === 'audit' && isAdmin && <AuditTab />}
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <section className="mb-6">
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
+      {description && <p className="mt-0.5 text-xs leading-5 text-muted">{description}</p>}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function GeneralTab({ authMode }: { authMode?: 'dev' | 'production' }) {
+  const theme = useUi((s) => s.theme);
+  const setTheme = useUi((s) => s.setTheme);
+  const qc = useQueryClient();
+  const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'denied'));
+  const options = [
+    { id: 'light' as const, label: 'Light', icon: Sun },
+    { id: 'dark' as const, label: 'Dark', icon: Moon },
+    { id: 'system' as const, label: 'System', icon: Monitor },
+  ];
+  return (
+    <>
+      <Section title="Appearance">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              role="radio"
+              aria-checked={theme === o.id}
+              onClick={() => setTheme(o.id)}
+              className={cn(
+                'flex flex-col items-center gap-2 rounded-2xl border p-4 text-sm transition',
+                theme === o.id ? 'border-accent/40 bg-violet-soft text-ink' : 'border-line bg-surface/50 text-muted hover:text-ink',
+              )}
+            >
+              <o.icon className="size-5" />
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section
+        title="Desktop notifications"
+        description="Get notified when a long task finishes while NeuroFlow is in the background. In Cognitive Mode, notifications are reduced when you are busy."
+      >
+        {permission === 'granted' ? (
+          <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+            <Check className="size-4" /> Enabled
+          </p>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={permission === 'denied'}
+            onClick={() => void Notification.requestPermission().then(setPermission)}
+          >
+            <Bell className="size-3.5" /> {permission === 'denied' ? 'Blocked by the browser' : 'Enable notifications'}
+          </Button>
+        )}
+      </Section>
+      {authMode === 'production' && (
+        <Section title="Account">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void api.logout().then(() => {
+                qc.clear();
+                window.location.assign('/');
+              })
+            }
+          >
+            <LogOut className="size-3.5" /> Sign out
+          </Button>
+        </Section>
+      )}
+    </>
+  );
+}
+
+const RETENTION = [
+  { value: null, label: 'Keep until deleted' },
+  { value: 30, label: '30 days' },
+  { value: 90, label: '90 days' },
+  { value: 180, label: '180 days' },
+  { value: 365, label: '1 year' },
+];
+
+function WorkspaceTab() {
+  const { data } = useSettings();
+  const qc = useQueryClient();
+  const [instructions, setInstructions] = useState('');
+  const [retention, setRetention] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (data) {
+      setInstructions(data.settings.instructions);
+      setRetention(data.settings.memoryRetentionDays);
+    }
+  }, [data]);
+  const canEdit = data?.canEdit ?? false;
+
+  const save = async () => {
+    setError(null);
+    try {
+      const res = await api.updateSettings({ instructions, memoryRetentionDays: retention });
+      qc.setQueryData(keys.settings, res);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Could not save settings');
+    }
+  };
+
+  return (
+    <>
+      <Section title="Workspace instructions" description="Included (bounded) in every task in this workspace — e.g. tone, terminology, standards.">
+        <textarea
+          className={cn(input, 'min-h-32 resize-y leading-6')}
+          maxLength={4000}
+          disabled={!canEdit}
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder="Always answer in British English. Our product is called Orchid."
+          data-testid="workspace-instructions"
+        />
+      </Section>
+      <Section title="Memory retention" description="Memories older than this are forgotten automatically. Changes apply to existing memories.">
+        <select
+          className={cn(input, 'w-auto rounded-full')}
+          disabled={!canEdit}
+          value={retention ?? ''}
+          onChange={(e) => setRetention(e.target.value ? Number(e.target.value) : null)}
+        >
+          {RETENTION.map((r) => (
+            <option key={r.label} value={r.value ?? ''}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </Section>
+      {canEdit ? (
+        <div className="flex items-center gap-3">
+          <Button variant="primary" size="sm" onClick={() => void save()}>
+            Save changes
+          </Button>
+          {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved</span>}
+          {error && <span className="text-xs text-rose-500">{error}</span>}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">Only workspace admins can change these settings.</p>
+      )}
+    </>
+  );
+}
+
+const emptyAgent = (): Omit<AgentSpec, 'builtin'> => ({
+  id: '',
+  name: '',
+  description: '',
+  instructions: '',
+  capabilities: [],
+  tools: [],
+  modelRole: 'agent',
+  maxIterations: 4,
+});
+
+function AgentsTab() {
+  const { data } = useAgents();
+  const { data: tools = [] } = useTools();
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<Omit<AgentSpec, 'builtin'> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canEdit = data?.canEdit ?? false;
+
+  const save = async () => {
+    if (!draft) return;
+    setError(null);
+    try {
+      await api.saveAgent(draft);
+      await qc.invalidateQueries({ queryKey: keys.agents });
+      setDraft(null);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Could not save the agent');
+    }
+  };
+
+  if (draft) {
+    const set = (patch: Partial<typeof draft>) => setDraft({ ...draft, ...patch });
+    return (
+      <Section title={draft.id && data?.agents.some((a) => a.id === draft.id) ? `Edit ${draft.name}` : 'New agent'}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input className={input} placeholder="id (e.g. code-reviewer)" value={draft.id} onChange={(e) => set({ id: e.target.value.toLowerCase() })} />
+          <input className={input} placeholder="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+        </div>
+        <input className={cn(input, 'mt-3')} placeholder="What it is good at (shown to the supervisor)" value={draft.description} onChange={(e) => set({ description: e.target.value })} />
+        <textarea className={cn(input, 'mt-3 min-h-28 leading-6')} placeholder="Instructions" value={draft.instructions} onChange={(e) => set({ instructions: e.target.value })} />
+        <input
+          className={cn(input, 'mt-3')}
+          placeholder="Capabilities, comma separated"
+          value={draft.capabilities.join(', ')}
+          onChange={(e) => set({ capabilities: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tools.map((t) => {
+            const on = draft.tools.includes(t.name);
+            return (
+              <button
+                key={t.name}
+                onClick={() => set({ tools: on ? draft.tools.filter((x) => x !== t.name) : [...draft.tools, t.name] })}
+                className={cn('rounded-full border px-3 py-1 text-xs', on ? 'border-accent/40 bg-violet-soft text-ink' : 'border-line text-muted')}
+              >
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <select className={input} value={draft.modelRole} onChange={(e) => set({ modelRole: e.target.value as AgentSpec['modelRole'] })}>
+            <option value="agent">General model</option>
+            <option value="research">Research model</option>
+            <option value="analysis">Analysis model</option>
+            <option value="synthesis">Writing model</option>
+          </select>
+          <select
+            className={input}
+            value={draft.outputContract?.format ?? ''}
+            onChange={(e) =>
+              set({ outputContract: e.target.value ? { format: e.target.value as 'markdown' | 'text' | 'json', ...(draft.outputContract?.description ? { description: draft.outputContract.description } : {}) } : undefined })
+            }
+          >
+            <option value="">Any output</option>
+            <option value="markdown">Markdown</option>
+            <option value="text">Plain text</option>
+            <option value="json">JSON</option>
+          </select>
+          <input
+            className={input}
+            type="number"
+            min={1}
+            max={10}
+            value={draft.maxIterations}
+            onChange={(e) => set({ maxIterations: Math.max(1, Math.min(10, Number(e.target.value) || 1)) })}
+            aria-label="Max iterations"
+          />
+        </div>
+        {error && <p className="mt-3 text-xs text-rose-500">{error}</p>}
+        <div className="mt-4 flex gap-2">
+          <Button variant="primary" size="sm" onClick={() => void save()} disabled={!draft.id || !draft.name || !draft.instructions}>
+            Save agent
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
+            Cancel
+          </Button>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section
+      title="Agents"
+      description="Agents are roles, not models — NeuroFlow picks the model per run. Choose an agent in the composer, or let the supervisor delegate to it."
+    >
+      {canEdit && (
+        <Button variant="outline" size="sm" className="mb-3" onClick={() => setDraft(emptyAgent())}>
+          <Plus className="size-3.5" /> New agent
+        </Button>
+      )}
+      <div className="space-y-2">
+        {data?.agents.map((a) => (
+          <div key={a.id} className="flex items-start gap-3 rounded-2xl border border-line bg-surface/50 p-3">
+            <Bot className="mt-0.5 size-4 text-accent" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-ink">
+                {a.name}
+                <span className="rounded-full bg-violet-soft px-2 text-[10px] font-normal text-accent">{a.builtin ? 'built-in' : 'custom'}</span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted">{a.description}</p>
+              {a.capabilities.length > 0 && <p className="mt-1 text-[11px] text-faint">{a.capabilities.join(' · ')}</p>}
+            </div>
+            {!a.builtin && canEdit && (
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setDraft({ ...a })}>
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Delete ${a.name}`}
+                  onClick={() => void api.deleteAgent(a.id).then(() => qc.invalidateQueries({ queryKey: keys.agents }))}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+const KEY_SCOPES = [
+  { id: 'runs:read', label: 'Read runs' },
+  { id: 'runs:write', label: 'Start runs' },
+  { id: 'tools:execute', label: 'Use tools' },
+  { id: 'memory:read', label: 'Read memory' },
+  { id: 'memory:write', label: 'Write memory' },
+];
+
+function ApiKeysTab() {
+  const { data: apiKeys = [] } = useApiKeys();
+  const { data: me } = useSession();
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [scopes, setScopes] = useState<string[]>(['runs:read', 'runs:write', 'tools:execute', 'memory:read']);
+  const [created, setCreated] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const available = KEY_SCOPES.filter((s) => me?.scopes.includes(s.id));
+
+  const create = async () => {
+    setError(null);
+    try {
+      const { apiKey } = await api.createApiKey(name.trim(), scopes.filter((s) => me?.scopes.includes(s)));
+      setCreated(apiKey.key);
+      setName('');
+      await qc.invalidateQueries({ queryKey: keys.apiKeys });
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Could not create the key');
+    }
+  };
+
+  return (
+    <>
+      <Section title="Create an API key" description="Use keys with the NeuroFlow API or any OpenAI-compatible client (base URL /v1).">
+        <div className="flex gap-2">
+          <input className={input} placeholder="Key name (e.g. CI pipeline)" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button variant="primary" size="md" disabled={!name.trim()} onClick={() => void create()}>
+            Create
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {available.map((s) => {
+            const on = scopes.includes(s.id);
+            return (
+              <button
+                key={s.id}
+                onClick={() => setScopes(on ? scopes.filter((x) => x !== s.id) : [...scopes, s.id])}
+                className={cn('rounded-full border px-3 py-1 text-xs', on ? 'border-accent/40 bg-violet-soft text-ink' : 'border-line text-muted')}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+        {error && <p className="mt-2 text-xs text-rose-500">{error}</p>}
+        {created && (
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-mint-soft p-3 dark:border-emerald-900" data-testid="created-key">
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">Copy this key now — it will not be shown again.</p>
+            <div className="mt-2 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-xl bg-surface px-3 py-2 text-xs text-ink">{created}</code>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void navigator.clipboard.writeText(created).then(() => setCopied(true))}
+              >
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Section>
+      <Section title="Your keys">
+        {apiKeys.length === 0 && <p className="text-xs text-muted">No keys yet.</p>}
+        <div className="space-y-2">
+          {apiKeys.map((k) => (
+            <div key={k.id} className={cn('flex items-center gap-3 rounded-2xl border border-line bg-surface/50 p-3', k.revokedAt && 'opacity-50')}>
+              <KeyRound className="size-4 text-faint" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-ink">
+                  {k.name} <code className="ml-1 text-xs text-faint">{k.prefix}…</code>
+                </div>
+                <div className="text-[11px] text-faint">
+                  {k.scopes.join(', ')} · created {relativeTime(k.createdAt)}
+                  {k.lastUsedAt ? ` · used ${relativeTime(k.lastUsedAt)}` : ' · never used'}
+                  {k.revokedAt ? ' · revoked' : ''}
+                </div>
+              </div>
+              {!k.revokedAt && (
+                <Button variant="ghost" size="sm" onClick={() => void api.revokeApiKey(k.id).then(() => qc.invalidateQueries({ queryKey: keys.apiKeys }))}>
+                  Revoke
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+function AuditTab() {
+  const { data: events = [], isLoading } = useAudit();
+  return (
+    <Section title="Audit log" description="Security-relevant actions in this workspace. Never contains secrets or message content.">
+      {isLoading && <p className="text-xs text-muted">Loading…</p>}
+      <ol className="space-y-1.5" data-testid="audit-log">
+        {events.map((e) => (
+          <li key={e.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 text-xs hover:bg-surface/60">
+            <span className={cn('size-1.5 shrink-0 rounded-full', e.outcome === 'success' ? 'bg-emerald-400' : 'bg-rose-400')} />
+            <code className="text-ink">{e.action}</code>
+            {e.targetType && <span className="truncate text-faint">{e.targetType}{e.targetId ? ` ${e.targetId.slice(0, 8)}` : ''}</span>}
+            <span className="ml-auto shrink-0 text-faint">{relativeTime(e.createdAt)}</span>
+          </li>
+        ))}
+      </ol>
+    </Section>
+  );
+}

@@ -1,0 +1,507 @@
+import { randomUUID } from 'node:crypto';
+import {
+  addUsage,
+  type ChatMessage,
+  type ExecutionPlan,
+  type ModelRole,
+  type ResponseFormat,
+  type RunRequest,
+  type ToolCall,
+  type Usage,
+} from '@neuroflow/contracts';
+import { ModelError, type FinishReason, type ModelResponse, type ToolChoice } from '@neuroflow/models';
+import { runtimeMetrics, withSpan } from '@neuroflow/observability';
+import { toolResultContent, type EmitFn } from '@neuroflow/tools';
+import { outputContractInstructions, type AgentCatalog, type AgentDefinition } from './agents/definitions';
+import { buildContext, estimateTokens, type CodeContext } from './context';
+import { BudgetExceededError, RunCancelledError } from './errors';
+import type { OrchestratorDeps, RunIdentity } from './types';
+
+/**
+ * Tracks per-run resource budgets so autonomous loops cannot run away. Wall-clock time is also
+ * enforced asynchronously by the orchestrator (an abort that interrupts in-flight calls).
+ */
+export class RunBudget {
+  private modelCalls = 0;
+  private toolCalls = 0;
+  private cost = 0;
+  private readonly deadline: number;
+
+  constructor(private readonly plan: ExecutionPlan) {
+    this.deadline = Date.now() + plan.budgets.maxDurationMs;
+  }
+
+  consumeModelCall() {
+    if (++this.modelCalls > this.plan.budgets.maxModelCalls) throw new BudgetExceededError('model call');
+    if (Date.now() > this.deadline) throw new BudgetExceededError('time');
+    const maxCost = this.plan.budgets.maxCostUsd;
+    if (maxCost !== undefined && this.cost >= maxCost) throw new BudgetExceededError('cost');
+  }
+
+  /** Run-wide tool-call budget (agents are additionally bounded by the tool policy). */
+  tryConsumeToolCall(): boolean {
+    if (this.toolCalls >= this.plan.budgets.maxToolCalls) return false;
+    this.toolCalls++;
+    return true;
+  }
+
+  addCost(usage: Usage | undefined) {
+    if (usage?.costUsd !== undefined) this.cost += usage.costUsd;
+  }
+
+  get used() {
+    return this.modelCalls;
+  }
+
+  get toolCallsUsed() {
+    return this.toolCalls;
+  }
+
+  get costUsd() {
+    return Math.round(this.cost * 1e6) / 1e6;
+  }
+}
+
+/** Record of what the run did, used by trajectory/policy evaluation. Never contains arguments. */
+export type TrajectoryStep = {
+  tool: string;
+  status: string;
+  errorCode?: string;
+  /** Normalised name+arguments key, used only to detect repeated identical calls. */
+  argsKey: string;
+};
+
+/**
+ * The single path to the user-visible answer. What is streamed is exactly what is persisted.
+ */
+export class ResponseChannel {
+  private buffer = '';
+
+  constructor(private readonly emit: EmitFn) {}
+
+  write(text: string) {
+    if (!text) return;
+    this.buffer += text;
+    this.emit('response.delta', { text });
+  }
+
+  reset(reason: string) {
+    this.buffer = '';
+    this.emit('response.reset', { reason });
+  }
+
+  get text() {
+    return this.buffer;
+  }
+}
+
+export type RunContext = {
+  run: RunIdentity;
+  request: Omit<RunRequest, 'messages'>;
+  plan: ExecutionPlan;
+  history: ChatMessage[];
+  scopes: readonly string[];
+  signal: AbortSignal;
+  emit: EmitFn;
+  deps: OrchestratorDeps;
+  agents: AgentCatalog;
+  budget: RunBudget;
+  response: ResponseChannel;
+  temperature?: number;
+  maxOutputTokens?: number;
+  usage: { total?: Usage };
+  /** Latest finish reason of a user-facing generation (used by evaluation). */
+  lastFinishReason?: FinishReason;
+  toolFailures: number;
+  stage: string;
+  /** Clients that cannot retract streamed text (OpenAI protocol) need append-only output. */
+  appendOnly: boolean;
+  trajectory: TrajectoryStep[];
+  /** True when a tool-call limit cut an agent loop short. */
+  toolLimitHit: boolean;
+  /** Bounded extra context sources (workspace instructions, conversation summary). */
+  extras: { workspaceInstructions?: string; summary?: string; code?: CodeContext };
+  /** Observed code-run activity (from real tool events), used by repair and evaluation. */
+  code?: CodeRunState;
+  /** Client-defined tool calls returned to the API client (direct strategy only). */
+  clientToolCalls?: ToolCall[];
+};
+
+export type CodeRunState = {
+  filesModified: number;
+  /** File modifications since the last test run (drives the automatic validation step). */
+  modifiedSinceTest: number;
+  testsRun: number;
+  lastTestPassed: boolean | null;
+  patchesApplied: number;
+  patchesRejected: number;
+  patchesInvalid: number;
+  repairIterations: number;
+};
+
+export function newCodeRunState(): CodeRunState {
+  return { filesModified: 0, modifiedSinceTest: 0, testsRun: 0, lastTestPassed: null, patchesApplied: 0, patchesRejected: 0, patchesInvalid: 0, repairIterations: 0 };
+}
+
+/** Updates code-run state from real tool events (never from model claims). */
+export function observeCodeEvent(s: CodeRunState, type: string, data: unknown) {
+  const d = data as Record<string, unknown>;
+  if (type === 'file.modified') {
+    s.filesModified++;
+    s.modifiedSinceTest++;
+  } else if (type === 'test.completed') {
+    s.testsRun++;
+    s.lastTestPassed = Boolean(d.passed);
+    s.modifiedSinceTest = 0;
+  } else if (type === 'patch.rejected') s.patchesRejected++;
+  else if (type === 'patch.generated' && d.valid === false) s.patchesInvalid++;
+  else if (type === 'patch.approved') s.patchesApplied++;
+}
+
+/** Output requirements for the user-facing generation: request format + agent contract. */
+export function outputInstructions(ctx: RunContext, agent?: AgentDefinition): string | undefined {
+  const parts: string[] = [];
+  const fmt = ctx.request.responseFormat;
+  if (fmt === 'json') parts.push('Respond with a single valid JSON value and nothing else (no code fences, no prose).');
+  else if (fmt && typeof fmt === 'object') {
+    parts.push(
+      'Respond with a single JSON value that validates against this JSON Schema, and nothing else:\n' +
+        JSON.stringify(fmt.schema).slice(0, 4000),
+    );
+  }
+  const contract = outputContractInstructions(agent?.outputContract);
+  if (contract && !fmt) parts.push(contract);
+  return parts.length ? parts.join('\n') : undefined;
+}
+
+export function wantsJson(format: ResponseFormat | undefined): boolean {
+  return format === 'json' || (typeof format === 'object' && format?.type === 'json_schema');
+}
+
+export function modelFor(ctx: RunContext, role: ModelRole): { model: string; fallbacks: string[] } {
+  const a =
+    ctx.plan.models.find((m) => m.role === role) ??
+    ctx.plan.models.find((m) => m.role === 'agent') ??
+    ctx.plan.models[0]!;
+  return { model: a.model, fallbacks: a.fallbacks };
+}
+
+/** Throws the reason a run's signal was aborted: a budget limit or user cancellation. */
+export function throwIfCancelled(signal: AbortSignal) {
+  if (!signal.aborted) return;
+  if (signal.reason instanceof BudgetExceededError) throw signal.reason;
+  throw new RunCancelledError();
+}
+
+export type ModelCallOptions = {
+  role: ModelRole;
+  messages: ChatMessage[];
+  agentExecutionId?: string;
+  tools?: ReturnType<OrchestratorDeps['tools']['registry']['specs']>;
+  toolChoice?: ToolChoice;
+  /** Stream text deltas to the user as they arrive. */
+  streamToUser: boolean;
+  responseFormat?: 'text' | 'json';
+  maxOutputTokens?: number;
+};
+
+/** One observable model call through the Model Gateway. */
+export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promise<ModelResponse> {
+  throwIfCancelled(ctx.signal);
+  ctx.budget.consumeModelCall();
+  const { model, fallbacks } = modelFor(ctx, opts.role);
+  const callId = randomUUID();
+  const started = Date.now();
+  let current = model;
+  let announced = false;
+
+  return withSpan('model.call', { 'model.role': opts.role, 'model.requested': model }, async (span) => {
+    try {
+      let response: ModelResponse | undefined;
+      for await (const ev of ctx.deps.gateway.stream({
+        model,
+        fallbacks,
+        messages: opts.messages,
+        tools: opts.tools?.length ? opts.tools : undefined,
+        toolChoice: opts.toolChoice,
+        reasoningBudget: ctx.plan.reasoningBudget,
+        temperature: ctx.temperature,
+        maxOutputTokens: opts.maxOutputTokens ?? ctx.maxOutputTokens,
+        responseFormat: opts.responseFormat,
+        signal: ctx.signal,
+      })) {
+        switch (ev.type) {
+          case 'attempt':
+            current = ev.ref;
+            if (!announced) {
+              announced = true;
+              ctx.emit('model.started', {
+                callId,
+                role: opts.role,
+                provider: ev.provider,
+                model: ev.ref,
+                ...(opts.agentExecutionId ? { agentExecutionId: opts.agentExecutionId } : {}),
+              });
+            }
+            break;
+          case 'retry':
+            runtimeMetrics.modelRetries.add(1, { model: ev.ref });
+            ctx.emit('model.retry', { callId, attempt: ev.attempt, reason: ev.reason, delayMs: ev.delayMs });
+            break;
+          case 'throttled':
+            ctx.emit('model.throttled', { callId, provider: ev.provider, waitMs: ev.waitMs, reason: ev.reason });
+            break;
+          case 'fallback':
+            runtimeMetrics.modelFallbacks.add(1, { from: ev.from, to: ev.to });
+            ctx.emit('model.fallback', { callId, from: ev.from, to: ev.to, reason: ev.reason });
+            break;
+          case 'delta':
+            if (opts.streamToUser) ctx.response.write(ev.text);
+            break;
+          case 'done':
+            response = ev.response;
+            break;
+        }
+      }
+      if (!response) throw new ModelError('provider_error', 'Model returned no response');
+
+      ctx.usage.total = addUsage(ctx.usage.total, response.usage);
+      ctx.budget.addCost(response.usage);
+      span.setAttributes({ 'model.provider': response.provider, 'model.ref': response.ref });
+      runtimeMetrics.modelLatency.record(response.latencyMs, { model: response.ref, role: opts.role });
+      if (response.firstTokenMs !== undefined) runtimeMetrics.modelFirstToken.record(response.firstTokenMs, { model: response.ref });
+      if (response.usage) runtimeMetrics.tokens.add(response.usage.totalTokens, { model: response.ref });
+
+      if (!announced) {
+        ctx.emit('model.started', { callId, role: opts.role, provider: response.provider, model: response.ref });
+      }
+      ctx.emit('model.completed', {
+        callId,
+        provider: response.provider,
+        model: response.ref,
+        status: 'completed',
+        latencyMs: response.latencyMs,
+        attempts: response.attempts,
+        finishReason: response.finishReason,
+        ...(response.firstTokenMs !== undefined ? { firstTokenMs: response.firstTokenMs } : {}),
+        ...(response.usage ? { usage: response.usage } : {}),
+      });
+      await ctx.deps.store.recordModelCall({
+        runId: ctx.run.id,
+        workspaceId: ctx.run.workspaceId,
+        agentExecutionId: opts.agentExecutionId,
+        role: opts.role,
+        provider: response.provider,
+        model: response.ref,
+        status: 'completed',
+        latencyMs: response.latencyMs,
+        firstTokenMs: response.firstTokenMs,
+        usage: response.usage,
+        attempts: response.attempts,
+        fallbackFrom: response.fallbackFrom,
+        finishReason: response.finishReason,
+      });
+      if (opts.streamToUser) ctx.lastFinishReason = response.finishReason;
+      return response;
+    } catch (err) {
+      const cancelled = ctx.signal.aborted || (err instanceof ModelError && err.code === 'cancelled');
+      const status = cancelled ? 'cancelled' : 'failed';
+      const message = err instanceof Error ? err.message : String(err);
+      runtimeMetrics.modelErrors.add(1, { model: current, code: err instanceof ModelError ? err.code : 'unknown' });
+      if (!announced) {
+        ctx.emit('model.started', { callId, role: opts.role, provider: current.split('/')[0]!, model: current });
+      }
+      ctx.emit('model.completed', {
+        callId,
+        provider: current.split('/')[0]!,
+        model: current,
+        status,
+        latencyMs: Date.now() - started,
+        attempts: 1,
+        error: cancelled ? 'cancelled' : err instanceof ModelError ? err.code : 'error',
+      });
+      await ctx.deps.store
+        .recordModelCall({
+          runId: ctx.run.id,
+          workspaceId: ctx.run.workspaceId,
+          agentExecutionId: opts.agentExecutionId,
+          role: opts.role,
+          provider: current.split('/')[0]!,
+          model: current,
+          status,
+          latencyMs: Date.now() - started,
+          attempts: 1,
+          error: message.slice(0, 500),
+        })
+        .catch(() => {});
+      if (cancelled) {
+        throwIfCancelled(ctx.signal);
+        throw new RunCancelledError();
+      }
+      throw err;
+    }
+  });
+}
+
+export type AgentRunOptions = {
+  agent: AgentDefinition;
+  /** Replace the user's message with a delegated task (multi-agent). */
+  task?: string;
+  /** Notes from previous stages / other agents. */
+  notes?: ChatMessage[];
+  streamToUser: boolean;
+  /** Overrides the agent's model role (e.g. the synthesiser in a supervisor run). */
+  role?: ModelRole;
+};
+
+export type AgentRunResult = { text: string; agentExecutionId: string; iterations: number };
+
+/**
+ * Agent loop: model → (tool calls → validated execution → results) → model … → answer.
+ * Bounded by the agent's iteration limit, the run's tool-call policy and the run budget.
+ */
+export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<AgentRunResult> {
+  throwIfCancelled(ctx.signal);
+  const role = opts.role ?? opts.agent.modelRole;
+  const { model } = modelFor(ctx, role);
+  const agentExecutionId = await ctx.deps.store.startAgent({
+    runId: ctx.run.id,
+    agentId: opts.agent.id,
+    role,
+    model,
+  });
+  const started = Date.now();
+  ctx.stage = `agent:${opts.agent.id}`;
+  ctx.emit('agent.started', { agentExecutionId, agentId: opts.agent.id, name: opts.agent.name, role, model });
+
+  const allowed =
+    opts.agent.tools === '*'
+      ? ctx.plan.toolPolicy.allowed
+      : ctx.plan.toolPolicy.allowed.filter((t) => (opts.agent.tools as string[]).includes(t));
+  const toolSpecs = ctx.deps.tools.registry.specs(allowed);
+  const toolSpecTokens = toolSpecs.length ? estimateTokens(JSON.stringify(toolSpecs)) : 0;
+  let compactedSoFar = 0;
+  const scratch: ChatMessage[] = [];
+  let toolCallsUsed = 0;
+  let iterations = 0;
+  let text = '';
+  // Output requirements apply to the generation the user sees (or an explicitly contracted agent).
+  const outputReq = opts.streamToUser || opts.agent.outputContract ? outputInstructions(ctx, opts.agent) : undefined;
+  const json = opts.streamToUser && wantsJson(ctx.request.responseFormat);
+
+  return withSpan('agent.run', { 'agent.id': opts.agent.id, 'agent.role': role }, async () => {
+    try {
+      while (true) {
+        iterations++;
+        const toolsLeft = toolSpecs.length > 0 && toolCallsUsed < ctx.plan.toolPolicy.maxToolCalls;
+        const lastIteration = iterations >= opts.agent.maxIterations;
+        // Tools withheld because a tool-call or iteration limit cut the loop short.
+        if (toolSpecs.length > 0 && (!toolsLeft || (lastIteration && iterations > 1))) ctx.toolLimitHit = true;
+        const { messages, report } = buildContext({
+          plan: ctx.plan,
+          instructions: opts.agent.instructions,
+          history: ctx.history,
+          taskMessages: opts.notes,
+          scratch,
+          ...(toolsLeft && !lastIteration ? { reserveTokens: toolSpecTokens } : {}),
+          ...(opts.task !== undefined ? { replaceTask: opts.task } : {}),
+          ...ctx.extras,
+          ...(outputReq ? { outputInstructions: outputReq } : {}),
+        });
+        // Re-emitted when the loop had to compact older tool results, so the inspector shows it.
+        if (iterations === 1 || (report.compactedToolResults ?? 0) > compactedSoFar) ctx.emit('context.built', { agentExecutionId, ...report });
+        compactedSoFar = Math.max(compactedSoFar, report.compactedToolResults ?? 0);
+
+        const res = await callModel(ctx, {
+          role,
+          messages,
+          agentExecutionId,
+          streamToUser: opts.streamToUser,
+          ...(json ? { responseFormat: 'json' as const } : {}),
+          ...(toolsLeft && !lastIteration ? { tools: toolSpecs, toolChoice: 'auto' as const } : {}),
+        });
+        text += res.text;
+
+        if (res.toolCalls.length === 0 || !toolsLeft || lastIteration) {
+          if (res.toolCalls.length > 0) ctx.toolLimitHit = true;
+          break;
+        }
+
+        scratch.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
+        const remaining = ctx.plan.toolPolicy.maxToolCalls - toolCallsUsed;
+        if (res.toolCalls.length > remaining) ctx.toolLimitHit = true;
+        for (const call of res.toolCalls.slice(0, remaining)) {
+          if (!ctx.budget.tryConsumeToolCall()) {
+            ctx.toolLimitHit = true;
+            break;
+          }
+          toolCallsUsed++;
+          ctx.stage = `tool:${call.name}`;
+          const result = await ctx.deps.tools.execute(call, {
+            runId: ctx.run.id,
+            workspaceId: ctx.run.workspaceId,
+            userId: ctx.run.userId,
+            scopes: ctx.scopes,
+            signal: ctx.signal,
+            emit: ctx.emit,
+            allowedTools: allowed,
+            agentExecutionId,
+            ...(ctx.request.workspaceContext ? { workspaceContext: ctx.request.workspaceContext } : {}),
+          });
+          if (result.status === 'cancelled') {
+            throwIfCancelled(ctx.signal);
+            throw new RunCancelledError();
+          }
+          if (result.status !== 'success') ctx.toolFailures++;
+          ctx.trajectory.push({
+            tool: call.name,
+            status: result.status,
+            argsKey: call.name + ':' + call.arguments.replace(/s+/g, ''),
+            ...(result.error ? { errorCode: result.error.code } : {}),
+          });
+          scratch.push({ role: 'tool', content: toolResultContent(result), toolCallId: call.id, name: call.name });
+        }
+        skipUnansweredCalls(res.toolCalls, scratch);
+        ctx.stage = `agent:${opts.agent.id}`;
+      }
+
+      await ctx.deps.store.finishAgent(agentExecutionId, { status: 'completed', iterations, output: text });
+      ctx.emit('agent.completed', {
+        agentExecutionId,
+        agentId: opts.agent.id,
+        status: 'completed',
+        durationMs: Date.now() - started,
+      });
+      return { text, agentExecutionId, iterations };
+    } catch (err) {
+      const cancelled = err instanceof RunCancelledError || ctx.signal.aborted;
+      const error = err instanceof Error ? err.message : String(err);
+      await ctx.deps.store
+        .finishAgent(agentExecutionId, { status: cancelled ? 'cancelled' : 'failed', iterations, output: text, error })
+        .catch(() => {});
+      ctx.emit('agent.completed', {
+        agentExecutionId,
+        agentId: opts.agent.id,
+        status: cancelled ? 'cancelled' : 'failed',
+        durationMs: Date.now() - started,
+        ...(cancelled ? {} : { error: 'Agent failed' }),
+      });
+      throw err;
+    }
+  });
+}
+
+/** Every tool call the model made must have a tool message, even if skipped by limits. */
+function skipUnansweredCalls(calls: ToolCall[], scratch: ChatMessage[]) {
+  const answered = new Set(scratch.filter((m) => m.role === 'tool').map((m) => m.toolCallId));
+  for (const c of calls) {
+    if (!answered.has(c.id)) {
+      scratch.push({
+        role: 'tool',
+        toolCallId: c.id,
+        name: c.name,
+        content: JSON.stringify({ status: 'error', error: { code: 'loop_limit', message: 'Tool call limit reached' } }),
+      });
+    }
+  }
+}

@@ -1,0 +1,275 @@
+@import 'tailwindcss';
+
+/*
+ * NeuroFlow site: icy sky canvas, clear frosted glass with cyan edges, cobalt depth and soft 3D objects.
+ * Depth is CSS 3D (perspective transforms driven by --px/--py pointer and --sy/--p scroll
+ * variables set by <Stage>), so the pre-rendered HTML is complete and text stays crisp.
+ */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --color-canvas: #edf3f9;
+  --color-panel: #f8fbfe;
+  --color-raised: #e3ecf5;
+  --color-line: #d5e1ee;
+  --color-ink: #13233a;
+  --color-ink-soft: #2c3e57;
+  --color-muted: #566880;
+  --color-faint: #8a9bb0;
+  --color-accent: #2f6bd8;
+  --color-accent-soft: #2357bb;
+  --color-sky: #a8cdf3;
+  --color-frost: #dceafa;
+  --color-mist: #cfdff0;
+  --color-mint: #23855a;
+  --color-rose: #c8433f;
+  --color-amber: #b77a0c;
+  --animate-caret: caret 1s steps(2) infinite;
+  --animate-fade-up: fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-in: fade-in 0.35s ease-out both;
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes caret {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+    background-image:
+      radial-gradient(60rem 40rem at 12% -10%, rgb(255 255 255 / 0.9), transparent 60%),
+      radial-gradient(50rem 34rem at 100% 10%, rgb(143 190 240 / 0.28), transparent 60%);
+    background-repeat: no-repeat;
+  }
+  ::selection {
+    background: rgb(47 107 216 / 0.22);
+  }
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, #13233a 0%, #1f3e72 42%, #2f6bd8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow {
+  box-shadow: 0 0 0 1px rgb(47 107 216 / 0.16), 0 30px 80px -30px rgb(47 107 216 / 0.45);
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(40 80 140 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(40 80 140 / 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%);
+}
+
+/* Frosted glass: the main surface of the site. */
+@utility glass {
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.78), rgb(246 250 255 / 0.42));
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.95),
+    inset 0 -1px 0 rgb(255 255 255 / 0.3),
+    0 1px 2px rgb(20 45 90 / 0.05),
+    0 30px 70px -32px rgb(30 70 140 / 0.32);
+}
+
+@utility glass-strong {
+  background: linear-gradient(150deg, rgb(255 255 255 / 0.62), rgb(243 248 255 / 0.3));
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 1),
+    inset 0 0 40px rgb(255 255 255 / 0.35),
+    0 50px 110px -40px rgb(30 70 140 / 0.42),
+    0 12px 30px -14px rgb(30 70 140 / 0.16);
+}
+
+@utility glow-cta {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    0 0 0 4px rgb(143 190 240 / 0.28),
+    0 14px 34px -10px rgb(47 107 216 / 0.6);
+}
+
+@layer components {
+  /* ---- Depth: pointer and scroll parallax, set by <Stage> ---- */
+  .stage {
+    --px: 0;
+    --py: 0;
+    --sy: 0;
+  }
+  .stage-enter {
+    --p: 1;
+  }
+  .depth {
+    transform: translate3d(
+      calc(var(--px) * var(--d, 0) * -1px),
+      calc((var(--py) * -1 - var(--sy) * 2.6) * var(--d, 0) * 1px),
+      0
+    );
+    will-change: transform;
+  }
+  .tilt3d {
+    transform: perspective(1100px) rotateX(calc(var(--rx0, 0deg) + var(--py) * -7deg)) rotateY(calc(var(--ry0, 0deg) + var(--px) * 9deg))
+      rotateZ(var(--rz0, 0deg));
+    transform-origin: center;
+  }
+  .screen3d {
+    transform: perspective(1800px) rotateX(calc((1 - var(--p)) * 28deg + var(--py) * -2deg)) rotateY(calc(var(--px) * 3deg))
+      scale(calc(0.88 + var(--p) * 0.12)) translateY(calc((1 - var(--p)) * 60px));
+    transform-origin: 50% 100%;
+    will-change: transform;
+  }
+
+  /* ---- Motion ---- */
+  .float {
+    animation: float var(--dur, 7s) ease-in-out var(--delay, 0s) infinite;
+  }
+  .assemble {
+    animation:
+      assemble 1.1s cubic-bezier(0.22, 1, 0.36, 1) var(--in, 0s) both,
+      float var(--dur, 7s) ease-in-out calc(var(--in, 0s) + 1.1s) infinite;
+  }
+  .sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(115deg, transparent 35%, rgb(255 255 255 / 0.65) 48%, transparent 60%);
+    background-size: 260% 100%;
+    animation: sheen 8s ease-in-out var(--delay, 0s) infinite;
+    pointer-events: none;
+  }
+  .marquee {
+    animation: marquee 38s linear infinite;
+  }
+  .marquee-wrap:hover .marquee {
+    animation-play-state: paused;
+  }
+  .orbit-chip {
+    offset-path: path('M 0 75 A 220 62 0 1 1 440 75 A 220 62 0 1 1 0 75');
+    offset-rotate: 0deg;
+    offset-anchor: center;
+    animation: orbit-path 26s linear calc(var(--i, 0) * -5.2s) infinite;
+  }
+  .draw {
+    stroke-dasharray: var(--len, 400);
+    stroke-dashoffset: var(--len, 400);
+    animation: draw 2.4s cubic-bezier(0.65, 0, 0.35, 1) var(--delay, 0.2s) forwards;
+  }
+  .seq > * {
+    animation: seq var(--cycle, 7s) ease-out calc(var(--i, 0) * 0.45s) infinite both;
+  }
+
+  /* ---- Objects ---- */
+  .sphere {
+    border-radius: 9999px;
+    background: radial-gradient(circle at 31% 27%, #fff 0, var(--s-hi) 13%, var(--s-mid) 50%, var(--s-lo) 100%);
+    box-shadow:
+      inset -14px -18px 32px rgb(30 70 140 / 0.2),
+      inset 8px 10px 18px rgb(255 255 255 / 0.55),
+      0 34px 60px -22px rgb(30 70 140 / 0.42);
+  }
+  .sphere-sky { --s-hi: #e8f2fe; --s-mid: #91bbee; --s-lo: #3f74c9; }
+  .sphere-ice { --s-hi: #ffffff; --s-mid: #e7eff8; --s-lo: #a7bdd5; }
+  .sphere-mist { --s-hi: #f2f7fc; --s-mid: #c2d5ea; --s-lo: #7d99ba; }
+  .sphere-cobalt { --s-hi: #cfe2ff; --s-mid: #4f86e0; --s-lo: #1b4ea6; }
+  .sphere-glass {
+    background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.25) 34%, rgb(214 234 255 / 0.18) 68%, rgb(90 140 210 / 0.4));
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    box-shadow:
+      inset -10px -14px 24px rgb(40 90 170 / 0.18),
+      0 30px 50px -24px rgb(30 70 140 / 0.35);
+  }
+  .floor {
+    background-image:
+      linear-gradient(to right, rgb(50 90 150 / 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(50 90 150 / 0.1) 1px, transparent 1px);
+    background-size: 64px 64px;
+    transform: perspective(700px) rotateX(64deg);
+    transform-origin: 50% 0%;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 55%, transparent 95%);
+  }
+
+  /* ---- Tilt card (hover) ---- */
+  .tilt {
+    --rx: 0deg;
+    --ry: 0deg;
+    transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry));
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+  }
+  .tilt[data-active] {
+    transition: transform 0.12s linear, box-shadow 0.4s ease;
+  }
+  .tilt-glare {
+    background: radial-gradient(500px circle at var(--gx, 50%) var(--gy, 50%), rgb(255 255 255 / 0.55), transparent 45%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .tilt[data-active] .tilt-glare {
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -14px; }
+}
+@keyframes assemble {
+  from { opacity: 0; scale: 0.82; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes sheen {
+  0%, 55% { background-position: 130% 0; }
+  100% { background-position: -130% 0; }
+}
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+/* Along the ellipse: 25% is the far side (smaller, behind the gateway), 75% the near side. */
+@keyframes orbit-path {
+  0% { offset-distance: 0%; scale: 0.92; z-index: 2; opacity: 1; }
+  25% { offset-distance: 25%; scale: 0.78; z-index: 1; opacity: 0.7; }
+  50% { offset-distance: 50%; scale: 0.92; z-index: 2; opacity: 1; }
+  75% { offset-distance: 75%; scale: 1.08; z-index: 3; opacity: 1; }
+  100% { offset-distance: 100%; scale: 0.92; z-index: 2; opacity: 1; }
+}
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+/* Children of .seq appear one after another (set --i per child), hold, then reset. */
+@keyframes seq {
+  0% { opacity: 0; transform: translateY(4px); }
+  7%, 78% { opacity: 1; transform: none; }
+  90%, 100% { opacity: 0; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .seq > * { animation: none !important; }
+  .orbit-chip { animation-duration: 26s !important; animation-iteration-count: infinite !important; animation-play-state: paused !important; }
+}

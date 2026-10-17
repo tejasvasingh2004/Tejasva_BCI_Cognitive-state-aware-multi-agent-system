@@ -1,0 +1,197 @@
+@import 'tailwindcss';
+
+/* Dark mode follows the `.dark` class (set from the theme preference: light / dark / system). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * NeuroFlow visual language: soft lavender daylight, frosted glass layers, pastel gradients,
+ * generous radii and quiet typography. Motion communicates state, never decoration.
+ */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-canvas: #f6f3fc;
+  /* Raised surfaces (cards, inputs, pills). */
+  --color-surface: #ffffff;
+  --color-ink: #1e1b39;
+  --color-ink-soft: #4b4768;
+  --color-muted: #8c89a6;
+  --color-faint: #b3b0c7;
+  --color-line: #e9e6f3;
+
+  --color-violet-soft: #efe9fe;
+  --color-accent: #8b5cf6;
+  --color-accent-strong: #7c3aed;
+  --color-accent-deep: #6d28d9;
+
+  --color-rose-soft: #fde7f1;
+  --color-sky-soft: #e3ecfd;
+  --color-mint-soft: #dcf5ee;
+  --color-peach-soft: #fdeede;
+
+  --radius-glass: 28px;
+  --radius-card: 20px;
+
+  --shadow-glass: 0 1px 0 0 rgb(255 255 255 / 0.7) inset, 0 24px 60px -24px rgb(76 57 158 / 0.22);
+  --shadow-soft: 0 12px 32px -16px rgb(76 57 158 / 0.25);
+  --shadow-float: 0 18px 40px -18px rgb(76 57 158 / 0.35);
+  --shadow-button: 0 10px 24px -8px rgb(124 58 237 / 0.55);
+
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-caret: caret 1s steps(2) infinite;
+  --animate-float: float 14s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes caret {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -14px, 0); }
+  }
+}
+
+:root {
+  color-scheme: light;
+  --glass-bg: rgb(255 255 255 / 0.62);
+  --glass-border: rgb(255 255 255 / 0.75);
+  --glass-strong-bg: rgb(255 255 255 / 0.82);
+  --glass-strong-border: rgb(255 255 255 / 0.9);
+}
+
+/* Night lavender: deep violet-black canvas, same pastel accents at lower luminance. */
+.dark {
+  color-scheme: dark;
+  --color-canvas: #0f0d1a;
+  --color-surface: #1d1a2f;
+  --color-ink: #eceaf8;
+  --color-ink-soft: #c6c2de;
+  --color-muted: #938fae;
+  --color-faint: #6a6688;
+  --color-line: #2c2843;
+  --color-violet-soft: #2a2150;
+  --color-rose-soft: #3b1f31;
+  --color-sky-soft: #1c2945;
+  --color-mint-soft: #15332d;
+  --color-peach-soft: #3a2a1c;
+  --shadow-glass: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 24px 60px -24px rgb(0 0 0 / 0.6);
+  --shadow-soft: 0 12px 32px -16px rgb(0 0 0 / 0.55);
+  --shadow-float: 0 18px 40px -18px rgb(0 0 0 / 0.65);
+  --glass-bg: rgb(29 26 47 / 0.62);
+  --glass-border: rgb(255 255 255 / 0.07);
+  --glass-strong-bg: rgb(29 26 47 / 0.86);
+  --glass-strong-border: rgb(255 255 255 / 0.09);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  ::selection {
+    background: rgb(139 92 246 / 0.2);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(140 137 166 / 0.35) transparent;
+  }
+}
+
+@utility glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+@utility glass-strong {
+  background: var(--glass-strong-bg);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--glass-strong-border);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, #a855f7 0%, #8b5cf6 45%, #6366f1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-cta {
+  background: linear-gradient(100deg, #f9a8d4 0%, #c4b5fd 50%, #93c5fd 100%);
+}
+
+@utility bg-violet-button {
+  background: linear-gradient(140deg, #c084fc 0%, #8b5cf6 55%, #7c3aed 100%);
+}
+
+@utility shimmer-text {
+  background: linear-gradient(90deg, #8c89a6 0%, #8c89a6 35%, #7c3aed 50%, #8c89a6 65%, #8c89a6 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+}
+
+/* Markdown answer typography */
+.prose-nf {
+  @apply text-[15px] leading-7 text-ink-soft;
+}
+.prose-nf > * + * {
+  margin-top: 0.85em;
+}
+.prose-nf h1,
+.prose-nf h2,
+.prose-nf h3 {
+  @apply font-semibold text-ink;
+}
+.prose-nf h1 { @apply text-xl; }
+.prose-nf h2 { @apply text-lg; }
+.prose-nf h3 { @apply text-base; }
+.prose-nf strong { @apply font-semibold text-ink; }
+.prose-nf a { @apply text-accent-strong underline decoration-accent/30 underline-offset-2; }
+.prose-nf ul { @apply list-disc pl-5; }
+.prose-nf ol { @apply list-decimal pl-5; }
+.prose-nf li + li { margin-top: 0.3em; }
+.prose-nf code {
+  @apply rounded-md bg-violet-soft px-1.5 py-0.5 text-[13px] text-accent-deep;
+}
+.prose-nf pre {
+  @apply overflow-x-auto rounded-2xl border border-line bg-surface/80 p-4 text-[13px] leading-6;
+}
+.prose-nf pre code {
+  @apply bg-transparent p-0 text-ink-soft;
+}
+.prose-nf blockquote {
+  @apply border-l-2 border-accent/30 pl-4 text-muted;
+}
+.prose-nf table {
+  @apply w-full border-collapse text-sm;
+}
+.prose-nf th,
+.prose-nf td {
+  @apply border-b border-line px-3 py-2 text-left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, v2]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+  # Tests use these defaults; the service containers below are mapped to the same ports.
+  TEST_DATABASE_URL: postgres://neuroflow:neuroflow@localhost:5433/neuroflow
+  DATABASE_URL: postgres://neuroflow:neuroflow@localhost:5433/neuroflow
+  REDIS_URL: redis://127.0.0.1:6380
+
+jobs:
+  verify:
+    name: Typecheck · lint · unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neuroflow
+          POSTGRES_PASSWORD: neuroflow
+          POSTGRES_DB: neuroflow
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U neuroflow" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6380:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Git identity for repository fixtures
+        run: git config --global user.name "NeuroFlow CI" && git config --global user.email "ci@neuroflow.invalid"
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Unit tests (real Postgres, Redis, Git and Docker)
+        run: pnpm exec turbo run test --concurrency=1
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neuroflow
+          POSTGRES_PASSWORD: neuroflow
+          POSTGRES_DB: neuroflow
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U neuroflow" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6380:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Git identity for repository fixtures
+        run: git config --global user.name "NeuroFlow CI" && git config --global user.email "ci@neuroflow.invalid"
+      - name: Pre-pull the sandbox image (Code Agent tests run commands in Docker)
+        run: docker pull node:22-bookworm-slim
+      - run: pnpm test:integration
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neuroflow
+          POSTGRES_PASSWORD: neuroflow
+          POSTGRES_DB: neuroflow
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U neuroflow" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6380:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Git identity for repository fixtures
+        run: git config --global user.name "NeuroFlow CI" && git config --global user.email "ci@neuroflow.invalid"
+      - run: docker pull node:22-bookworm-slim
+      - name: Install Chromium
+        run: pnpm --filter @neuroflow/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
+
+  build:
+    name: Build apps and container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The site's changelog page is generated from the commit history.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build all workspaces (web app, site, API, worker)
+        run: pnpm build
+      - name: Build container images (not pushed)
+        env:
+          DOCKER_BUILDKIT: '1'
+        run: |
+          docker build -f infra/docker/node.Dockerfile --build-arg APP=api -t neuroflow-api:ci .
+          docker build -f infra/docker/node.Dockerfile --build-arg APP=worker -t neuroflow-worker:ci .
+          docker build -f infra/docker/web.Dockerfile -t neuroflow-web:ci .
