@@ -3,5 +3,8 @@
   "installCommand": "pnpm install",
   "buildCommand": "pnpm --filter @neuroflow/web build",
   "outputDirectory": "apps/web/dist",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ]
 }
