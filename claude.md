@@ -1,7 +1,25 @@
 # NeuroFlow — Master Claude Implementation Prompt
-Version 4
+Version 6 — Phase 1 + Phase 2 Aligned
 
 You are implementing NeuroFlow as a serious production-oriented AI workspace.
+
+The authoritative product contract is `prd.md`. Keep `prd.md` unchanged unless the user explicitly asks to modify it.
+
+There are exactly two **product phases** in the PRD:
+
+1. Product Phase 1 — Core NeuroFlow AI Runtime
+2. Product Phase 2 — AI Code Agent / AI IDE Workspace
+
+Any numbered implementation phases in `progress.md` are internal workstreams and must not be mistaken for the product roadmap.
+
+The central implementation rule is:
+
+```text
+Product Phase 1 = general runtime foundation
+Product Phase 2 = coding workspace specialization of that runtime
+```
+
+Never build a second backend architecture for Phase 2.
 
 Before changing code:
 
@@ -90,6 +108,20 @@ OPTIONAL INSPECTOR
 ```
 
 ---
+
+# Product Phase 1 — Foundation Contract
+
+Before calling Phase 1 complete, ensure the generic runtime is capable of carrying Phase 2 without architectural replacement:
+
+- Runs can carry optional workspace/repository context.
+- Context Engine can accept files, selections and repository metadata.
+- Tool Runtime is extensible to repository, filesystem, command and GitHub capabilities.
+- Authorization supports workspace, repository and destructive-action boundaries.
+- Event infrastructure accepts code-specific event types.
+- Persistence can store run artifacts, approvals and external references.
+- Evaluation can consume tests/build/lint and user-outcome signals.
+- Model configuration remains entirely behind Model Gateway.
+- Standard Mode remains fully functional without Cognitive Mode.
 
 # Architecture
 
@@ -496,6 +528,34 @@ Never log secrets or hidden reasoning.
 
 ---
 
+# Product Phase 1 Completion Gate
+
+Do not move to declaring Phase 2 complete until Product Phase 1 has its full vertical slice and reliability/security foundations.
+
+```text
+React
+ ↓
+Fastify
+ ↓
+Run Manager
+ ↓
+BullMQ
+ ↓
+Worker
+ ↓
+Orchestrator
+ ↓
+Model Gateway
+ ↓
+Qwen / Groq
+ ↓
+Realtime Stream
+ ↓
+React
+```
+
+Tool execution, memory, cancellation, persistence, observability and critical tests must also work.
+
 # Implementation Order
 
 1. Inspect repository.
@@ -539,6 +599,20 @@ If a dependency is unavailable, create a clean adapter boundary and document the
 
 ---
 
+# Unified Product Goal
+
+The finished system must feel like one product:
+
+```text
+Phase 1 AI Workspace
+        │
+        └── shared NeuroFlow Runtime ──┐
+                                       │
+Phase 2 Code Workspace ────────────────┘
+```
+
+A user can perform ordinary AI tasks using Product Phase 1 and coding tasks using Product Phase 2 without the two experiences becoming separate runtimes.
+
 # Final Goal
 
 At completion, NeuroFlow should feel like:
@@ -560,3 +634,218 @@ A dashboard
 +
 A collection of demo agents
 ```
+
+---
+
+# Product Phase 2 — Mandatory AI Code Agent Implementation
+
+The PRD is the authoritative product specification. Implement its Phase 2 exactly as an extension of Phase 1, not as a separate AI system.
+
+## Phase 2 Goal
+
+Build a dedicated AI Code Agent / AI IDE workspace where a user can connect GitHub, select a repository and branch, browse/edit code in Monaco, ask the specialized Code Agent to understand and modify code, review diffs, run tests, repair failures, and optionally commit, push and create pull requests.
+
+## Required Workspace
+
+Implement:
+
+```text
+Repository / Branch / Workspace
+├── Repository Explorer
+├── Monaco Editor
+├── AI Agent
+└── Terminal | Problems | Tests | Git Diff | Agent Logs
+```
+
+The editor is the primary artifact. Do not turn Phase 2 into a generic analytics dashboard.
+
+## Required GitHub Flow
+
+```text
+Connect GitHub
+ ↓
+Authorize
+ ↓
+Select account/organization
+ ↓
+Select repository
+ ↓
+Select branch
+ ↓
+Create/synchronize workspace
+```
+
+Keep credentials server-side and enforce repository/workspace permissions.
+
+## Required Code Agent Capabilities
+
+The Code Agent must:
+
+1. Understand repository structure.
+2. Search code.
+3. Read relevant files.
+4. Find references/symbols.
+5. Understand dependencies.
+6. Create a plan.
+7. Generate targeted patches.
+8. Create/remove/rename files according to policy.
+9. Run tests/lint/build.
+10. Inspect failures.
+11. Iterate within bounded budgets.
+12. Summarize changes.
+13. Prepare commits.
+14. Optionally create PRs.
+
+## Required Tool Registry
+
+Implement the exact Phase 2 tool families from the PRD:
+
+```text
+Repository: list_files, read_file, search_code, find_symbol, find_references
+Editing: create_file, edit_file, rename_file, delete_file, apply_patch
+Execution: run_command, run_tests, run_linter, run_build
+Git: git_status, git_diff, git_log, create_branch, commit, push
+GitHub: get_repository, get_branch, get_pull_requests, get_issues,
+        create_issue, create_pull_request, review_pull_request
+```
+
+All tools go through Tool Registry → schema validation → authorization → risk/approval → execution → normalized result.
+
+## Safe Editing
+
+Never allow blind model mutation.
+
+```text
+Understand
+ ↓
+Generate Patch
+ ↓
+Validate
+ ↓
+Show Diff
+ ↓
+Approval Policy
+ ↓
+Apply
+```
+
+Support Suggest, Review, Auto and Restricted modes.
+
+## Sandbox
+
+Never execute arbitrary agent commands on the API server.
+
+```text
+Node API
+ ↓
+Agent Worker
+ ↓
+Sandbox / Isolated Workspace
+ ↓
+Repository
+ ↓
+Command
+```
+
+Control filesystem, CPU, memory, network, process lifetime, commands, environment and secrets.
+
+## Code Context
+
+Use active editor context plus targeted repository retrieval. Support `.neuroflow/instructions.md`. Do not send the entire repository to the model.
+
+## Git Workflow
+
+Use agent branches such as:
+
+```text
+neuroflow/agent/<short-task-name>
+```
+
+Require appropriate authorization before commit/push/PR operations.
+
+## Model Lab
+
+Implement the Phase 2 Model Lab surfaces:
+
+```text
+Models
+Providers
+Parameters
+Datasets
+Fine-tuning
+Evaluations
+Deployments
+```
+
+Qwen and Groq remain behind the Model Gateway. Never call provider SDKs directly from React.
+
+Fine-tuning is provider-dependent. Never imply functionality when the provider does not support it. Never automatically train on private repository content.
+
+## Replay
+
+Persist actual Code Agent events and artifacts. Replay must read stored history; it must never rerun a historical task.
+
+## Phase 2 Events
+
+Implement real backend events:
+
+```text
+code.run.created
+repository.loaded
+agent.plan.created
+file.search.started
+file.search.completed
+file.read
+patch.generated
+patch.review_required
+patch.approved
+file.modified
+command.started
+command.output
+command.completed
+test.started
+test.completed
+git.diff.updated
+commit.created
+push.completed
+pull_request.created
+code.run.completed
+```
+
+## Phase 2 Completion Gate
+
+Do not declare Phase 2 complete until this works against a real repository:
+
+```text
+GitHub
+ ↓
+Repository
+ ↓
+Code Agent
+ ↓
+Repository Understanding
+ ↓
+Plan
+ ↓
+Edit
+ ↓
+Diff
+ ↓
+Approval
+ ↓
+Test
+ ↓
+Fix
+ ↓
+Final Diff
+ ↓
+Commit
+ ↓
+Push
+ ↓
+Optional PR
+```
+
+## Non-Negotiable Phase 2 Non-Goals
+
+Do not initially attempt full VS Code parity, unrestricted shell access, automatic production deployment, automatic merging into protected branches, automatic training from private repositories, automatic fine-tuning from every interaction, full IDE support for every language, or replacement of GitHub.

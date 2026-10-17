@@ -1,5 +1,21 @@
 # NeuroFlow — System Design
-Version 4 — React + Node.js + TypeScript
+Version 6 — Phase 1 + Phase 2 Aligned
+
+> Source of truth: `prd.md`. This document translates both product phases into implementation-level contracts.
+
+## 0. Product Phase Model
+
+NeuroFlow has two **product phases**, while the implementation checklist may use additional internal workstreams. Do not confuse the two.
+
+### Product Phase 1 — Core NeuroFlow AI Runtime
+
+The complete general runtime: conversations, Runs, routing, agents, models, tools, memory, evaluation, realtime, cancellation, reliability, Standard/Cognitive Mode, persistence and observability.
+
+### Product Phase 2 — AI Code Agent / AI IDE Workspace
+
+A specialized coding workspace that reuses Product Phase 1's Run Manager, Orchestrator, Agent Runtime, Model Gateway, Tool Runtime, Context Engine, Memory, Evaluation, realtime events, authorization and observability.
+
+Phase 2-specific additions are domain contracts around repositories, branches, code context, patches, sandbox execution, Git/GitHub, Code Agent runs, replay and Model Lab.
 
 ## 1. Runtime Components
 
@@ -63,6 +79,16 @@ type RunRequest = {
   tools?: ToolReference[];
   stream?: boolean;
   metadata?: Record<string, unknown>;
+
+  // Optional Phase 2 context; absent for ordinary Phase 1 runs.
+  workspaceContext?: {
+    workspaceId?: string;
+    repositoryId?: string;
+    branch?: string;
+    activeFile?: string;
+    selectedLines?: { start: number; end: number };
+    relatedFiles?: string[];
+  };
 };
 ```
 
@@ -650,3 +676,327 @@ OpenTelemetry
 Frontend can be deployed independently as a static/Vite application behind a CDN.
 
 Backend can scale independently.
+
+---
+
+# Product Phase 1 — Core Runtime Implementation Contract
+
+The implementation of all generic runtime components above must satisfy the Product Phase 1 requirements in `prd.md` before Phase 2 is considered independently complete.
+
+The Phase 1 runtime must expose reusable contracts for:
+
+- durable Run lifecycle and checkpoints
+- execution plans and independent agent/model strategies
+- model provider normalization
+- JSON Schema tool contracts and authorization
+- bounded memory retrieval through tools
+- evaluation and bounded refinement
+- SSE/WebSocket realtime events
+- cancellation and retry/fallback
+- workspace/resource budgets
+- persistence and replayable event history
+- authentication, authorization and workspace isolation
+
+Phase 2 must consume these contracts rather than replacing them.
+
+# Product Phase 2 — Code Agent Implementation Design
+
+## 23. Phase 2 Domain Model
+
+The Code Agent is implemented as a specialized execution domain on top of the existing Run model.
+
+Core entities:
+
+```text
+CodeWorkspace
+RepositoryBinding
+BranchState
+CodeRun
+CodeContext
+Patch
+Approval
+SandboxExecution
+TestExecution
+GitOperation
+PullRequestReference
+AgentReplay
+ModelLabConfiguration
+FineTuningDataset
+FineTuningJob
+```
+
+A CodeRun must retain references to the base NeuroFlow run/execution system rather than creating an independent runtime.
+
+## 24. Code Workspace Lifecycle
+
+```text
+GitHub Authorization
+ ↓
+Repository Selection
+ ↓
+Branch Selection
+ ↓
+Workspace Creation
+ ↓
+Repository Synchronization
+ ↓
+Code Workspace Ready
+```
+
+Workspace state must include repository, branch, starting commit, synchronization state, modified files and active run.
+
+## 25. Code Agent Request
+
+Conceptually:
+
+```ts
+type CodeAgentRequest = {
+  workspaceId: string;
+  repositoryId: string;
+  branch: string;
+  instruction: string;
+  activeFile?: string;
+  selection?: { startLine: number; endLine: number };
+  context?: string[];
+  approvalMode: "suggest" | "review" | "auto" | "restricted";
+};
+```
+
+The request is converted into the normal NeuroFlow RunRequest/ExecutionPlan path.
+
+## 26. Repository Context Pipeline
+
+```text
+User Request
+ ↓
+Current Editor Context
+ ↓
+Repository Search
+ ↓
+Relevant Files
+ ↓
+Symbols / References
+ ↓
+Repository Instructions
+ ↓
+Tool Results
+ ↓
+Bounded Code Context
+ ↓
+Model
+```
+
+Do not send an entire repository to the model.
+
+## 27. Code Agent Tool Execution
+
+Every Code Agent tool call follows the standard NeuroFlow tool pipeline:
+
+```text
+Model Tool Call
+ ↓
+Tool Registry
+ ↓
+Schema Validation
+ ↓
+Authorization
+ ↓
+Risk / Approval
+ ↓
+Sandbox / Repository Service
+ ↓
+Normalized ToolResult
+ ↓
+Context Update
+ ↓
+Model Continuation
+```
+
+## 28. Patch Model
+
+A patch should identify:
+
+- run ID
+- workspace ID
+- repository
+- base commit
+- affected files
+- patch content or patch reference
+- validation status
+- approval status
+- application status
+
+Patch generation must not silently mutate the repository before the approval policy is satisfied.
+
+## 29. Approval Modes
+
+### Suggest
+No mutation; proposal only.
+
+### Review
+Patch generated and held for explicit approval.
+
+### Auto
+Low-risk operations may be applied under policy.
+
+### Restricted
+Selected capabilities are disabled.
+
+The mode must be persisted with the run and enforced by the Tool Runtime.
+
+## 30. Sandbox Execution
+
+Command execution must be isolated from the API server.
+
+```text
+Fastify
+ ↓
+Worker
+ ↓
+Sandbox
+ ↓
+Repository Workspace
+ ↓
+Command
+```
+
+Sandbox policy controls command allowlists, filesystem boundaries, network access, resource limits, process lifetime and secrets.
+
+## 31. Test and Repair Loop
+
+The Code Agent may execute a bounded repair loop:
+
+```text
+Apply Approved Patch
+ ↓
+Run Tests / Lint / Build
+ ↓
+Collect Failure
+ ↓
+Analyze Failure
+ ↓
+Generate Bounded Patch
+ ↓
+Review / Apply According To Policy
+ ↓
+Re-run Validation
+```
+
+Maximum repair iterations and resource budgets are mandatory.
+
+## 32. Git Workflow
+
+For substantial changes:
+
+```text
+main
+ ↓
+Create neuroflow/agent/<short-task-name>
+ ↓
+Modify
+ ↓
+Test
+ ↓
+Review Diff
+ ↓
+Commit
+ ↓
+Push
+ ↓
+Optional Pull Request
+```
+
+Branch protection and authorization policies remain authoritative.
+
+## 33. Realtime Code Events
+
+Add Phase 2 events to the existing RunEvent model. They must be emitted from actual backend operations and persisted sufficiently for replay.
+
+## 34. Agent Replay
+
+Replay reads stored events and artifacts. It must never re-run the historical task.
+
+Replay should expose:
+
+- user request
+- repository/branch
+- search activity
+- files read
+- patch generation
+- approvals
+- commands
+- tests
+- final result
+- Git operations
+
+Private chain-of-thought is excluded.
+
+## 35. Model Lab
+
+Model Lab is a Phase 2 product surface over the Model Gateway and evaluation infrastructure. React never calls provider SDKs directly.
+
+## 36. Fine-Tuning Domain
+
+Fine-tuning must be represented through provider capability discovery and explicit dataset/job entities. Candidate data can originate from commits, PRs, reviews, accepted/rejected patches, agent interactions and test outcomes, but users must review and control inclusion.
+
+## 37. Phase 2 API Surface
+
+Suggested endpoints:
+
+```text
+POST   /v1/code/workspaces
+GET    /v1/code/workspaces/:id
+POST   /v1/code/workspaces/:id/sync
+GET    /v1/code/workspaces/:id/tree
+GET    /v1/code/workspaces/:id/file
+POST   /v1/code/workspaces/:id/search
+POST   /v1/code/runs
+GET    /v1/code/runs/:id
+GET    /v1/code/runs/:id/events
+POST   /v1/code/runs/:id/cancel
+POST   /v1/code/runs/:id/approve
+POST   /v1/code/runs/:id/reject
+GET    /v1/code/runs/:id/diff
+POST   /v1/code/runs/:id/commit
+POST   /v1/code/runs/:id/push
+POST   /v1/code/runs/:id/pull-request
+```
+
+Exact routes may be adapted to the existing API conventions, but the capabilities must exist.
+
+## 38. Phase 2 Persistence
+
+Add domain tables or equivalent persistence for:
+
+```text
+code_workspaces
+repository_bindings
+code_runs
+code_context_items
+code_patches
+code_approvals
+sandbox_executions
+test_executions
+git_operations
+pull_request_refs
+code_replay_events
+model_lab_configs
+fine_tuning_datasets
+fine_tuning_jobs
+```
+
+Ownership and workspace isolation must be explicit.
+
+
+# Phase 1 + Phase 2 Alignment Rules
+
+1. A Code Agent run is a specialized Run, not a separate execution primitive.
+2. A Code Agent is a specialized AgentDefinition using the same Agent Runtime.
+3. Repository, file, Git and sandbox operations are Tool Runtime capabilities.
+4. Repository context is an extension of Context Engine input.
+5. Code events extend the common Event model.
+6. Code Agent persistence extends Run/artifact persistence with repository, patch, approval, test and Git records.
+7. GitHub credentials remain outside model context and are authorized server-side.
+8. Model Lab configures the existing Model Gateway; React never invokes provider SDKs directly.
+9. Cognitive Mode remains optional and cannot bypass Code Agent security or approval policies.
+10. The final implementation must support both ordinary Phase 1 AI tasks and Phase 2 coding tasks in the same deployed runtime.

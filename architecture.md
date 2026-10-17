@@ -1,5 +1,7 @@
 # NeuroFlow — Production Architecture
-Version 4 — TypeScript / React / Node.js
+Version 6 — Phase 1 + Phase 2 Aligned
+
+> Source of truth: `prd.md`. This document explains the architecture required to implement both product phases without creating a second runtime.
 
 ## 1. Product Definition
 
@@ -41,6 +43,15 @@ Cognitive Mode does not replace the normal AI runtime. It adds an additional pol
 
 The frontend is a workspace application, not a traditional admin dashboard.
 
+For Product Phase 2 it additionally includes:
+
+- Monaco Editor
+- repository explorer/search UI
+- terminal/problems/tests/Git Diff/Agent Logs surfaces
+- GitHub repository/branch controls
+- diff review and approval UI
+- Ctrl/Cmd+K code command bar
+
 ### Backend
 
 - Node.js
@@ -51,6 +62,8 @@ The frontend is a workspace application, not a traditional admin dashboard.
 - REST/OpenAI-compatible HTTP APIs
 
 Fastify is the primary HTTP framework.
+
+Phase 2 adds GitHub integration, isolated code execution/sandbox orchestration, and code-workspace APIs without bypassing the shared runtime.
 
 ### AI Runtime
 
@@ -92,7 +105,54 @@ Future/optional:
 
 ---
 
-## 3. High-Level Architecture
+## 3. Product Phase 1 — Core Runtime Foundation
+
+Product Phase 1 is the complete general-purpose NeuroFlow AI runtime. It is the foundation on which every later workspace, including the Phase 2 Code Agent, must execute.
+
+Phase 1 provides:
+
+- React/Vite/TypeScript AI workspace
+- Fastify API and OpenAI-compatible boundary
+- Run Manager and durable Runs
+- Redis/BullMQ workers
+- NeuroFlow Orchestrator
+- Adaptive Router
+- Context Engine
+- Model Gateway with Qwen and Groq
+- independent agent/model strategies
+- Tool Runtime with JSON Schema contracts, validation, authorization, risk and approval
+- Memory as a bounded tool/capability
+- Evaluation
+- realtime events and streaming
+- cancellation, retry, fallback, idempotency and resource budgets
+- PostgreSQL persistence
+- OpenTelemetry observability
+- Standard Mode and optional Cognitive Mode
+
+Phase 1 is not a disposable prototype. Its contracts must already support Phase 2 concepts such as workspace context, repository-scoped tools, approvals, long-running code runs, sandbox execution, Git operations, and richer realtime events.
+
+### Phase 1 → Phase 2 architectural rule
+
+Phase 2 MUST specialize Phase 1 rather than fork it:
+
+```text
+                    NeuroFlow Runtime
+                           │
+        ┌──────────────────┴──────────────────┐
+        │                                     │
+ Core AI Workspace                     Code Agent Workspace
+ Product Phase 1                       Product Phase 2
+        │                                     │
+        └────────────── shared ───────────────┘
+          Run Manager / Orchestrator / Agents
+          Model Gateway / Tools / Context
+          Memory / Evaluation / Events
+          Authorization / Observability
+```
+
+Phase 2 may add domain-specific services, tools, persistence and UI, but it must not introduce a parallel model runtime, agent runtime, tool runtime, or event architecture.
+
+## 4. High-Level Architecture
 
 ```text
                          React + Vite
@@ -147,7 +207,7 @@ Future/optional:
 
 ---
 
-## 4. OpenAI-Compatible API Boundary
+## 5. OpenAI-Compatible API Boundary
 
 NeuroFlow exposes:
 
@@ -230,7 +290,7 @@ Model output
 
 ---
 
-## 5. Agent and Model Topology
+## 6. Agent and Model Topology
 
 Agent topology and model topology are independent.
 
@@ -249,7 +309,7 @@ The adaptive router selects the smallest reliable execution graph for the task.
 
 ---
 
-## 6. Execution Strategies
+## 7. Execution Strategies
 
 The runtime supports:
 
@@ -281,7 +341,7 @@ The runtime may introduce additional strategies later.
 
 ---
 
-## 7. Context Engine
+## 8. Context Engine
 
 The Context Engine builds bounded model context.
 
@@ -305,7 +365,7 @@ Context must be bounded, prioritized, and observable.
 
 ---
 
-## 8. Memory
+## 9. Memory
 
 Memory is a tool/runtime capability.
 
@@ -347,7 +407,7 @@ Memory retrieval is a model/tool decision subject to runtime policy.
 
 ---
 
-## 9. Tool Runtime
+## 10. Tool Runtime
 
 Tool execution must follow:
 
@@ -383,7 +443,7 @@ Consequential tools must support approval/human-in-the-loop where appropriate.
 
 ---
 
-## 10. Reasoning Control
+## 11. Reasoning Control
 
 Do not expose a universal provider-specific parameter such as:
 
@@ -418,7 +478,7 @@ The UI may show safe metadata:
 
 ---
 
-## 11. Cognitive Runtime
+## 12. Cognitive Runtime
 
 Standard Mode:
 
@@ -456,7 +516,7 @@ They must not bypass normal authorization or safety controls.
 
 ---
 
-## 12. Realtime Runtime
+## 13. Realtime Runtime
 
 The UI should feel like Cursor/Traycer rather than a dashboard.
 
@@ -494,7 +554,7 @@ Do not fabricate frontend-only progress.
 
 ---
 
-## 13. Scalability
+## 14. Scalability
 
 Production topology:
 
@@ -535,7 +595,7 @@ Long-running AI work belongs in workers, not inside request handlers.
 
 ---
 
-## 14. Architecture Invariants
+## 15. Architecture Invariants
 
 1. Standard Mode is a complete production AI runtime.
 2. Cognitive Mode is an additional signal, not a replacement runtime.
@@ -551,3 +611,265 @@ Long-running AI work belongs in workers, not inside request handlers.
 12. UI complexity is hidden by default but inspectable.
 13. The core AI runtime is independent of React.
 14. The backend is TypeScript/Node.js and independently deployable from the frontend.
+
+---
+
+# 16. Product Phase 2 — AI Code Agent / AI IDE Workspace
+
+Phase 2 is a specialized coding workspace built directly on the Phase 1 NeuroFlow runtime. It does not introduce a second AI architecture.
+
+## 16.1 Phase 2 Runtime Reuse
+
+Phase 2 reuses:
+
+- Model Gateway
+- Agent Runtime
+- Tool Runtime
+- Context Engine
+- Memory
+- Evaluation
+- Run Manager
+- Realtime Events
+- Authorization
+- Observability
+
+The Code Agent is a specialized agent definition and workspace experience, not a separate model-serving stack.
+
+## 16.2 Phase 2 High-Level Architecture
+
+```text
+GitHub
+  ↓
+Repository / Branch
+  ↓
+Code Agent Workspace
+  ├── Repository Explorer
+  ├── Monaco Editor
+  ├── Agent Panel
+  └── Terminal / Problems / Tests / Git Diff / Agent Logs
+          ↓
+      Code Agent Run
+          ↓
+  Repository Understanding
+          ↓
+        Plan
+          ↓
+   Search / Read / Context
+          ↓
+     Patch Generation
+          ↓
+      Diff Review
+          ↓
+ Approval Policy / User Approval
+          ↓
+        Apply Patch
+          ↓
+ Sandbox Execution
+          ↓
+ Tests / Lint / Build
+          ↓
+   Bounded Repair Loop
+          ↓
+       Final Diff
+          ↓
+ Commit / Push / Optional PR
+```
+
+## 16.3 Repository Integration Boundary
+
+GitHub access must be isolated behind repository/GitHub capabilities. The model never receives unrestricted GitHub credentials.
+
+The architecture must preserve:
+
+- repository authorization
+- workspace isolation
+- branch protection awareness
+- explicit write permissions
+- auditability
+
+## 16.4 Code Workspace Boundary
+
+The browser editor is a user-facing workspace. Repository operations, command execution, and GitHub mutations occur through backend tools and isolated execution environments.
+
+Never execute arbitrary agent commands on the Fastify API process.
+
+```text
+React
+ ↓
+Fastify
+ ↓
+Run Manager
+ ↓
+Worker
+ ↓
+Code Agent
+ ↓
+Tool Runtime
+ ├── Repository Tools
+ ├── Editing Tools
+ ├── Git Tools
+ └── GitHub Tools
+ ↓
+Sandbox where execution is required
+```
+
+## 16.5 Code Agent Tool Families
+
+Repository:
+
+```text
+list_files
+read_file
+search_code
+find_symbol
+find_references
+```
+
+Editing:
+
+```text
+create_file
+edit_file
+rename_file
+delete_file
+apply_patch
+```
+
+Execution:
+
+```text
+run_command
+run_tests
+run_linter
+run_build
+```
+
+Git:
+
+```text
+git_status
+git_diff
+git_log
+create_branch
+commit
+push
+```
+
+GitHub:
+
+```text
+get_repository
+get_branch
+get_pull_requests
+get_issues
+create_issue
+create_pull_request
+review_pull_request
+```
+
+Every tool uses the existing Tool Runtime contract, validation, authorization, risk policy, timeout and approval mechanisms.
+
+## 16.6 Code Editing Safety Invariant
+
+All agent modifications follow:
+
+```text
+Understand
+ ↓
+Generate Patch
+ ↓
+Validate
+ ↓
+Show Diff
+ ↓
+Approval Policy
+ ↓
+Apply
+```
+
+Targeted patches are preferred over whole-file replacement.
+
+## 16.7 Code Execution Isolation
+
+Sandbox controls must cover:
+
+- filesystem access
+- CPU
+- memory
+- network
+- process lifetime
+- allowed commands
+- environment variables
+- secrets
+
+## 16.8 Phase 2 Realtime Events
+
+The runtime must emit real events including:
+
+```text
+code.run.created
+repository.loaded
+agent.plan.created
+file.search.started
+file.search.completed
+file.read
+patch.generated
+patch.review_required
+patch.approved
+file.modified
+command.started
+command.output
+command.completed
+test.started
+test.completed
+git.diff.updated
+commit.created
+push.completed
+pull_request.created
+code.run.completed
+```
+
+## 16.9 Code Agent Persistence
+
+Persist repository, branch, starting commit, user request, execution plan, tool calls, files read/modified, diffs, test results, evaluation, approvals, final status, and commit/PR references.
+
+## 16.10 Phase 2 Model Layer
+
+The Code Agent uses the same Model Gateway and supports Qwen and Groq. Provider-specific controls remain behind the gateway.
+
+The workspace may expose:
+
+```text
+Provider
+Model
+Reasoning Budget
+Temperature where supported
+Tool Policy
+Agent Strategy
+Context Strategy
+```
+
+## 16.11 Model Lab and Fine-Tuning
+
+Phase 2 includes a Model Lab surface for:
+
+```text
+Models
+Providers
+Parameters
+Datasets
+Fine-tuning
+Evaluations
+Deployments
+```
+
+Fine-tuning is provider-dependent. The UI must distinguish available, unavailable, provider-access-required, and coming-soon states. Private repository content must never automatically become training data.
+
+## 16.12 Completion Architecture
+
+Phase 2 is not complete because Monaco renders successfully. The real-repository loop must work:
+
+```text
+GitHub → Repository → Code Agent → Understanding → Plan → Edit
+→ Diff → Approval → Test → Fix → Final Diff → Commit → Push → Optional PR
+```

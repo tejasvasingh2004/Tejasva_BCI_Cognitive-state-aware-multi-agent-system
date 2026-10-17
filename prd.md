@@ -1917,90 +1917,1221 @@ Memory storage should be replaceable without rewriting agent logic.
 
 ---
 
-# 54. MVP SCOPE
+# 54. IMPLEMENTATION ROADMAP
 
-The first serious MVP must include:
+NeuroFlow is divided into two major implementation phases.
 
-## Frontend
+```text
+PHASE 1
+Core NeuroFlow AI Runtime
+        ↓
+PHASE 2
+AI Code Agent / AI IDE
+```
 
-- React workspace.
+Phase 2 is not a separate AI architecture. It is a specialized coding workspace built directly on the Phase 1 runtime.
+
+---
+
+# 55. PHASE 1 — CORE NEUROFLOW AI RUNTIME
+
+Phase 1 is the existing core implementation defined by this PRD.
+
+## 55.1 Product Goal
+
+Deliver the production AI runtime where users can:
+
+- create conversations,
+- submit tasks,
+- use Qwen and Groq,
+- execute tools,
+- retrieve memory,
+- use single/multi-agent workflows,
+- use single/multi-model execution,
+- stream responses,
+- inspect execution,
+- cancel runs,
+- use Standard and Cognitive Mode.
+
+## 55.2 Frontend
+
+Phase 1 includes:
+
+- React + Vite + TypeScript workspace.
 - Conversation UI.
 - Composer.
-- Streaming.
-- Run status.
-- Cancel.
-- Basic inspector.
-- Standard/Cognitive mode selection.
 - Model selection.
+- Standard/Cognitive mode selection.
+- Streaming response.
+- Run status.
+- Cancellation.
+- Basic execution inspector.
+- Run history.
 
-## Backend
+## 55.3 Backend
 
+Phase 1 includes:
+
+- Node.js + TypeScript.
 - Fastify.
 - OpenAI-compatible API.
-- Run Manager.
 - PostgreSQL.
 - Redis.
 - BullMQ.
-- Worker.
-- Orchestrator.
+- Run Manager.
+- Worker runtime.
+- NeuroFlow Orchestrator.
+- Context Engine.
 - Model Gateway.
-- Qwen.
-- Groq.
+- Qwen adapter.
+- Groq adapter.
 - Tool Runtime.
-- Memory capability.
+- Memory Service.
 - Evaluation foundation.
-- Realtime events.
+- Realtime event system.
+- SSE/WebSocket.
+- Cancellation.
+- Retry/fallback.
+- OpenTelemetry.
 
-## Infrastructure
+## 55.4 Phase 1 Agent Runtime
 
-- Docker Compose.
-- Environment configuration.
-- migrations.
-- logging.
-- OpenTelemetry foundation.
+Support:
+
+```text
+DIRECT
+SINGLE_AGENT
+SEQUENTIAL
+PARALLEL
+SUPERVISOR
+EVALUATOR_OPTIMIZER
+```
+
+Agent and model strategies remain independent.
+
+## 55.5 Phase 1 Completion Gate
+
+Phase 1 must have a working vertical slice:
+
+```text
+React
+ ↓
+Fastify
+ ↓
+Run Manager
+ ↓
+BullMQ
+ ↓
+Worker
+ ↓
+Orchestrator
+ ↓
+Model Gateway
+ ↓
+Qwen / Groq
+ ↓
+Realtime Stream
+ ↓
+React
+```
+
+Tool execution, memory, cancellation, persistence, observability, and critical tests must also work.
 
 ---
 
-# 55. POST-MVP
+# 56. PHASE 2 — AI CODE AGENT / AI IDE WORKSPACE
 
-After the core runtime is stable:
+Phase 2 introduces a dedicated **AI Code Agent page** inside NeuroFlow.
 
-- advanced supervisor agents,
-- evaluator/optimizer loops,
-- advanced memory retrieval,
-- pgvector,
-- richer tool ecosystem,
-- custom tools,
-- advanced cognitive adaptation,
-- collaborative workspaces,
-- advanced permissions,
-- cost dashboards,
-- organization controls,
-- external integrations,
-- dedicated model workers,
-- more sophisticated routing.
+It is not another dashboard and not a separate chatbot.
 
----
+It is an AI-native coding environment where the user can connect GitHub, browse a repository, edit code, ask the NeuroFlow agent to modify code, review diffs, run tests, and optionally commit, push, and create pull requests.
 
-# 56. EXPLICIT NON-GOALS
+Phase 2 must reuse the Phase 1:
 
-Do not prioritize these before the runtime is reliable:
-
-- Kubernetes,
-- distributed event buses,
-- dozens of models,
-- dozens of agents,
-- complex autonomous loops,
-- decorative analytics,
-- advanced enterprise billing,
-- unnecessary microservices,
-- speculative optimization.
+- Model Gateway,
+- Agent Runtime,
+- Tool Runtime,
+- Context Engine,
+- Memory,
+- Evaluation,
+- Run Manager,
+- Realtime Events,
+- Authorization,
+- Observability.
 
 ---
 
-# 57. DEFINITION OF DONE
+## 56.1 Phase 2 Core Workflow
 
-NeuroFlow is considered functionally complete for the initial production MVP when:
+```text
+Connect GitHub
+      ↓
+Select Repository
+      ↓
+Select Branch
+      ↓
+Open Code Workspace
+      ↓
+Browse / Edit Code
+      ↓
+Ask AI Agent
+      ↓
+Repository Understanding
+      ↓
+Plan
+      ↓
+Edit
+      ↓
+Review Diff
+      ↓
+Approve / Reject
+      ↓
+Run Tests
+      ↓
+Fix Failures
+      ↓
+Commit
+      ↓
+Push
+      ↓
+Optional Pull Request
+```
+
+---
+
+## 56.2 Code Agent Page Layout
+
+The page should have four functional regions:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Repository / Branch / Workspace                             │
+├──────────────┬──────────────────────────────┬───────────────┤
+│ Repository   │ Code Editor                  │ AI Agent      │
+│ Explorer     │                              │               │
+│              │ Monaco                       │ Chat          │
+│ Files        │ Tabs                         │ Plan          │
+│ Search       │ IntelliSense                 │ Activity      │
+│ Git Status   │ Diagnostics                  │ Context       │
+│ Branches     │ Diff                         │ Approvals     │
+├──────────────┴──────────────────────────────┴───────────────┤
+│ Terminal | Problems | Tests | Git Diff | Agent Logs         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The code remains the primary artifact. The agent assists it rather than replacing it.
+
+---
+
+## 56.3 GitHub Integration
+
+GitHub must be a first-class integration.
+
+Required flow:
+
+```text
+Connect GitHub
+ ↓
+Authorize
+ ↓
+Select account / organization
+ ↓
+Select repository
+ ↓
+Select branch
+ ↓
+Create NeuroFlow workspace
+ ↓
+Synchronize repository
+```
+
+The integration should support:
+
+- repository metadata,
+- branch metadata,
+- file access,
+- branch creation,
+- Git status,
+- commits,
+- pushes,
+- pull requests,
+- pull-request information.
+
+Permissions must be explicit. Repository access must not automatically mean modification permission.
+
+---
+
+## 56.4 Repository Workspace
+
+Each Code Agent workspace must track:
+
+- repository,
+- branch,
+- current commit,
+- working directory,
+- synchronization state,
+- modified files,
+- active run.
+
+Every Code Agent run must be associated with:
+
+```text
+User
+Workspace
+Repository
+Branch
+Run
+```
+
+---
+
+## 56.5 Repository Explorer
+
+The left panel must provide a real repository explorer supporting:
+
+- folder tree,
+- file tree,
+- file search,
+- modified-file indicators,
+- Git status,
+- branch information,
+- repository refresh.
+
+It must reflect the connected repository rather than a static demo.
+
+---
+
+## 56.6 Code Editor
+
+Use a real browser code editor, preferably:
+
+```text
+Monaco Editor
+```
+
+Required capabilities where supported:
+
+- syntax highlighting,
+- language-aware editing,
+- line numbers,
+- folding,
+- autocomplete,
+- IntelliSense,
+- tabs,
+- search/replace,
+- multi-cursor,
+- diagnostics,
+- minimap,
+- keyboard shortcuts,
+- diff editor,
+- inline modifications.
+
+---
+
+## 56.7 Editor Context
+
+The active editor state must be available to the Code Agent.
+
+Context can include:
+
+- active file,
+- selected lines,
+- surrounding code,
+- file path,
+- related files,
+- user instruction.
+
+Example:
+
+```text
+Select lines
+ ↓
+Ask NeuroFlow
+ ↓
+"Refactor this"
+ ↓
+Agent receives selected code + file context
+```
+
+---
+
+## 56.8 Context Actions
+
+Provide actions such as:
+
+```text
+Explain
+Fix
+Refactor
+Optimize
+Write Tests
+Find Security Issue
+Generate Documentation
+```
+
+These must create structured Code Agent requests, not simply copy text into a generic chat.
+
+---
+
+## 56.9 Code Agent
+
+The Code Agent is a specialized NeuroFlow agent.
+
+It must use the existing NeuroFlow runtime.
+
+Responsibilities:
+
+1. Understand repository structure.
+2. Search code.
+3. Read relevant files.
+4. Find references.
+5. Understand dependencies.
+6. Create a plan.
+7. Modify code.
+8. Create files.
+9. Remove files when authorized.
+10. Run tests.
+11. Run lint/build.
+12. Inspect diffs.
+13. Iterate after failures.
+14. Summarize changes.
+15. Prepare commits.
+16. Optionally create pull requests.
+
+---
+
+## 56.10 Code Agent Tool Registry
+
+### Repository Tools
+
+```text
+list_files
+read_file
+search_code
+find_symbol
+find_references
+```
+
+### Editing Tools
+
+```text
+create_file
+edit_file
+rename_file
+delete_file
+apply_patch
+```
+
+### Execution Tools
+
+```text
+run_command
+run_tests
+run_linter
+run_build
+```
+
+### Git Tools
+
+```text
+git_status
+git_diff
+git_log
+create_branch
+commit
+push
+```
+
+### GitHub Tools
+
+```text
+get_repository
+get_branch
+get_pull_requests
+get_issues
+create_issue
+create_pull_request
+review_pull_request
+```
+
+All these tools must use the existing NeuroFlow Tool Runtime.
+
+---
+
+## 56.11 Code Editing Safety
+
+The preferred editing workflow is:
+
+```text
+Understand
+ ↓
+Generate Patch
+ ↓
+Validate
+ ↓
+Show Diff
+ ↓
+Approval Policy
+ ↓
+Apply
+```
+
+Avoid replacing entire files when a targeted patch is sufficient.
+
+High-impact or destructive changes must require approval according to policy.
+
+---
+
+## 56.12 Diff-First Experience
+
+Every agent modification must be inspectable.
+
+Example:
+
+```text
+Modified:
+src/auth/login.ts       +12 -4
+src/api/client.ts        +8 -2
+tests/auth.test.ts       +25 -0
+```
+
+The user must be able to open a Monaco diff view and review the changes.
+
+---
+
+## 56.13 Change Approval Modes
+
+Support:
+
+### Suggest Mode
+
+Agent proposes changes only.
+
+### Review Mode
+
+Agent prepares changes and requests approval.
+
+### Auto Mode
+
+Agent may apply low-risk changes within policy.
+
+### Restricted Mode
+
+Selected tools are unavailable.
+
+The selected policy must be associated with the run.
+
+---
+
+## 56.14 Terminal
+
+Provide:
+
+```text
+Terminal
+Problems
+Output
+Tests
+Git Diff
+Agent Logs
+```
+
+The terminal must operate against the isolated repository workspace.
+
+---
+
+## 56.15 Code Execution Sandbox
+
+Never execute arbitrary agent commands directly on the main API server.
+
+Required architecture:
+
+```text
+Node API
+ ↓
+Agent Worker
+ ↓
+Sandbox / Isolated Workspace
+ ↓
+Repository
+ ↓
+Command Execution
+```
+
+The sandbox should control:
+
+- filesystem access,
+- CPU,
+- memory,
+- network,
+- process lifetime,
+- commands,
+- environment variables,
+- secrets.
+
+---
+
+## 56.16 Command Policy
+
+The runtime must distinguish normal development commands from potentially dangerous operations.
+
+Common commands may include:
+
+```text
+npm test
+npm run lint
+npm run build
+pytest
+go test
+cargo test
+```
+
+Dangerous operations involving destructive filesystem actions, system changes, unauthorized network access, or secret exposure must be blocked or require explicit approval.
+
+---
+
+## 56.17 Agent Plan and Activity
+
+The UI should show concise execution summaries.
+
+Example:
+
+```text
+PLAN
+
+✓ Inspect authentication flow
+✓ Locate token refresh logic
+◌ Modify refresh handler
+◌ Add regression test
+◌ Run test suite
+```
+
+Activity:
+
+```text
+AGENT ACTIVITY
+
+✓ Repository indexed
+✓ Search: refreshToken
+✓ Read 4 files
+✓ Found auth middleware
+✓ Generated patch
+◌ Running tests
+```
+
+These must be real backend execution events and must never expose private chain-of-thought.
+
+---
+
+## 56.18 Agent Context Panel
+
+Show the context currently associated with the run:
+
+```text
+CONTEXT
+
+📄 src/auth/login.ts
+📄 src/auth/token.ts
+📄 src/api/client.ts
+🔍 12 references
+🌿 branch: neuroflow/agent/auth-fix
+```
+
+Users should be able to add/remove context where practical.
+
+---
+
+## 56.19 Git Branch Strategy
+
+For substantial tasks:
+
+```text
+main
+ ↓
+Create agent branch
+ ↓
+Agent modifies workspace
+ ↓
+Tests
+ ↓
+Diff review
+ ↓
+Commit
+ ↓
+Push
+ ↓
+Optional Pull Request
+```
+
+Suggested naming:
+
+```text
+neuroflow/agent/<short-task-name>
+```
+
+The system must respect branch protection and user policy.
+
+---
+
+## 56.20 Git Workflow
+
+Expose:
+
+```text
+Create Branch
+Commit
+Push
+Create Pull Request
+Refresh
+```
+
+Show:
+
+- current branch,
+- changed files,
+- commit state,
+- sync state,
+- test state.
+
+---
+
+## 56.21 Commit Workflow
+
+Before commit, show:
+
+- changed files,
+- diff summary,
+- commit message,
+- branch,
+- test status.
+
+The user should be able to approve the commit.
+
+---
+
+## 56.22 Pull Request Workflow
+
+The agent may prepare:
+
+- PR title,
+- description,
+- summary,
+- test results,
+- changed files,
+- relevant run information.
+
+The user retains control unless explicit automation policy permits creation.
+
+---
+
+## 56.23 Code Search
+
+Support, where available:
+
+- text search,
+- regex search,
+- symbol search,
+- reference search,
+- file-type filters,
+- directory filters.
+
+The agent should use targeted search rather than reading the entire repository.
+
+---
+
+## 56.24 Repository Indexing
+
+For larger repositories, introduce incremental indexing for:
+
+- file paths,
+- symbols,
+- imports,
+- exports,
+- references,
+- language metadata,
+- optional embeddings.
+
+Do not send the entire repository to the model.
+
+---
+
+## 56.25 Code Context Strategy
+
+```text
+User Request
+ ↓
+Current Editor Context
+ ↓
+Repository Search
+ ↓
+Relevant Files
+ ↓
+Symbols / References
+ ↓
+Tool Results
+ ↓
+Bounded Context
+ ↓
+Model
+```
+
+---
+
+## 56.26 Code Agent Memory
+
+The Code Agent may use NeuroFlow memory for:
+
+- architecture decisions,
+- coding conventions,
+- preferred libraries,
+- repository instructions,
+- recurring debugging patterns,
+- user preferences.
+
+Memory should be appropriately repository/workspace scoped.
+
+---
+
+## 56.27 Repository Instructions
+
+Support repository-specific instructions, for example:
+
+```text
+.neuroflow/instructions.md
+```
+
+Instructions may define:
+
+- coding style,
+- architecture rules,
+- test commands,
+- prohibited patterns,
+- preferred libraries,
+- deployment conventions.
+
+These become controlled Code Agent context.
+
+---
+
+## 56.28 Model Configuration
+
+The Code Agent should expose:
+
+```text
+Provider
+Model
+Reasoning Budget
+Temperature where supported
+Tool Policy
+Agent Strategy
+Context Strategy
+```
+
+Initial providers:
+
+```text
+Groq
+Qwen
+```
+
+All model calls must continue through the Model Gateway.
+
+---
+
+## 56.29 Model Lab
+
+Introduce a Model Lab with:
+
+```text
+Models
+Providers
+Parameters
+Datasets
+Fine-tuning
+Evaluations
+Deployments
+```
+
+React must not call provider SDKs directly.
+
+---
+
+## 56.30 Groq Configuration
+
+Allow available Groq models to be configured through:
+
+```text
+Provider
+ ↓
+Model
+ ↓
+Reasoning Budget
+ ↓
+Supported Parameters
+ ↓
+Tools
+ ↓
+Test Model
+```
+
+Unsupported controls must not be presented as functional.
+
+---
+
+## 56.31 Fine-Tuning
+
+Fine-tuning is an optional provider capability.
+
+The UI must represent:
+
+```text
+Available
+Not Available
+Requires Provider Access
+Coming Soon
+```
+
+Do not assume every user has access.
+
+Fine-tuning must use a provider-independent interface.
+
+---
+
+## 56.32 Fine-Tuning Dataset
+
+Potential sources:
+
+```text
+GitHub commits
+Pull requests
+Code reviews
+Accepted patches
+Rejected patches
+Agent interactions
+Test failures
+Successful fixes
+```
+
+Candidate examples may contain:
+
+```text
+Task
+Repository Context
+Relevant Files
+Agent Output
+Patch
+Tests
+User Outcome
+Evaluation
+```
+
+---
+
+## 56.33 Fine-Tuning Safety
+
+Do not automatically fine-tune from every interaction.
+
+Preferred workflow:
+
+```text
+Agent Interaction
+ ↓
+Outcome
+ ↓
+User Acceptance / Rejection
+ ↓
+Evaluation
+ ↓
+Candidate Example
+ ↓
+Dataset Review
+ ↓
+Fine-Tuning
+ ↓
+Evaluation
+ ↓
+Deployment
+```
+
+Users must control what enters training datasets.
+
+Private repository content must not automatically become training data.
+
+---
+
+## 56.34 Fine-Tuning Job UI
+
+Show:
+
+```text
+Base Model
+Dataset
+Training Configuration
+Job Name
+Validation
+```
+
+During execution:
+
+```text
+Status
+Progress
+Dataset Size
+Epoch
+Loss where available
+Elapsed Time
+Logs
+Cancel
+```
+
+---
+
+## 56.35 Coding Agent Evaluation
+
+Evaluate using objective signals where possible:
+
+- tests passed,
+- build passed,
+- lint passed,
+- patch applied,
+- user accepted,
+- user rejected,
+- regression introduced,
+- task completion,
+- tool errors,
+- execution duration.
+
+---
+
+## 56.36 Agent Replay
+
+Every Code Agent run should be replayable.
+
+Replay must show actual recorded events, such as:
+
+```text
+User request
+ ↓
+Search
+ ↓
+Files read
+ ↓
+Patch generated
+ ↓
+Tests
+ ↓
+Result
+ ↓
+Approval
+ ↓
+Commit
+```
+
+Do not regenerate a historical run during replay.
+
+---
+
+## 56.37 Code Agent Run Persistence
+
+Persist:
+
+- repository,
+- branch,
+- starting commit,
+- user request,
+- execution plan,
+- tool calls,
+- files read,
+- files modified,
+- diffs,
+- test results,
+- evaluation,
+- approvals,
+- final status,
+- commit/PR references.
+
+---
+
+## 56.38 Phase 2 Realtime Events
+
+Examples:
+
+```text
+code.run.created
+repository.loaded
+agent.plan.created
+file.search.started
+file.search.completed
+file.read
+patch.generated
+patch.review_required
+patch.approved
+file.modified
+command.started
+command.output
+command.completed
+test.started
+test.completed
+git.diff.updated
+commit.created
+push.completed
+pull_request.created
+code.run.completed
+```
+
+Events must originate from actual backend execution.
+
+---
+
+## 56.39 Phase 2 Security
+
+Requirements:
+
+- repository authorization,
+- workspace isolation,
+- GitHub credential protection,
+- sandboxing,
+- command restrictions,
+- filesystem restrictions,
+- network restrictions,
+- secret isolation,
+- destructive-action approval,
+- audit logging,
+- branch protection awareness.
+
+The model must never receive unrestricted GitHub credentials.
+
+---
+
+## 56.40 Phase 2 UX Principles
+
+1. Editor first.
+2. Agent second.
+3. Diff before destructive action.
+4. Realtime execution.
+5. User control.
+6. Minimal friction.
+
+---
+
+## 56.41 Phase 2 Command Bar
+
+Provide:
+
+```text
+Ctrl/Cmd + K
+```
+
+with:
+
+```text
+Ask NeuroFlow
+Explain
+Fix
+Refactor
+Optimize
+Write Tests
+Find Bug
+Find Security Issue
+Generate Documentation
+Search Repository
+```
+
+The command bar inherits current editor context.
+
+---
+
+## 56.42 Phase 2 Acceptance Criteria
+
+Phase 2 is successful when a user can:
+
+1. Connect GitHub.
+2. Select a repository.
+3. Select a branch.
+4. Open the repository in Code Agent.
+5. Browse files.
+6. Open files in Monaco.
+7. Edit code manually.
+8. Select code and ask the agent about it.
+9. Ask the agent to modify code.
+10. Watch real agent events.
+11. Review generated diffs.
+12. Approve/reject changes.
+13. Run tests.
+14. See test output.
+15. Ask the agent to fix failures.
+16. Inspect Git status.
+17. Create an agent branch.
+18. Commit changes.
+19. Push where authorized.
+20. Create a PR where authorized.
+21. Replay a completed Code Agent run.
+22. Configure Qwen/Groq through the Model Gateway.
+23. Access Model Lab.
+24. Represent fine-tuning availability correctly.
+25. Evaluate a coding run.
+
+---
+
+## 56.43 Phase 2 Completion Gate
+
+The complete real-repository loop must work:
+
+```text
+GitHub
+ ↓
+Repository
+ ↓
+Code Agent
+ ↓
+Repository Understanding
+ ↓
+Plan
+ ↓
+Edit
+ ↓
+Diff
+ ↓
+Approval
+ ↓
+Test
+ ↓
+Fix
+ ↓
+Final Diff
+ ↓
+Commit
+ ↓
+Push
+ ↓
+Optional PR
+```
+
+The page is not considered complete merely because an editor is displayed.
+
+---
+
+## 56.44 Phase 2 Non-Goals
+
+Do not initially attempt:
+
+- full VS Code parity,
+- unrestricted shell access,
+- automatic production deployment,
+- automatic merging into protected branches,
+- automatic training from private repositories,
+- automatic fine-tuning from every interaction,
+- complete support for every programming language at full IDE capability,
+- replacing GitHub's entire product surface.
+
+The objective is a strong AI-native coding workflow.
+
+---
+
+# 57. PHASE 1 DEFINITION OF DONE
+
+NeuroFlow is considered functionally complete for the Phase 1 Core AI Runtime when:
 
 1. A user can open the React workspace.
 2. A user can create a conversation.
@@ -2025,7 +3156,42 @@ NeuroFlow is considered functionally complete for the initial production MVP whe
 
 ---
 
-# 58. FINAL PRODUCT REQUIREMENT
+
+# 58. PHASE 2 DEFINITION OF DONE
+
+The Code Agent is complete when:
+
+1. GitHub authentication works.
+2. Repository selection works.
+3. Branch selection works.
+4. Repository synchronization works.
+5. Monaco-based editing works.
+6. Repository search works.
+7. Code Agent tools execute through the NeuroFlow Tool Runtime.
+8. Agent-generated patches can be reviewed.
+9. Changes can be approved or rejected.
+10. Commands execute through the sandbox.
+11. Tests can be run.
+12. The agent can respond to test failures.
+13. Git status and diff work.
+14. Agent branches work.
+15. Authorized commits work.
+16. Authorized pushes work.
+17. Authorized pull requests work.
+18. Code Agent runs are persisted.
+19. Code Agent realtime events work.
+20. Agent replay works.
+21. Model configuration works through the Model Gateway.
+22. Model Lab exists.
+23. Fine-tuning availability is represented correctly.
+24. Coding-agent evaluation works.
+25. Security boundaries are enforced.
+
+Phase 2 is complete only when the end-to-end coding workflow works against a real repository.
+
+---
+
+# 59. FINAL PRODUCT REQUIREMENT
 
 The most important requirement is not the number of features.
 
