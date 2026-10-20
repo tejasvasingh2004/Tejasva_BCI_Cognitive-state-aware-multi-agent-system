@@ -1,6 +1,17 @@
 {
   "name": "neuroflow",
+  "description": "AI workspace and AI Code Agent on one production runtime: adaptive multi-agent routing, Model Gateway, safe tool execution, sandboxed tests and reviewable Git workflows.",
   "private": true,
+  "license": "MIT",
+  "author": "Tejasva Singh Chouhan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system.git"
+  },
+  "homepage": "https://github.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system#readme",
+  "bugs": {
+    "url": "https://github.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system/issues"
+  },
   "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=22"

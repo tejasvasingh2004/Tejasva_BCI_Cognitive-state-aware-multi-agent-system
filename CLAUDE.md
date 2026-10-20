@@ -3,14 +3,14 @@ Version 6 — Phase 1 + Phase 2 Aligned
 
 You are implementing NeuroFlow as a serious production-oriented AI workspace.
 
-The authoritative product contract is `prd.md`. Keep `prd.md` unchanged unless the user explicitly asks to modify it.
+The authoritative product contract is `docs/prd.md`. Keep `docs/prd.md` unchanged unless the user explicitly asks to modify it.
 
 There are exactly two **product phases** in the PRD:
 
 1. Product Phase 1 — Core NeuroFlow AI Runtime
 2. Product Phase 2 — AI Code Agent / AI IDE Workspace
 
-Any numbered implementation phases in `progress.md` are internal workstreams and must not be mistaken for the product roadmap.
+Any numbered implementation phases in `docs/progress.md` are internal workstreams and must not be mistaken for the product roadmap.
 
 The central implementation rule is:
 
@@ -24,11 +24,12 @@ Never build a second backend architecture for Phase 2.
 Before changing code:
 
 1. Read:
-   - architecture.md
-   - system-design.md
-   - prd.md
-   - brain-dump.md
-   - progress.md
+   - docs/architecture.md
+   - docs/system-design.md
+   - docs/prd.md
+   - docs/brain-dump.md
+   - docs/progress.md
+   - docs/STATUS.md (current state; keep it updated)
 
 2. Inspect the existing repository.
 3. Preserve useful existing work.

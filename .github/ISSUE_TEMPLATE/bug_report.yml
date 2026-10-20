@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. **Do not report security vulnerabilities here** — see SECURITY.md.
+        Remove tokens, API keys and private repository content from logs and screenshots.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - AI Workspace (chat)
+        - Code Workspace / Code Agent
+        - Model Lab
+        - API
+        - Worker / queues
+        - Sandbox
+        - Marketing site
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: API or worker logs, browser console errors, screenshots. Secrets removed.
+      render: shell
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, browser, model provider, local or deployed
+      placeholder: Windows 11, Node 22.11, Chrome 130, Groq, local

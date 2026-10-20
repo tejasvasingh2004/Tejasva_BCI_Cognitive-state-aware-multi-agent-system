@@ -2,7 +2,7 @@
 
 > Generated from the System Design Audit — every item links to the gap it closes.  
 > **Scorecard**: 62 ✅ Exists · 3 ⚠️ Partial · 18 ❌ Missing  
-> Updated 2026-10-20 — current state of the whole repository: `STATUS.md`.
+> Updated 2026-10-20 — current state of the whole repository: [`STATUS.md`](STATUS.md).
 
 ---
 

@@ -1,6 +1,6 @@
 # NeuroFlow — Setup
 
-See `README.md` for the overview and `STATUS.md` for what is built. Minimal local setup:
+See the [README](../README.md) for the overview and [STATUS.md](STATUS.md) for what is built. Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md). Minimal local setup:
 
 1. Install Node 22+, Docker, and enable pnpm: `corepack enable` (or `npm i -g pnpm@9`).
 2. Model provider (at least one):
@@ -61,5 +61,5 @@ Set `CORS_ORIGINS` and `PUBLIC_WEB_URL` on the API to the web app's URL, and `SE
 `SESSION_SECRET` to strong random values. Self-hosting: Docker Compose (`app` profile) and the
 Dockerfiles in `infra/docker`.
 
-The pre-v4 Python/Next.js research prototype is documented in `README_old.md`; its Next.js UI has
+The pre-v4 Python/Next.js research prototype is documented in [`legacy/prototype-readme.md`](legacy/prototype-readme.md); its Next.js UI has
 been replaced by `apps/web` and its chat runtime by the Node.js runtime.

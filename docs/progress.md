@@ -1,5 +1,5 @@
 # NeuroFlow — Implementation Progress
-Version 6 · updated 2026-10-20 · one-page summary in `STATUS.md`
+Version 6 · updated 2026-10-20 · one-page summary in [`STATUS.md`](STATUS.md)
 
 Legend: `[x]` done and tested · `[~]` partial (see note) · `[ ]` not started · `[-]` deferred by design (documented as future)
 
@@ -11,7 +11,7 @@ section at the end; it is a specialization of the same runtime, not a second bac
 
 Product Phase 1: all MVP requirements from `prd.md`, `architecture.md`, `system-design.md` and `claude.md` are
 implemented and tested. A requirement-by-requirement audit of the four documents against the code
-(October 2026) found remaining gaps; they were closed in this pass (see `docs/decisions.md`,
+(October 2026) found remaining gaps; they were closed in this pass (see `decisions.md`,
 "Second pass").
 
 Verified end to end with a real local Qwen model (Ollama) and the EEG classifier sidecar.

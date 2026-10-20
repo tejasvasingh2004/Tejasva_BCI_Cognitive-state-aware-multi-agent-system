@@ -618,7 +618,7 @@ Model Gateway: shared provider token/request buckets per key,     packages/bus/s
 
 Plans (free / pro / team / enterprise) are the single source of limits
 (`packages/contracts/src/plan-limits.ts`). Load balancing, Redis HA and connection pooling are
-infrastructure steps tracked in `TODO.md`.
+infrastructure steps tracked in `ROADMAP.md`.
 
 ---
 

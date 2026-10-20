@@ -4,7 +4,7 @@
 > prototype. The product has since been rebuilt as NeuroFlow (TypeScript monorepo: `apps/api`,
 > `apps/worker`, `apps/web`, `apps/site`, `packages/*`). The EEG workload classifier described here
 > lives on as the optional Cognitive Mode sidecar (`backend/`, `workload_classifier/`); the Next.js
-> frontend and LangGraph chat flow were replaced. Current state: `STATUS.md`.
+> frontend and LangGraph chat flow were replaced. Current state: [`docs/STATUS.md`](../STATUS.md).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
@@ -132,7 +132,7 @@ PORT=8000
 
 ## ⚡ Quick Start
 
-For detailed step-by-step setup (including Python/Node setup and dataset training), refer to the [SETUP.md](file:///d:/Document/bci/SETUP.md).
+For detailed step-by-step setup (including Python/Node setup and dataset training), refer to [docs/SETUP.md](../SETUP.md).
 
 ### Prerequisites
 - Python 3.11, 3.12, or 3.13

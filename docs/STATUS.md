@@ -1,11 +1,11 @@
 # NeuroFlow — Current State of the Repository
 
 Living record of what is built, how it fits together, how it is verified and what is left.
-Updated 2026-10-20 · branch `master` (includes the merged `v2` work).
+Updated 2026-10-20 · branch `master` (includes the merged `v2` work). Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Keep this file current: when a feature lands, add it here in the same commit. Requirements live in
-`prd.md`; detailed checklists in `progress.md`; design rationale in `docs/decisions.md`; open
-infrastructure work in `TODO.md`.
+[`prd.md`](prd.md); detailed checklists in [`progress.md`](progress.md); design rationale in
+[`decisions.md`](decisions.md); open infrastructure work in [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -125,7 +125,7 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
 
 Today the system runs as one API process and one worker process per environment. API and workers
 are stateless (all shared state is in Redis/PostgreSQL), so adding replicas behind a load balancer
-needs no code change; see `TODO.md` for the infrastructure steps.
+needs no code change; see `ROADMAP.md` for the infrastructure steps.
 
 ## 6. Marketing site (`apps/site`)
 
@@ -181,15 +181,16 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 | 2026-10-11 | Workspace settings + task history API, Tasks and Settings pages | `fec466e`, `f4533f7` |
 | 2026-10-11 | 3D landing page, then icy blue glass palette | `a032a81`, `2410e0c` |
 | 2026-10-18 | Deployment configs (Vercel, Railway), runtime dependency fixes; `v2` merged into `master` | `4d133d4` … `dfad3fa` |
+| 2026-10-20 | Documentation brought up to date; open-source project structure (license, contributing, code of conduct, security policy, templates; docs moved to `docs/`) | — |
 
 ## 10. Open items
 
 1. **Live push / PR on github.com** — grant the fine-grained token Contents and Pull requests write.
 2. **Horizontal scale-out** — 2+ API replicas and workers behind a load balancer, SSE-friendly
-   timeouts, load test (`TODO.md` §1).
+   timeouts, load test (`ROADMAP.md` §1).
 3. **Workspace service and sandbox pool** — checkouts not tied to one host; isolated sandbox pool.
 4. **Operations** — dashboards and alerts, error tracking, backups, Redis HA, PgBouncer
-   (`TODO.md`).
+   (`ROADMAP.md`).
 5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory,
    mid-run checkpoint/resume.
 6. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic

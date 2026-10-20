@@ -4,7 +4,7 @@
 > prototype. The product has since been rebuilt as NeuroFlow (TypeScript monorepo: `apps/api`,
 > `apps/worker`, `apps/web`, `apps/site`, `packages/*`). The EEG workload classifier described here
 > lives on as the optional Cognitive Mode sidecar (`backend/`, `workload_classifier/`); the Next.js
-> frontend and LangGraph chat flow were replaced. Current state: `STATUS.md`.
+> frontend and LangGraph chat flow were replaced. Current state: [`docs/STATUS.md`](../STATUS.md).
 
 ---
 

@@ -1,8 +1,65 @@
-# Python
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ─── Build output and caches ─────────────────────────────────────────────────
+dist/
+dist-server/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# ─── Tests ───────────────────────────────────────────────────────────────────
+playwright-report/
+test-results/
+blob-report/
+
+# ─── Environment and secrets (never commit) ─────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ─── Local runtime data (code workspaces, sandbox caches) ────────────────────
+.data/
+tmp/
+temp/
+artifacts/
+
+# ─── Personal and local-only files ───────────────────────────────────────────
+reports/
+screenshot/
+Screenshot/
+Screenshot*.png
+*.docx
+
+# ─── Editors and operating systems ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.pydevproject
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ─── Python (EEG workload classifier and Cognitive Mode sidecar) ─────────────
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 .venv/
 venv/
 ENV/
@@ -12,49 +69,8 @@ env/
 .coverage
 htmlcov/
 *.egg-info/
-dist/
-build/
 
-# Next.js & Node
-node_modules/
-.next/
-out/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# Environmental Variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# IDEs and Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-.project
-.pydevproject
-
-# Operating System
-.DS_Store
-Thumbs.db
-ehthumbs.db
-
-# Logs
-*.log
-logs/
-
-# Temporary / Output Files
-tmp/
-temp/
-artifacts/
-
-# Large Datasets and Caches
-# Ignores large raw MATLAB & NumPy tensors to keep git repository size small
+# Large raw EEG tensors and generated model artefacts (regenerate with workload_classifier/analysis)
 workload_classifier/data/stew/dataset.mat
 workload_classifier/data/stew/clean_dataset.npy
 workload_classifier/data/stew/X_feats.npy
@@ -67,25 +83,9 @@ workload_classifier/data/stew/best_model_binary.joblib
 workload_classifier/data/stew/best_model_3class.joblib
 workload_classifier/data/stew/evaluation_metrics.json
 
-# Model outputs / plots
-plots/preprocessing/
+# Generated plots
+/plots/
 workload_classifier/plots/preprocessing/
 workload_classifier/plots/features/
 workload_classifier/plots/optimization/
 workload_classifier/plots/evaluation/
-
-# NeuroFlow monorepo
-.turbo/
-playwright-report/
-test-results/
-*.tsbuildinfo
-
-# local dev logs
-.api-dev.log
-.worker-dev.log
-
-# local env backups
-.env.*.bak
-
-# code workspaces (checkouts, sandbox caches)
-.data/
