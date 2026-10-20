@@ -1,5 +1,11 @@
 # Cognitive-State-Aware Adaptive Multi-Agent BCI System
 
+> **Historical document.** This describes the original Python/FastAPI + Next.js BCI research
+> prototype. The product has since been rebuilt as NeuroFlow (TypeScript monorepo: `apps/api`,
+> `apps/worker`, `apps/web`, `apps/site`, `packages/*`). The EEG workload classifier described here
+> lives on as the optional Cognitive Mode sidecar (`backend/`, `workload_classifier/`); the Next.js
+> frontend and LangGraph chat flow were replaced. Current state: `STATUS.md`.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-green.svg)](https://fastapi.tiangolo.com/)

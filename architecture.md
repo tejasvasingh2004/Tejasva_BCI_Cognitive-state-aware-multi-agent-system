@@ -593,6 +593,33 @@ The API layer must remain stateless where possible.
 
 Long-running AI work belongs in workers, not inside request handlers.
 
+### Implemented scalability controls
+
+All shared state lives in PostgreSQL and Redis, so API and worker replicas can be added without
+code changes. The controls below already work across processes:
+
+```text
+Request
+  ↓
+Per-IP and per-tenant HTTP token buckets (plan × route class)     apps/api/src/rate-limit.ts
+  ↓
+Admission: active runs per workspace/user, daily token quota,     apps/api/src/run-manager.ts
+           global backlog
+  ↓
+Queues: neuroflow-runs | neuroflow-workspace | neuroflow-evals     packages/bus/src/queue.ts
+        priority = plan priority × 10 + source
+  ↓
+Worker fairness gate: running slots per workspace (Redis lease)   apps/worker/src/workers.ts
+  ↓
+Model Gateway: shared provider token/request buckets per key,     packages/bus/src/rate-limit.ts
+               concurrency leases, retry-after blocks, key pools  packages/models/src/gateway.ts
+               circuit breaker per provider                       packages/models/src/circuit-breaker.ts
+```
+
+Plans (free / pro / team / enterprise) are the single source of limits
+(`packages/contracts/src/plan-limits.ts`). Load balancing, Redis HA and connection pooling are
+infrastructure steps tracked in `TODO.md`.
+
 ---
 
 ## 15. Architecture Invariants
@@ -873,3 +900,39 @@ Phase 2 is not complete because Monaco renders successfully. The real-repository
 GitHub → Repository → Code Agent → Understanding → Plan → Edit
 → Diff → Approval → Test → Fix → Final Diff → Commit → Push → Optional PR
 ```
+
+## 16.13 Plan Review, Tasks and Workspace Settings
+
+Plan Review is an optional gate inside the Code Agent strategy, built on the same approval channel
+as patch review:
+
+```text
+Plan → plan.review_required → user decision
+         ├─ approve (as is or with edited steps) → plan.approved → explore → patch → test …
+         ├─ revise (feedback, at most 3 new plans) → new plan → review again
+         └─ reject → plan.rejected → run ends; the repository is untouched
+```
+
+It is enabled per task or by the workspace default. Workspace Settings hold per-workspace defaults
+(approval mode, default model, Plan Review default, project command overrides, sandbox image from a
+curated list) in `code_workspaces.settings`; new code runs apply them unless the request overrides
+them. The Tasks view is a read model over existing run records — status, timing, cost, tokens, diff
+stats, tests, agent branch and pull request — with Replay for any run.
+
+---
+
+# 17. Delivery Surfaces and Deployment
+
+```text
+apps/site  (marketing, pre-rendered static)   ──► static CDN (Vercel)
+apps/web   (product UI, static SPA)           ──► static CDN (Vercel)
+                    │  HTTPS / SSE / WebSocket
+                    ▼
+apps/api   (Fastify, stateless)               ──► Railway (Nixpacks) or Docker
+apps/worker (BullMQ, sandbox via Docker)      ──► separate process from the same build
+PostgreSQL · Redis                            ──► managed services
+```
+
+The marketing site never shares a deploy or bundle with the product. The web app talks to the API
+only over its public HTTP API; provider keys and GitHub credentials stay on the server. Self-hosting
+uses Docker Compose with the same images.

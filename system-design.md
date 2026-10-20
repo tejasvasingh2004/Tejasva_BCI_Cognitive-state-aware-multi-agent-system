@@ -154,6 +154,22 @@ persist checkpoints
 complete/fail/cancel
 ```
 
+Implemented queues (`packages/bus/src/queue.ts`):
+
+| Queue | Jobs | Notes |
+| --- | --- | --- |
+| `neuroflow-runs` | AI and Code Agent runs | priority = plan priority × 10 + source offset |
+| `neuroflow-workspace` | repository clone/sync, terminal commands | own concurrency (`WORKER_WORKSPACE_CONCURRENCY`) |
+| `neuroflow-evals` | Model Lab evaluations | single attempt (`WORKER_EVAL_CONCURRENCY`) |
+
+Before running, a worker takes a per-workspace running slot (`running:<workspace>`, a Redis lease
+renewed by heartbeat, capped by the plan's `runningPerWorkspace`). Without a slot the job is
+delayed, not failed, so one tenant cannot occupy every worker. `WORKER_QUEUES` lets a process serve
+a subset of queues.
+
+Admission happens earlier, in the Run Manager: per-tenant HTTP rate limits by route class, active
+runs per workspace and user, the daily token quota (`quota_exceeded`) and the global backlog.
+
 ---
 
 ## 5. Adaptive Router
@@ -677,6 +693,20 @@ Frontend can be deployed independently as a static/Vite application behind a CDN
 
 Backend can scale independently.
 
+Current deployment targets:
+
+| Component | Target | Config |
+| --- | --- | --- |
+| Marketing site (`apps/site`) | Vercel, pre-rendered static pages | `apps/site/vercel.json`, `VITE_APP_URL` |
+| Web app (`apps/web`) | Vercel, SPA rewrites to `index.html` | `apps/web/vercel.json`, `VITE_API_URL` |
+| API (`apps/api`) | Railway via Nixpacks (Node 22, pnpm 9) | `nixpacks.toml` |
+| Worker (`apps/worker`) | separate process from the same build; Docker daemon for the sandbox | `node apps/worker/dist/main.js` |
+| PostgreSQL, Redis | managed services | `DATABASE_URL`, `REDIS_URL` |
+| Self-host | Docker Compose (`infra`, `app`, `bci` profiles) | `docker-compose.yml`, `infra/docker` |
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, unit, integration (PostgreSQL and Redis
+service containers), Playwright E2E and image builds on every push.
+
 ---
 
 # Product Phase 1 — Core Runtime Implementation Contract
@@ -964,6 +994,34 @@ POST   /v1/code/runs/:id/pull-request
 
 Exact routes may be adapted to the existing API conventions, but the capabilities must exist.
 
+Implemented additions beyond the list above:
+
+```text
+POST   /v1/code/runs/:id/plan                 Plan Review decision: approve | revise | reject
+GET    /v1/code/runs/:id/replay               stored events and artifacts (never re-executes)
+GET    /v1/code/runs/:id/evaluation           coding evaluation signals
+PATCH  /v1/code/workspaces/:id                approval mode, command overrides, settings
+GET    /v1/code/workspaces/:id/runs           task history (?status=, ?limit=)
+PUT    /v1/code/workspaces/:id/file           save a file from the editor
+POST   /v1/code/workspaces/:id/commands       run a terminal command in the sandbox
+GET    /v1/code/workspaces/:id/git            status; plus git/branch, checkout, commit, push, pull-request
+GET    /v1/github/connections/...             connections, owners, repositories, branches
+/v1/model-lab/...                             models, providers, configs, datasets, fine-tuning,
+                                              evaluations, deployments
+GET    /v1/workspace/usage                    plan, limits and today's token usage
+```
+
+Plan Review request body (`PlanDecisionBody`, discriminated on `decision`):
+
+```text
+{ decision: "approve", planId, steps?, summary? }
+{ decision: "revise",  planId, feedback }
+{ decision: "reject",  planId, feedback? }
+```
+
+Plan Review events: `plan.review_required`, `plan.approved`, `plan.rejected`. Rate limiting adds
+`model.throttled`.
+
 ## 38. Phase 2 Persistence
 
 Add domain tables or equivalent persistence for:
@@ -986,6 +1044,13 @@ fine_tuning_jobs
 ```
 
 Ownership and workspace isolation must be explicit.
+
+Implemented additions:
+
+- `code_workspaces.settings` (jsonb, migration 0007): `defaultModel`, `planReviewDefault`,
+  `sandboxImage`; validated against the Model Lab catalogue and `SANDBOX_IMAGE_CHOICES`.
+- `code_approvals.subject_type` gains `plan` (migration 0006), next to patch, command, delete, commit, push and pull_request.
+- `workspaces.plan` (migration 0005): free / pro / team / enterprise.
 
 
 # Phase 1 + Phase 2 Alignment Rules

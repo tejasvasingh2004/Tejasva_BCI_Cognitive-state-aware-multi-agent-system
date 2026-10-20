@@ -188,3 +188,67 @@ token and a test repository.
   run; without a slot the job is delayed 1–2 s (`DelayedError`, no attempt used) and other
   tenants' jobs proceed. Admission caps bound how many jobs a tenant can queue in the first place.
 - Jobs left on the old single queue are still processed by the runs worker.
+
+## Plan Review, Tasks and Workspace Settings
+
+### Plan Review
+- **Opt-in, not default.** Most tasks are small; a mandatory review step would slow them down.
+  It is enabled per task ("Plan first" in the composer) or per workspace (Workspace Settings →
+  "Review plans first"); an explicit value in the request wins over the workspace default.
+- **Same approval channel as patches.** The orchestrator waits on the existing approval gate
+  (`control.waitForApproval`), whose messages now carry a `data` payload (edited steps, feedback).
+  No new transport, and the wait survives across API processes because it goes through Redis.
+- **Decisions:** approve (optionally with edited steps or summary), revise (feedback, at most
+  `MAX_PLAN_REVISIONS = 3` new plans) or reject (the run ends without touching the repository).
+  `PlanDecisionBody` is a discriminated union so each decision is validated on its own shape.
+- **Timeout:** at least 15 minutes (`max(approvalTimeoutMs, 15 min)`), longer than a patch review,
+  because reading a plan takes more time than reading a one-line diff.
+- The approved plan is given to the agent as an explicit instruction ("Plan approved by the user —
+  follow it"); events `plan.review_required`, `plan.approved`, `plan.rejected` make the decision
+  visible in Activity and Replay. Migration 0006 adds `plan` as an approval subject.
+
+### Workspace Settings
+- Stored as `code_workspaces.settings` jsonb (migration 0007) rather than new columns: the set of
+  defaults (default model, Plan Review default, sandbox image) is expected to grow, and every
+  field is optional with a code-side default.
+- Validated at the API: the default model must exist in the Model Lab catalogue (or be an active
+  `deployment/<name>`), and the sandbox image must come from a curated list
+  (`SANDBOX_IMAGE_CHOICES`), so a workspace setting can never point the sandbox at an arbitrary
+  image.
+- Command overrides are a partial map; an empty value removes the override and falls back to the
+  detected command. Settings are stripped from the public workspace payload and returned by the
+  workspace detail endpoint only.
+
+### Tasks
+- The task list is a query over existing run records (status, timing, cost, tokens, diff stats,
+  tests, agent branch, PR reference, whether the plan was reviewed) — no new table. Replay stays
+  read-only.
+
+## Marketing site
+
+- **Separate app** (`apps/site`), not routes inside `apps/web`: it deploys and caches
+  independently, never ships the product bundle, and can be hosted on a static CDN.
+- **Pre-rendered** per route with the SSR bundle; the client hydrates only when the HTML belongs to
+  the current URL (`data-route`), because some hosts serve the home page for unknown paths.
+- **Animation without hiding content:** reveal effects start visible in the HTML and only animate
+  elements that are below the fold when the page loads, so crawlers and no-JS visitors see
+  everything. Framer Motion's initial `opacity: 0` in SSR output was replaced by CSS animations.
+- **3D with CSS, not WebGL:** perspective transforms driven by CSS variables (`--px`/`--py` for the
+  pointer, `--sy`/`--p` for scroll) written by a small `Stage` component in `requestAnimationFrame`.
+  No React re-render per frame, no large 3D library, text stays crisp, and the pre-rendered page is
+  complete. Orbit labels use `offset-path` instead of nested 3D transforms, which flattened.
+- **Palette:** icy blue glass (sky canvas, frosted panels with cyan edges, cobalt accent, navy
+  text) chosen to match a reference image; the earlier warm porcelain palette was replaced.
+- Plan limits on the pricing page are imported from the same definitions the API enforces, through
+  a zod-free entry point (`@neuroflow/contracts/plans`) so the site bundle stays small.
+
+## Deployment
+
+- Static frontends on Vercel (`apps/site`, `apps/web`), each with its own `vercel.json`; the web app
+  rewrites every non-asset path to `index.html` for client-side routing.
+- The API builds with Nixpacks on Railway (Node 22, pnpm 9 via corepack). `.npmrc` hoists
+  dependencies (`shamefully-hoist`) because the bundled API resolves some runtime packages from the
+  root at start-up; runtime dependencies (e.g. `pino`) are declared explicitly in `apps/api` and
+  `apps/worker`.
+- The worker is a separate process from the same build and needs a Docker daemon for the sandbox;
+  hosts without Docker can still serve the API and the web app.

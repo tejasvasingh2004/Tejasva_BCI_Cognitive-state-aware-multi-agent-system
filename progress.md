@@ -1,5 +1,5 @@
 # NeuroFlow — Implementation Progress
-Version 6 · updated 2026-10-11
+Version 6 · updated 2026-10-20 · one-page summary in `STATUS.md`
 
 Legend: `[x]` done and tested · `[~]` partial (see note) · `[ ]` not started · `[-]` deferred by design (documented as future)
 
@@ -16,8 +16,8 @@ implemented and tested. A requirement-by-requirement audit of the four documents
 
 Verified end to end with a real local Qwen model (Ollama) and the EEG classifier sidecar.
 
-Tests: unit + integration (real Postgres/Redis/BullMQ/Git/Docker) across all packages, 13 Playwright
-E2E flows (11 Phase 1, 2 Phase 2).
+Tests: ~220 unit tests across 13 packages, 45 integration tests (real Postgres/Redis/BullMQ/Git/Docker),
+15 Playwright E2E flows (11 Phase 1, 4 Phase 2). CI runs all of them on every push.
 
 ---
 
@@ -226,12 +226,25 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 
 - [x] Marketing site (`apps/site`, pre-rendered static pages): home, download, pricing, docs,
       changelog generated from Git history; links into the app
+- [x] Landing page with CSS 3D depth: floating glass panels, orbs, ribbons and terrazzo driven by
+      pointer and scroll, 3D hero, demo stage, feature bento with live visuals, pinned scroll story,
+      interactive Cognitive Mode orb, tilt cards; reduced motion respected
+- [x] Icy blue glass palette (sky canvas, frosted panels, cyan edges, cobalt accents, navy text)
 - [ ] Desktop download builds and payments (later phase)
+
+## Deployment
+
+- [x] Vercel configs for `apps/site` (static, clean URLs) and `apps/web` (SPA rewrites)
+- [x] Railway/Nixpacks config for the API (Node 22, pnpm 9), runtime dependencies declared for API
+      and worker
+- [x] Docker Compose (`infra`, `app`, `bci` profiles) and Dockerfiles for self-hosting
+- [ ] Worker host with a Docker daemon for the sandbox in the hosted deployment
+- [ ] Continuous deployment gated on CI, and staging environment
 
 ## Remaining (needs input or is post-MVP)
 
 1. Live push/PR on github.com — grant the fine-grained token Contents and Pull requests write.
-2. Live Groq: configured and used for the real-repository run.
+2. Live Groq: configured and used for the real-repository run (done).
 3. Web search — add a Tavily/Brave key or a SearXNG URL to enable the tool.
 4. OIDC/SSO, pgvector memory, interaction-based cognitive signal, mid-graph resume (post-MVP).
 5. Phase 2 non-goals stay out of scope: VS Code parity, unrestricted shell, automatic deployment,

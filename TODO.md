@@ -1,7 +1,8 @@
 # NeuroFlow — System Design TODO
 
 > Generated from the System Design Audit — every item links to the gap it closes.  
-> **Scorecard**: 62 ✅ Exists · 3 ⚠️ Partial · 18 ❌ Missing
+> **Scorecard**: 62 ✅ Exists · 3 ⚠️ Partial · 18 ❌ Missing  
+> Updated 2026-10-20 — current state of the whole repository: `STATUS.md`.
 
 ---
 
@@ -13,6 +14,7 @@
 | 🔵 | Infrastructure / config change |
 | 🟡 | Needs an external service or third-party integration |
 | ✅ | Done |
+| ⚠️ | Partly done |
 | 🔲 | To do |
 
 ---
@@ -409,7 +411,10 @@
 
 ---
 
-### 🔲 🔵 CDN for Static Assets
+### ⚠️ 🔵 CDN for Static Assets
+
+**Status**: the marketing site and the web app are configured for Vercel (`apps/*/vercel.json`),
+which serves them from its CDN. Self-hosted deployments behind Nginx still have no CDN.
 
 **Gap**: Nginx serves `/assets/` with `Cache-Control: immutable`, but there's no actual CDN.
 
@@ -426,7 +431,7 @@
 
 ### 🔲 🔵 Worker Autoscaling on Queue Depth
 
-**Gap**: `queue.stats()` exposes `waiting` and `active` per queue (`packages/orchestrator/src/queue.ts`), but no autoscaler consumes it.
+**Gap**: `queue.stats()` exposes `waiting` and `active` per queue (`packages/bus/src/queue.ts`), but no autoscaler consumes it.
 
 **What to do**:
 1. **Option A — Docker Compose** (for single-server):
@@ -451,7 +456,10 @@
 
 ## Priority 8 — CI/CD
 
-### 🔲 🔵 Continuous Deployment Pipeline
+### ⚠️ 🔵 Continuous Deployment Pipeline
+
+**Status**: Vercel (site, web) and Railway (API) can deploy from Git pushes, but deploys are not
+gated on CI, there is no staging environment and no smoke tests after deploy.
 
 **Gap**: CI builds Docker images (`.github/workflows/ci.yml`) but doesn't push or deploy them. No CD workflow exists.
 
@@ -506,8 +514,11 @@ These items were listed as "still to build" in the design doc, but the code alre
 | ✅ Shared Redis-backed token bucket for model providers | `packages/bus/src/rate-limit.ts` — `RedisRateLimiter` with Lua scripts |
 | ✅ Circuit breaker per provider (closed/open/half-open) | `packages/models/src/circuit-breaker.ts` |
 | ✅ Rate limits by plan and route classification | `packages/contracts/src/plan-limits.ts` + `apps/api/src/rate-limit.ts` |
-| ✅ Separate queues with priorities + per-tenant fairness | `packages/orchestrator/src/queue.ts` (3 queues) + `workers.ts` (Redis semaphore) |
-| ✅ Concurrency semaphore per provider with TTL & heartbeat | `packages/bus/src/rate-limit.ts` L142-188 |
+| ✅ Separate queues with priorities + per-tenant fairness | `packages/bus/src/queue.ts` (3 queues) + `apps/worker/src/workers.ts` (Redis semaphore) |
+| ✅ Concurrency semaphore per provider with TTL & heartbeat | `packages/bus/src/rate-limit.ts` (`tryAcquireSlot`) |
+| ✅ CI: typecheck, lint, unit, integration, E2E, image builds | `.github/workflows/ci.yml` |
+| ✅ Static hosting for the site and web app (Vercel CDN) | `apps/site/vercel.json`, `apps/web/vercel.json` |
+| ✅ API build/start on Railway | `nixpacks.toml` |
 
 ---
 
@@ -527,8 +538,8 @@ These items were listed as "still to build" in the design doc, but the code alre
 | 10 | Event partitioning + retention | 🔵 DB | Medium | 🔲 |
 | 11 | Read replica support | 🔵 Infra | Medium | 🔲 |
 | 12 | Model list caching | 🟢 Code | Small | 🔲 |
-| 13 | CDN for static assets | 🔵 Infra | Small | 🔲 |
+| 13 | CDN for static assets | 🔵 Infra | Small | ⚠️ Vercel for site/web |
 | 14 | Worker autoscaling | 🔵 Infra | Medium | 🔲 |
-| 15 | CD pipeline | 🔵 CI/CD | Medium | 🔲 |
+| 15 | CD pipeline | 🔵 CI/CD | Medium | ⚠️ Git deploys, no CI gate |
 | 16 | Per-key spend caps | 🟢 Code | Small | 🔲 |
 | 17 | SSE-friendly LB timeouts | 🔵 Infra | Trivial | 🔲 |
