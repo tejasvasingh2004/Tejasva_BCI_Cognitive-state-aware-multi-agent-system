@@ -6,11 +6,12 @@ import {
   Scopes,
   UpdateWorkspaceSettingsBody,
   UpsertAgentBody,
+  UsageHistoryQuery,
   type AgentSpec,
   type WorkspaceUsage,
 } from '@neuroflow/contracts';
 import { UsageMeter } from '@neuroflow/bus';
-import { agentsRepo, auditRepo, authRepo, runsRepo, workspaceRepo } from '@neuroflow/db';
+import { agentsRepo, auditRepo, authRepo, runsRepo, usageRepo, workspaceRepo } from '@neuroflow/db';
 import { BUILTIN_AGENTS } from '@neuroflow/orchestrator';
 import { audit } from '../audit';
 import { requirePrincipal, requireScope } from '../auth';
@@ -90,6 +91,14 @@ export async function adminRoutes(app: FastifyInstance, deps: AppDeps) {
     ]);
     const { queuePriority: _priority, ...publicLimits } = limits;
     return { plan, limits: publicLimits, usage: { tokensToday, activeRuns, resetsAt: UsageMeter.resetsAt().toISOString() } } satisfies WorkspaceUsage;
+  });
+
+  // Usage over the last 7, 30 or 90 days: totals, per day, per model, per source and per code
+  // workspace. Read-only aggregates over recorded runs and model calls.
+  app.get('/v1/workspace/usage/history', async (req) => {
+    const p = requireScope(req, Scopes.runsRead);
+    const { days } = UsageHistoryQuery.parse(req.query);
+    return usageRepo.history(deps.pool, p.workspaceId, { days });
   });
 
   app.get('/v1/workspace/settings', async (req) => {

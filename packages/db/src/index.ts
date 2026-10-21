@@ -12,3 +12,4 @@ export * from './workspace';
 export * from './agents';
 export * from './code';
 export * from './model-lab';
+export * from './usage';
