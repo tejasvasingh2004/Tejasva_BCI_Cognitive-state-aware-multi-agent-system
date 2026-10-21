@@ -44,6 +44,7 @@ manual setting or an EEG workload classifier (research origin of the project).
 | **Replay** | Every run is recorded; replay reads stored history and never re-executes |
 | **Model Lab** | Models, providers, parameters, datasets, evaluations and deployments — fine-tuning support stated honestly per provider |
 | **Built to scale** | Stateless API, fair per-tenant queues, plan-based rate limits and quotas, OpenTelemetry tracing |
+| **Operable** | `GET /status` health summary with worker heartbeats, uptime alerts, error tracking with credentials redacted |
 | **OpenAI-compatible API** | `POST /v1/chat/completions` maps onto the same runtime |
 
 <table>

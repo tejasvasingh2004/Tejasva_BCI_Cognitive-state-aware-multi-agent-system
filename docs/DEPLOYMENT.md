@@ -123,7 +123,7 @@ NODE_ENV=production
 DATABASE_URL=postgresql://…?sslmode=require
 REDIS_URL=rediss://…
 GROQ_API_KEY=…
-GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b
+GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b
 SECRETS_KEY=…        # the same value as the API
 SESSION_SECRET=…     # the same value as the API
 CODE_DATA_DIR=/var/lib/neuroflow/code
@@ -204,7 +204,7 @@ sandbox) and the web app behind nginx. Add `--profile bci` for the EEG Cognitive
 
 ## Models
 
-- **Groq** serves GPT-OSS 120B / 20B and Qwen3 32B; no model hosting is needed.
+- **Groq** serves GPT-OSS 120B / 20B, Llama 3.3 70B and Llama 3.1 8B in production and Qwen3.8 27B in preview ([models](https://console.groq.com/docs/models)); no model hosting is needed. Preview models can be withdrawn, so keep a production model in `GROQ_MODELS` as a fallback.
 - **Self-hosted Qwen**: run Ollama (or any OpenAI-compatible server) and set `QWEN_BASE_URL` and
   `QWEN_MODELS` on the API and the worker. Small models (`qwen3:0.6b`, `qwen3:1.7b`) run on CPU;
   larger ones need a GPU to be responsive.

@@ -59,7 +59,7 @@ SECRETS_KEY=
 SESSION_SECRET=
 # Models
 GROQ_API_KEY=
-GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b
+GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b
 # Local paths and queues
 CODE_DATA_DIR=${DATA_DIR}
 WORKER_QUEUES=runs,workspace,evals

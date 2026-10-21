@@ -15,7 +15,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | --- | --- |
 | Product | AI workspace (Product Phase 1) + AI Code Agent / AI IDE (Product Phase 2) on **one** runtime |
 | Stack | React 19 · Vite 7 · Tailwind 4 · TanStack Query · Zustand · Monaco — Node 22 · Fastify 5 · Zod 4 · BullMQ — PostgreSQL · Redis · Docker · OpenTelemetry |
-| Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3-32b`, …) and local Qwen through Ollama, all behind the Model Gateway |
+| Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` in preview, …) and local Qwen through Ollama, all behind the Model Gateway; the model's own identity is stated in its instructions |
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
@@ -213,5 +213,8 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
    PgBouncer (`ROADMAP.md`). Error tracking and uptime alerts are in place.
 5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory,
    mid-run checkpoint/resume.
-6. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic
+6. **Intermittent E2E failure** — the Model Lab deployments test (`apps/web/e2e/code.spec.ts`)
+   occasionally times out when the whole suite runs under load; it passes on its own. Cause not yet
+   found.
+7. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic
    deployment or merging, automatic training or fine-tuning on private code.

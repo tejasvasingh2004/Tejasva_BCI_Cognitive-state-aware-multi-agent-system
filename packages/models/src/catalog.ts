@@ -24,7 +24,10 @@ const KNOWN: Record<string, KnownModel> = {
   // Groq (list prices, USD per 1M input/output tokens; override with MODEL_PRICING)
   'llama-3.1-8b-instant': km('Llama 3.1 8B Instant', 'fast', 131_072, true, 'none', [0.05, 0.08]),
   'llama-3.3-70b-versatile': km('Llama 3.3 70B', 'strong', 131_072, true, 'none', [0.59, 0.79]),
+  // No longer on Groq's model list (October 2026); kept so existing configurations still resolve.
   'qwen/qwen3-32b': km('Qwen3 32B (Groq)', 'strong', 131_072, true, 'toggle', [0.29, 0.59]),
+  // Preview on Groq (may be withdrawn at short notice); no published list price yet — set MODEL_PRICING.
+  'qwen/qwen3.8-27b': km('Qwen3.8 27B (Groq, preview)', 'balanced', 131_072, true, 'toggle'),
   'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]),
   'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
 };
