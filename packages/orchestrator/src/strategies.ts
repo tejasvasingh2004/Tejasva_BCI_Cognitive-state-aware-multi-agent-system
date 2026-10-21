@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AgentStrategy, ChatMessage } from '@neuroflow/contracts';
-import { callModel, outputInstructions, runAgent, throwIfCancelled, wantsJson, type RunContext } from './execution';
+import { callModel, modelFor, outputInstructions, runAgent, throwIfCancelled, wantsJson, type RunContext } from './execution';
 import { buildContext } from './context';
 import { evaluate, parseJsonObject, recordEvaluation } from './evaluation';
 
@@ -25,6 +25,7 @@ const direct: Strategy = async (ctx) => {
   const outputReq = outputInstructions(ctx);
   const { messages, report } = buildContext({
     plan: ctx.plan,
+    model: modelFor(ctx, 'primary').model,
     history: ctx.history,
     ...ctx.extras,
     ...(outputReq ? { outputInstructions: outputReq } : {}),

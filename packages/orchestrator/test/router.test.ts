@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelInfo } from '@neuroflow/contracts';
 import { derivePolicy } from '@neuroflow/cognitive';
-import { buildContext, classifyTask, planExecution, RoutingError } from '../src';
+import { buildContext, classifyTask, modelIdentity, planExecution, RoutingError } from '../src';
 
 const model = (ref: string, tier: ModelInfo['tier'], available = true): ModelInfo => ({
   ref,
@@ -135,6 +135,16 @@ describe('planExecution', () => {
 });
 
 describe('buildContext', () => {
+  it('states the routed model so the model does not guess its own identity', () => {
+    const plan = planExecution({ ...base, lastUserMessage: 'which model are you?' });
+    const { messages } = buildContext({ plan, history: [{ role: 'user', content: 'which model are you?' }], model: 'groq/openai/gpt-oss-120b' });
+    expect(messages[0]!.content).toContain('You are running on the model "openai/gpt-oss-120b" served by Groq');
+    expect(modelIdentity('qwen/qwen3:8b')).toContain('"qwen3:8b" served by a Qwen model server');
+    expect(modelIdentity('custom-model')).toContain('"custom-model", through');
+    // Without a model (e.g. evaluator prompts built elsewhere) nothing is claimed.
+    expect(buildContext({ plan, history: [{ role: 'user', content: 'x' }] }).messages[0]!.content).not.toContain('You are running on');
+  });
+
   it('bounds history and always keeps system + current task', () => {
     const plan = planExecution({ ...base, lastUserMessage: 'x' });
     plan.contextPolicy.maxInputTokens = 300;

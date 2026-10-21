@@ -33,6 +33,8 @@ export type ContextInput = {
   code?: CodeContext;
   /** Tokens already spoken for outside the messages (tool schemas sent with the request). */
   reserveTokens?: number;
+  /** Model ref this context is sent to (`provider/model`), so the model can state what it is. */
+  model?: string;
   now?: Date;
 };
 
@@ -47,6 +49,20 @@ export type CodeContext = {
   /** Files the user pinned as context. */
   pinned?: string;
 };
+
+const PROVIDER_NAMES: Record<string, string> = { groq: 'Groq', qwen: 'a Qwen model server' };
+
+/**
+ * Models do not know which model they are and tend to name a famous one when asked (e.g. an
+ * open-weight GPT-OSS model claiming to be "GPT-4-turbo"). The router's choice is stated instead.
+ */
+export function modelIdentity(ref: string): string {
+  const slash = ref.indexOf('/');
+  const provider = slash > 0 ? ref.slice(0, slash) : '';
+  const model = slash > 0 ? ref.slice(slash + 1) : ref;
+  const servedBy = provider ? ` served by ${PROVIDER_NAMES[provider] ?? provider}` : '';
+  return `You are running on the model "${model}"${servedBy}, through NeuroFlow's Model Gateway. If asked which model or provider you are, say exactly this and do not claim to be any other model.`;
+}
 
 export type BuiltContext = {
   messages: ChatMessage[];
@@ -68,6 +84,7 @@ export function buildContext(input: ContextInput): BuiltContext {
   const budget = Math.max(Math.floor(max / 4), max - (input.reserveTokens ?? 0));
 
   const systemParts = [BASE_INSTRUCTIONS, `Current date: ${now.toISOString().slice(0, 10)}.`];
+  if (input.model) systemParts.push(modelIdentity(input.model));
   if (input.instructions) systemParts.push(input.instructions);
   const workspace = input.workspaceInstructions?.trim();
   if (workspace) systemParts.push(`Workspace instructions:\n${workspace.slice(0, 4000)}`);

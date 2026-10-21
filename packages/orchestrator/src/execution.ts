@@ -399,6 +399,7 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
         if (toolSpecs.length > 0 && (!toolsLeft || (lastIteration && iterations > 1))) ctx.toolLimitHit = true;
         const { messages, report } = buildContext({
           plan: ctx.plan,
+          model,
           instructions: opts.agent.instructions,
           history: ctx.history,
           taskMessages: opts.notes,

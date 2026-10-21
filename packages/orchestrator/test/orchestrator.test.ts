@@ -40,6 +40,9 @@ describe('Orchestrator', () => {
     );
     expect(qwen.requests[0]!.tools).toBeUndefined();
     expect(store.evaluations[0]).toMatchObject({ kind: 'heuristic', verdict: 'passed' });
+    // The system instructions name the model the router actually picked.
+    const system = String(qwen.requests[0]!.messages[0]!.content);
+    expect(system).toContain(`You are running on the model "${qwen.requests[0]!.model}"`);
   });
 
   it('an empty model answer fails the run with a clear empty_response error', async () => {
