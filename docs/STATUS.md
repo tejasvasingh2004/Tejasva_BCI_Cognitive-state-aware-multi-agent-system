@@ -126,6 +126,8 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
 | Job isolation | Separate queues: runs, workspace jobs, evaluations; priority = plan × 10 + source | `packages/bus/src/queue.ts` |
 | Fairness | Per-tenant running-slot gate in the worker; excess jobs are delayed, not dropped | `apps/worker/src/workers.ts` |
 | Usage | Daily token meter per workspace (UTC day), `GET /v1/workspace/usage` | `packages/bus/src/rate-limit.ts` |
+| Health and alerts | `GET /status` (503 on no live worker, stuck queue, database/Redis down, no provider); worker heartbeats; `Uptime` workflow opens/closes an incident issue | `apps/api/src/routes/system.ts`, `packages/bus/src/heartbeat.ts`, `.github/workflows/uptime.yml` |
+| Error tracking | Sentry envelope reporter (no SDK), redacted, de-duplicated, rate-capped; API 5xx and crashes, actionable worker failures | `packages/observability/src/errors.ts` |
 
 The hosted deployment runs one API and one worker. API and workers are stateless (all shared state
 is in Redis/PostgreSQL), and this is verified under load: the `infra/loadtest/` topology puts N API
@@ -197,7 +199,8 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 | 2026-10-11 | 3D landing page, then icy blue glass palette | `a032a81`, `2410e0c` |
 | 2026-10-18 | Deployment configs (Vercel, Railway), runtime dependency fixes; `v2` merged into `master` | `4d133d4` … `dfad3fa` |
 | 2026-10-22 | Usage page and usage history API; one-command worker VM setup script | `5470884`, `22ab5af` |
-| 2026-10-22 | Load-balanced topology and k6 load test: 2 + 2 vs 1 + 1 | — |
+| 2026-10-22 | Load-balanced topology and k6 load test: 2 + 2 vs 1 + 1 | `f3bf172` |
+| 2026-10-22 | Model identity in system instructions; error tracking; /status, worker heartbeats and uptime alerts | — |
 | 2026-10-20 | Documentation brought up to date; open-source project structure (license, contributing, code of conduct, security policy, templates; docs moved to `docs/`) | — |
 
 ## 10. Open items
@@ -206,8 +209,8 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 2. **Horizontal scale-out in production** — the load-balanced topology is built and load-tested
    (`infra/loadtest/`); the hosted deployment still runs one API and one worker.
 3. **Workspace service and sandbox pool** — checkouts not tied to one host; isolated sandbox pool.
-4. **Operations** — dashboards and alerts, error tracking, backups, Redis HA, PgBouncer
-   (`ROADMAP.md`).
+4. **Operations** — dashboards and metric alerts, frontend error reporting, backups, Redis HA,
+   PgBouncer (`ROADMAP.md`). Error tracking and uptime alerts are in place.
 5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory,
    mid-run checkpoint/resume.
 6. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic

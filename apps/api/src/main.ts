@@ -1,4 +1,4 @@
-import { createLogger, initTelemetry, shutdownTelemetry } from '@neuroflow/observability';
+import { createLogger, initTelemetry, reportProcessErrors, shutdownTelemetry } from '@neuroflow/observability';
 
 // Telemetry must start before instrumented libraries (http, fastify, pg, ioredis) are imported.
 await initTelemetry('neuroflow-api');
@@ -10,6 +10,7 @@ const { loadConfig } = await import('./config');
 const config = loadConfig();
 const logger = createLogger('neuroflow-api');
 const { deps, close } = await createDeps(config, logger);
+reportProcessErrors(deps.errors, logger);
 const app = await buildApp(deps);
 
 await app.listen({ host: config.HOST, port: config.PORT });

@@ -64,6 +64,8 @@ GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3-32b
 CODE_DATA_DIR=${DATA_DIR}
 WORKER_QUEUES=runs,workspace,evals
 LOG_LEVEL=info
+# Optional: error tracking (same DSN as the API)
+SENTRY_DSN=
 EOF
   sudo chmod 600 "$ENV_FILE"
   echo "Edit it with:  sudo nano $ENV_FILE"

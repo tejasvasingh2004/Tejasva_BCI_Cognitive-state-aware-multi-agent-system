@@ -1,9 +1,9 @@
-import { initTelemetry, shutdownTelemetry, createLogger } from '@neuroflow/observability';
+import { createErrorReporter, initTelemetry, reportProcessErrors, shutdownTelemetry, createLogger } from '@neuroflow/observability';
 
 // Telemetry must start before instrumented libraries (pg, ioredis, http) are imported.
 await initTelemetry('neuroflow-worker');
 
-const { createRedis, RunQueue, RedisRateLimiter } = await import('@neuroflow/bus');
+const { createRedis, RunQueue, RedisRateLimiter, startWorkerHeartbeat } = await import('@neuroflow/bus');
 const { createPool, migrate } = await import('@neuroflow/db');
 const { createGatewayFromEnv } = await import('@neuroflow/models');
 const { loadConfig } = await import('./config');
@@ -13,6 +13,14 @@ const { startQueueWorkers } = await import('./workers');
 
 const logger = createLogger('neuroflow-worker');
 const config = loadConfig();
+const errors = createErrorReporter({
+  dsn: config.SENTRY_DSN,
+  service: 'neuroflow-worker',
+  environment: config.SENTRY_ENVIRONMENT ?? config.NODE_ENV,
+  release: config.RELEASE ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA,
+  logger,
+});
+reportProcessErrors(errors, logger);
 
 const pool = createPool(config.DATABASE_URL, { max: config.WORKER_CONCURRENCY * 2 + 2, applicationName: 'neuroflow-worker' });
 await migrate(pool, process.env.MIGRATIONS_DIR);
@@ -55,7 +63,10 @@ const workers = startQueueWorkers({
   queues: config.WORKER_QUEUES,
   concurrency: { runs: config.WORKER_CONCURRENCY, workspace: config.WORKER_WORKSPACE_CONCURRENCY, evals: config.WORKER_EVAL_CONCURRENCY },
   ...(config.MAX_RUNNING_PER_WORKSPACE ? { maxRunningPerWorkspace: config.MAX_RUNNING_PER_WORKSPACE } : {}),
+  errors,
 });
+// Liveness for the API's /status: disappears within ~30 s if this process dies or hangs.
+const heartbeat = startWorkerHeartbeat(redis, { queues: workers.queues });
 
 const reconcileTimer = setInterval(() => {
   void reconcileRuns({ pool, redis, queue, logger }).catch((err) => logger.error({ err }, 'reconcile failed'));
@@ -80,6 +91,8 @@ async function stop(signal: string) {
   }, config.WORKER_SHUTDOWN_TIMEOUT_MS);
   await graceful.catch(() => {});
   clearTimeout(timer);
+  await heartbeat.stop();
+  await errors.flush();
   await Promise.allSettled([queue.close(), pool.end()]);
   for (const r of [redis, controlSubscriber, ...bullConnections]) r.disconnect();
   await shutdownTelemetry();

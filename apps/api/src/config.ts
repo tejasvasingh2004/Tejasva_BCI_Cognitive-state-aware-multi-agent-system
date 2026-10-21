@@ -42,6 +42,14 @@ const Env = z.object({
   GITHUB_OAUTH_URL: z.string().default('https://github.com'),
   /** Public URL of the web app (OAuth redirects). Defaults to the first CORS origin. */
   PUBLIC_WEB_URL: z.string().optional(),
+  // ---- Operations ----
+  /** Error tracking: a Sentry-compatible DSN. Unset = disabled. */
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  /** Release reported with errors (defaults to the commit the platform deployed). */
+  RELEASE: z.string().optional(),
+  /** /status reports "degraded" when a job has waited longer than this to start. */
+  STATUS_MAX_QUEUE_AGE_S: z.coerce.number().int().positive().default(300),
 });
 
 export type ApiConfig = z.infer<typeof Env>;

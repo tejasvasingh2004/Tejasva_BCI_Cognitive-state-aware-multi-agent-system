@@ -4,7 +4,7 @@ import type { Redis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueu
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { MemoryService } from '@neuroflow/memory';
 import type { DefaultModelGateway } from '@neuroflow/models';
-import type { Logger } from '@neuroflow/observability';
+import type { ErrorReporter, Logger } from '@neuroflow/observability';
 import type { ToolRegistry } from '@neuroflow/tools';
 import type { WorkspaceEventHub } from '@neuroflow/bus';
 import type { CodeWorkspaceService, SecretBox } from '@neuroflow/code';
@@ -34,6 +34,8 @@ export type AppDeps = {
   /** Daily model-token usage per workspace. */
   usage: UsageMeter;
   plans: PlanResolver;
+  /** Unexpected errors (5xx, crashes) → error tracking; a no-op unless SENTRY_DSN is set. */
+  errors: ErrorReporter;
 };
 
 declare module 'fastify' {

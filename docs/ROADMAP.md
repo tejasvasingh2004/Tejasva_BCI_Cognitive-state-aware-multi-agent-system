@@ -229,7 +229,11 @@ buffering off, 1 h read timeout and retry on another replica for failed idempote
 
 ## Priority 4 — Observability
 
-### 🔲 🟡 Grafana Dashboards & Prometheus Alerts
+### ⚠️ 🟡 Grafana Dashboards & Prometheus Alerts
+
+**Status**: alerting exists without dashboards — `GET /status` (503 on no live worker, stuck queue,
+database/Redis down or no provider) polled by the `Uptime` GitHub Actions workflow, which opens and
+closes an incident issue. Dashboards and metric-based alerts (latency, error rate, cost) remain.
 
 **Gap**: 12 custom OpenTelemetry metrics are emitted (`packages/observability/src/telemetry.ts`), but no dashboards or alerts consume them.
 
@@ -271,7 +275,12 @@ buffering off, 1 h read timeout and retry on another replica for failed idempote
 
 ---
 
-### 🔲 🟡 Error Tracking (Sentry)
+### ✅ 🟡 Error Tracking (Sentry)
+
+**Status**: `packages/observability/src/errors.ts` — a Sentry envelope reporter (no SDK, so no
+second OpenTelemetry pipeline) used by the API (5xx, crashes) and the worker (actionable run
+failures, job and worker errors), with credential redaction, de-duplication and a rate cap.
+Enabled by `SENTRY_DSN`. Frontend error reporting is not wired yet.
 
 **Gap**: No Sentry or equivalent error tracking integration.
 
@@ -540,8 +549,8 @@ These items were listed as "still to build" in the design doc, but the code alre
 | 4 | Checkpoint/resume mid-run | 🟢 Code | Large | 🔲 |
 | 5 | Redis HA (Sentinel/Cluster) | 🔵 Infra | Medium | 🔲 |
 | 6 | Database backups | 🔵 Infra | Small | 🔲 |
-| 7 | Grafana dashboards + alerts | 🟡 External | Medium | 🔲 |
-| 8 | Sentry error tracking | 🟡 External | Small | 🔲 |
+| 7 | Grafana dashboards + alerts | 🟡 External | Medium | ⚠️ /status + uptime alerts |
+| 8 | Sentry error tracking | 🟡 External | Small | ✅ backend |
 | 9 | PgBouncer connection pooling | 🔵 Infra | Small | 🔲 |
 | 10 | Event partitioning + retention | 🔵 DB | Medium | 🔲 |
 | 11 | Read replica support | 🔵 Infra | Medium | 🔲 |

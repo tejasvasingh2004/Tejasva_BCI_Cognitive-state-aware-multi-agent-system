@@ -173,6 +173,25 @@ cd /opt/neuroflow && git pull && pnpm install --frozen-lockfile \
   && pnpm --filter @neuroflow/worker build && sudo systemctl restart neuroflow-worker
 ```
 
+## Monitoring and alerts
+
+- **`GET /status`** (public, on the API) returns `200` when work can flow end to end and `503`
+  otherwise: database or Redis unreachable, no live worker (workers refresh a heartbeat key every
+  10 s), a queue whose oldest job has waited longer than `STATUS_MAX_QUEUE_AGE_S` (default 300 s),
+  or no model provider available. The body lists the problems and per-queue counts — no tenant data.
+- **Free alerting with GitHub Actions** — set the repository variable `STATUS_URL`
+  (Settings → Secrets and variables → Actions → Variables) to `https://<your-api>/status`. The
+  `Uptime` workflow checks it every 15 minutes, opens a "Production health check failing" issue
+  (GitHub emails you) and closes it when the API recovers. Any uptime service (UptimeRobot,
+  Better Stack) can poll the same URL instead.
+- **Error tracking** — create a free Sentry project and set `SENTRY_DSN` (and optionally
+  `SENTRY_ENVIRONMENT`) on the API and the worker. Reported: server errors (5xx), crashes and
+  unhandled rejections, infrastructure job failures, and run failures that need action (internal
+  errors, broken workspaces, provider authentication or request errors). Not reported: timeouts,
+  rate limits and outages that retries, fallbacks and the circuit breaker already handle.
+  Credentials are redacted; prompts, request bodies, model output and headers are never sent.
+  Identical errors are sent once a minute, at most 30 events per minute per process.
+
 ## Self-hosting everything with Docker Compose
 
 ```bash

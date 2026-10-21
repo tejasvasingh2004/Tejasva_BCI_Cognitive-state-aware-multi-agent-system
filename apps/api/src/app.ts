@@ -66,7 +66,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.setErrorHandler((err: FastifyError | Error, req, reply) => {
     const body = toApiError(err);
     const status = err instanceof HttpError ? err.statusCode : body.error.code === 'bad_request' ? 400 : statusOf(err);
-    if (status >= 500) req.log.error({ err }, 'request failed');
+    if (status >= 500) {
+      req.log.error({ err }, 'request failed');
+      deps.errors.capture(err, { tags: { route: req.routeOptions?.url ?? 'unmatched', method: req.method, status }, extra: { requestId: req.id } });
+    }
     if (err instanceof HttpError && err.opts.retryAfterMs !== undefined) {
       void reply.header('retry-after', Math.max(1, Math.ceil(err.opts.retryAfterMs / 1000)));
     }

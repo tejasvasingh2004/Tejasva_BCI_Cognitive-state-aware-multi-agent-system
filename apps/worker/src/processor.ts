@@ -2,7 +2,7 @@ import type { Pool } from '@neuroflow/db';
 import type { ChatMessage } from '@neuroflow/contracts';
 import { RunEventEmitter, type RunJobData, type Redis } from '@neuroflow/bus';
 import { conversationsRepo, messagesRepo, runEventsRepo, runsRepo, workspaceRepo } from '@neuroflow/db';
-import { runtimeMetrics, withExtractedContext, withSpan, type Logger } from '@neuroflow/observability';
+import { runtimeMetrics, withExtractedContext, withSpan, type ErrorReporter, type Logger } from '@neuroflow/observability';
 import {
   RunCancelledError,
   selectForSummary,
@@ -29,7 +29,15 @@ export type ProcessorDeps = {
   logger: Logger;
   /** Aborted when the worker is shutting down (distinct from user cancellation). */
   shutdownSignal: AbortSignal;
+  errors?: ErrorReporter;
 };
+
+/**
+ * Run failures someone has to act on. Timeouts, provider rate limits and outages, budgets and
+ * empty answers are expected under load (retries, fallbacks and the circuit breaker handle them)
+ * and are visible in metrics instead.
+ */
+export const REPORTED_RUN_ERRORS = new Set(['internal', 'code_workspace_unavailable', 'model_auth', 'model_bad_request', 'model_model_not_found', 'model_provider_error']);
 
 /**
  * Executes one run end-to-end. Orchestration failures are persisted as run failures (and not
@@ -183,6 +191,9 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
       emitter.emit('run.failed', { error });
       runtimeMetrics.runsTotal.add(1, { status: 'failed' });
       log.warn({ err: cause, code: error.code, stage: error.stage }, 'run failed');
+      if (REPORTED_RUN_ERRORS.has(error.code)) {
+        deps.errors?.capture(cause, { tags: { kind: 'run_failed', code: error.code, stage: error.stage ?? 'unknown' }, extra: { runId: run.id } });
+      }
     }
   } finally {
     clearInterval(poll);

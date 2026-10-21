@@ -1,0 +1,65 @@
+# Free uptime alerting: polls the API's /status and opens a GitHub issue (which notifies the
+# repository's watchers by email) when the deployment cannot serve work; closes it on recovery.
+#
+# Enable: Settings → Secrets and variables → Actions → Variables → STATUS_URL
+#   e.g. https://your-api.up.railway.app/status
+name: Uptime
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: ${{ vars.STATUS_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      STATUS_URL: ${{ vars.STATUS_URL }}
+      TITLE: 'Production health check failing'
+    steps:
+      - name: Check /status (3 attempts)
+        id: probe
+        run: |
+          ok=false
+          for attempt in 1 2 3; do
+            code=$(curl -s -o status.json -w '%{http_code}' --max-time 20 "$STATUS_URL" || echo 000)
+            if [ "$code" = "200" ]; then ok=true; break; fi
+            sleep 20
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          { echo '```json'; cat status.json 2>/dev/null || echo '(no response body)'; echo; echo '```'; } > body.md
+          cat body.md
+
+      - name: Open or update the incident issue
+        if: steps.probe.outputs.ok != 'true'
+        run: |
+          existing=$(gh issue list --state open --label uptime --search "$TITLE in:title" --json number --jq '.[0].number')
+          note="**$(date -u +'%Y-%m-%d %H:%M UTC')** — \`$STATUS_URL\` returned HTTP ${{ steps.probe.outputs.code }}."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$note"$'\n\n'"$(cat body.md)"
+          else
+            gh label create uptime --color B60205 --description 'Automated uptime alerts' 2>/dev/null || true
+            gh issue create --title "$TITLE" --label uptime --body "$note"$'\n\n'"$(cat body.md)"$'\n\nThis issue closes automatically when /status recovers.'
+          fi
+          exit 1
+
+      - name: Close the incident issue on recovery
+        if: steps.probe.outputs.ok == 'true'
+        run: |
+          existing=$(gh issue list --state open --label uptime --search "$TITLE in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Recovered at $(date -u +'%Y-%m-%d %H:%M UTC'): /status returned 200."
+          fi

@@ -4,7 +4,7 @@ import { BciHttpProvider } from '@neuroflow/cognitive';
 import { createPool, migrate, seedDev } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { createGatewayFromEnv } from '@neuroflow/models';
-import type { Logger } from '@neuroflow/observability';
+import { createErrorReporter, type Logger } from '@neuroflow/observability';
 import { builtinTools, createWebSearchTool, ToolRegistry, webSearchProviderFromEnv } from '@neuroflow/tools';
 import type { ApiConfig } from './config';
 import type { AppDeps } from './deps';
@@ -38,6 +38,14 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
   const search = webSearchProviderFromEnv(env);
   if (search) registry.register(createWebSearchTool(search));
 
+  const errors = createErrorReporter({
+    dsn: config.SENTRY_DSN,
+    service: 'neuroflow-api',
+    environment: config.SENTRY_ENVIRONMENT ?? config.NODE_ENV,
+    release: config.RELEASE ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? env.GIT_SHA,
+    logger,
+  });
+
   const deps: AppDeps = {
     config,
     logger,
@@ -55,6 +63,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     limiter: new RedisRateLimiter(redis),
     usage: new UsageMeter(redis),
     plans: new PlanResolver(pool, config),
+    errors,
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };
 
@@ -62,6 +71,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     deps,
     async close() {
       clearInterval(healthTimer);
+      await errors.flush();
       await queue.close().catch(() => {});
       redis.disconnect();
       subscriber.disconnect();

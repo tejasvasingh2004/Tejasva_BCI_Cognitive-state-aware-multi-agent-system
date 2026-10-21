@@ -225,7 +225,9 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [ ] Workspace service (checkouts not tied to one host) and isolated sandbox pool
 - [x] CI: GitHub Actions for typecheck, lint, unit, integration (Postgres + Redis services), E2E
       and image builds
-- [ ] Dashboards and alerts
+- [x] Error tracking (Sentry-compatible, backend), `GET /status` health summary with worker
+      heartbeats and queue age, uptime alerts through a scheduled GitHub Actions workflow
+- [ ] Dashboards and metric alerts (latency, error rate, cost); frontend error reporting
 
 ## Website
 

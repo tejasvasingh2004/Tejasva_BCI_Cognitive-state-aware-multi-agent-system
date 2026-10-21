@@ -6,6 +6,16 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-22
 
 ### Added
+- Error tracking for the API and worker (`SENTRY_DSN`): server errors, crashes and actionable run
+  failures, with credentials redacted.
+- `GET /status` health summary (database, Redis, live workers, queue age, model providers) and an
+  `Uptime` GitHub Actions workflow that opens and closes an incident issue.
+
+### Fixed
+- Models now know which model they are: the system instructions name the model and provider the
+  router chose (an open-weight GPT-OSS model had claimed to be "GPT-4-turbo").
+
+### Added (earlier the same day)
 - Usage page (`/usage`): plan limits, today's token quota, 7 / 30 / 90-day totals, daily tokens, cost
   and runs, and breakdowns by source, model and repository.
 - `GET /v1/workspace/usage/history` usage aggregates.

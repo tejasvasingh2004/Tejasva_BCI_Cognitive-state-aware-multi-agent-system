@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { pingRedis } from '@neuroflow/bus';
+import { liveWorkers, pingRedis } from '@neuroflow/bus';
 import { authRepo, DEV_USER, pingDb, seedDev } from '@neuroflow/db';
 import { LoginBody } from '@neuroflow/contracts';
 import { audit } from '../audit';
@@ -31,6 +31,42 @@ export async function systemRoutes(app: FastifyInstance, deps: AppDeps, authLimi
       },
     };
     return reply.code(db && redis ? 200 : 503).send(body);
+  });
+
+  /**
+   * Public health summary for uptime monitors and alerts: 200 when the system can serve work end
+   * to end, 503 when it cannot (database or Redis down, no live worker, a queue stuck, or no model
+   * provider). Only aggregate counts — no tenant data.
+   */
+  app.get('/status', async (_req, reply) => {
+    const [db, redis] = await Promise.all([pingDb(deps.pool), pingRedis(deps.redis)]);
+    const problems: string[] = [];
+    if (!db) problems.push('database unreachable');
+    if (!redis) problems.push('redis unreachable');
+    let workers: number | null = null;
+    let queues: Record<string, { waiting: number; active: number; oldestWaitingSeconds: number | null }> | null = null;
+    if (redis) {
+      const [alive, stats, ages] = await Promise.all([liveWorkers(deps.redis), deps.queue.stats(), deps.queue.oldestWaitingAgeMs()]);
+      workers = alive.length;
+      if (workers === 0) problems.push('no live worker');
+      queues = Object.fromEntries(
+        Object.entries(stats).map(([kind, s]) => {
+          const age = ages[kind as keyof typeof ages];
+          const oldestWaitingSeconds = age === null ? null : Math.round(age / 1000);
+          if (oldestWaitingSeconds !== null && oldestWaitingSeconds > deps.config.STATUS_MAX_QUEUE_AGE_S) {
+            problems.push(`${kind} queue: oldest job waiting ${oldestWaitingSeconds}s`);
+          }
+          return [kind, { ...s, oldestWaitingSeconds }];
+        }),
+      );
+    }
+    const modelsAvailable = deps.gateway.listModels().some((m) => m.available);
+    if (!modelsAvailable) problems.push('no model provider available');
+    const status = !db || !redis ? 'down' : problems.length ? 'degraded' : 'ok';
+    return reply
+      .code(status === 'ok' ? 200 : 503)
+      .header('cache-control', 'no-store')
+      .send({ status, time: new Date().toISOString(), problems, checks: { database: db ? 'ok' : 'error', redis: redis ? 'ok' : 'error', workers, queues, models: modelsAvailable ? 'ok' : 'none_available' } });
   });
 
   /** Public: tells the web app which sign-in experience to show. */

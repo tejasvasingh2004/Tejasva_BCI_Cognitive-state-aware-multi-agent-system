@@ -100,6 +100,27 @@ export class RunQueue {
     return waitingCount(this.queue);
   }
 
+  /**
+   * Age of the oldest job still waiting to start (not delayed on purpose), per queue — a stuck or
+   * starved queue shows up here before users notice.
+   */
+  async oldestWaitingAgeMs(now = Date.now()): Promise<Record<QueueKind, number | null>> {
+    const entries = await Promise.all(
+      (
+        [
+          ['runs', this.queue],
+          ['workspace', this.workspaceQueue],
+          ['evals', this.evalQueue],
+        ] as const
+      ).map(async ([kind, q]) => {
+        const [waiting, prioritized] = await Promise.all([q.getJobs(['waiting'], 0, 0, true), q.getJobs(['prioritized'], 0, 0, true)]);
+        const oldest = Math.min(...[...waiting, ...prioritized].map((j) => j?.timestamp ?? Infinity));
+        return [kind, Number.isFinite(oldest) ? Math.max(0, now - oldest) : null] as const;
+      }),
+    );
+    return Object.fromEntries(entries) as Record<QueueKind, number | null>;
+  }
+
   /** Waiting and active jobs per queue (capacity planning, autoscaling signals). */
   async stats(): Promise<Record<QueueKind, { waiting: number; active: number }>> {
     const entries = await Promise.all(

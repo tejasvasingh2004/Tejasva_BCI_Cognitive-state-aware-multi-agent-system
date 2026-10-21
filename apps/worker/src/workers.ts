@@ -2,7 +2,7 @@ import { DelayedError, Worker, type Job } from 'bullmq';
 import { PLAN_LIMITS, type Plan } from '@neuroflow/contracts';
 import { QUEUE_NAMES, RedisRateLimiter, type QueueKind, type Redis, type RunJobData, type WorkspaceJobData } from '@neuroflow/bus';
 import { workspaceRepo, type Pool } from '@neuroflow/db';
-import type { Logger } from '@neuroflow/observability';
+import type { ErrorReporter, Logger } from '@neuroflow/observability';
 import { processRun, WorkerShutdownError } from './processor';
 import type { WorkerRuntime } from './runtime';
 import { processWorkspaceJob } from './workspace-jobs';
@@ -21,6 +21,7 @@ export type QueueWorkersOptions = {
   concurrency?: Partial<Record<QueueKind, number>>;
   /** Overrides the plan's per-workspace running cap (tests/operators). */
   maxRunningPerWorkspace?: number;
+  errors?: ErrorReporter;
 };
 
 /** Lease of a running job's fairness slot; renewed while the job runs. */
@@ -60,7 +61,7 @@ export function startQueueWorkers(opts: QueueWorkersOptions) {
       throw new DelayedError();
     }
     try {
-      return await processRun(data, { pool: opts.pool, redis: opts.redis, runtime: opts.runtime, logger: opts.logger, shutdownSignal: opts.shutdownSignal });
+      return await processRun(data, { pool: opts.pool, redis: opts.redis, runtime: opts.runtime, logger: opts.logger, shutdownSignal: opts.shutdownSignal, errors: opts.errors });
     } finally {
       await release().catch(() => {});
     }
@@ -84,8 +85,12 @@ export function startQueueWorkers(opts: QueueWorkersOptions) {
     worker.on('failed', (job, err) => {
       if (err instanceof WorkerShutdownError || err instanceof DelayedError) return;
       opts.logger.error({ queue: kind, jobId: job?.id, err }, 'job failed (infrastructure error)');
+      opts.errors?.capture(err, { tags: { kind: 'job_failed', queue: kind }, extra: { jobId: job?.id } });
     });
-    worker.on('error', (err) => opts.logger.error({ queue: kind, err }, 'worker error'));
+    worker.on('error', (err) => {
+      opts.logger.error({ queue: kind, err }, 'worker error');
+      opts.errors?.capture(err, { tags: { kind: 'worker_error', queue: kind } });
+    });
     return worker;
   });
 
