@@ -1,4 +1,4 @@
-import { Code2, FlaskConical, MessageSquare } from 'lucide-react';
+import { BarChart3, Code2, FlaskConical, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { navigateTo, useAppRoute } from '@/hooks/route';
 
@@ -6,9 +6,10 @@ const APPS = [
   { app: 'chat', label: 'Chat', icon: MessageSquare, path: '/' },
   { app: 'code', label: 'Code', icon: Code2, path: '/code' },
   { app: 'lab', label: 'Model Lab', icon: FlaskConical, path: '/lab' },
+  { app: 'usage', label: 'Usage', icon: BarChart3, path: '/usage' },
 ] as const;
 
-/** Switches between the AI workspace, the Code workspace and Model Lab (one product, one runtime). */
+/** Switches between the AI workspace, the Code workspace, Model Lab and Usage (one product, one runtime). */
 export function AppSwitcher({ className, compact }: { className?: string; compact?: boolean }) {
   const route = useAppRoute();
   return (

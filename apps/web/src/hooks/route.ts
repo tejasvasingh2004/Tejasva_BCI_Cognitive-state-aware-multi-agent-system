@@ -5,13 +5,15 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
  *   /                          new conversation        /c/:conversationId   conversation
  *   /code                      code home               /code/:id            code workspace
  *   /code/:id/replay/:runId    code run replay         /lab[/:section]      Model Lab
+ *   /usage                     usage and plan limits
  */
 export type CodeView = 'workspace' | 'tasks' | 'settings';
 
 export type AppRoute =
   | { app: 'chat'; conversationId: string | null }
   | { app: 'code'; workspaceId: string | null; replayRunId: string | null; view: CodeView }
-  | { app: 'lab'; section: string | null };
+  | { app: 'lab'; section: string | null }
+  | { app: 'usage' };
 
 const UUID = '[0-9a-f-]{36}';
 
@@ -23,6 +25,7 @@ export function parseRoute(pathname: string): AppRoute {
   m = new RegExp(`^/code/(${UUID})`).exec(pathname);
   if (m) return { app: 'code', workspaceId: m[1]!, replayRunId: null, view: 'workspace' };
   if (/^\/code\/?$/.test(pathname)) return { app: 'code', workspaceId: null, replayRunId: null, view: 'workspace' };
+  if (/^\/usage\/?$/.test(pathname)) return { app: 'usage' };
   m = /^\/lab(?:\/([a-z-]+))?/.exec(pathname);
   if (m) return { app: 'lab', section: m[1] ?? null };
   m = new RegExp(`^/c/(${UUID})`).exec(pathname);

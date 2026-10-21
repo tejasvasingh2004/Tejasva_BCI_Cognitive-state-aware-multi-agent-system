@@ -13,6 +13,7 @@ import { useAppRoute } from '@/hooks/route';
 // Code workspace and Model Lab load on demand so the chat workspace stays light.
 const CodeApp = lazy(() => import('@/components/code/CodeApp').then((m) => ({ default: m.CodeApp })));
 const ModelLab = lazy(() => import('@/components/lab/ModelLab').then((m) => ({ default: m.ModelLab })));
+const UsagePage = lazy(() => import('@/components/usage/UsagePage').then((m) => ({ default: m.UsagePage })));
 
 export function App() {
   useApplyTheme();
@@ -23,7 +24,7 @@ export function App() {
     <>
       <Background />
       {session.isSuccess ? (
-        route.app === 'code' || route.app === 'lab' ? (
+        route.app === 'code' || route.app === 'lab' || route.app === 'usage' ? (
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center">
@@ -31,7 +32,13 @@ export function App() {
               </div>
             }
           >
-            {route.app === 'code' ? <CodeApp workspaceId={route.workspaceId} replayRunId={route.replayRunId} view={route.view} /> : <ModelLab section={route.section} />}
+            {route.app === 'code' ? (
+              <CodeApp workspaceId={route.workspaceId} replayRunId={route.replayRunId} view={route.view} />
+            ) : route.app === 'lab' ? (
+              <ModelLab section={route.section} />
+            ) : (
+              <UsagePage />
+            )}
           </Suspense>
         ) : (
           <Workspace />

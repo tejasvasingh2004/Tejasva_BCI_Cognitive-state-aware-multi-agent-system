@@ -15,7 +15,9 @@ import type {
   RunRequestInput,
   Run,
   ToolDescriptor,
+  UsageHistory,
   WorkloadLevel,
+  WorkspaceUsage,
 } from '@neuroflow/contracts';
 
 /** All server communication goes through the NeuroFlow API — never directly to model providers. */
@@ -87,6 +89,9 @@ export const api = {
   createApiKey: (name: string, scopes?: string[]) =>
     request<{ apiKey: CreatedApiKey }>('/v1/api-keys', { method: 'POST', json: { name, ...(scopes ? { scopes } : {}) } }),
   revokeApiKey: (id: string) => request<void>(`/v1/api-keys/${id}`, { method: 'DELETE' }),
+
+  usage: () => request<WorkspaceUsage>('/v1/workspace/usage'),
+  usageHistory: (days: number) => request<UsageHistory>(`/v1/workspace/usage/history?days=${days}`),
 
   settings: () => request<{ settings: WorkspaceSettings; canEdit: boolean }>('/v1/workspace/settings'),
   updateSettings: (patch: Partial<WorkspaceSettings>) =>

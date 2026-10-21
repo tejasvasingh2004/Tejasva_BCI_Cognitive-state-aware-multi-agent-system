@@ -75,6 +75,8 @@ describe('parseRoute', () => {
   it('maps paths to apps', () => {
     expect(parseRoute('/')).toEqual({ app: 'chat', conversationId: null });
     expect(parseRoute(`/c/${id}`)).toEqual({ app: 'chat', conversationId: id });
+    expect(parseRoute('/usage')).toEqual({ app: 'usage' });
+    expect(parseRoute('/usage/')).toEqual({ app: 'usage' });
     expect(parseRoute('/code')).toEqual({ app: 'code', workspaceId: null, replayRunId: null, view: 'workspace' });
     expect(parseRoute(`/code/${id}`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null, view: 'workspace' });
     expect(parseRoute(`/code/${id}/tasks`)).toEqual({ app: 'code', workspaceId: id, replayRunId: null, view: 'tasks' });
