@@ -21,7 +21,12 @@
 
 ## Priority 1 — Load Balancing & High Availability
 
-### 🔲 🔵 Multi-Instance Deployment (Load-Balanced API + Workers)
+### ⚠️ 🔵 Multi-Instance Deployment (Load-Balanced API + Workers)
+
+**Status**: verified in a load-test topology — N API replicas and M workers behind an nginx load
+balancer (`infra/loadtest/`). With identical load, 2 APIs + 2 workers admitted and completed every
+run with p50 2.6 s, while 1 + 1 refused 14 % of runs and reached p50 20.5 s; nginx split requests
+50.1 % / 49.9 %. Remaining: the same topology for the hosted deployment.
 
 **Gap**: `docker-compose.yml` runs a single `api` and single `worker` service. No `deploy.replicas` or multiple upstream servers. Nginx only proxies to one API instance.
 
@@ -47,7 +52,10 @@
 
 ---
 
-### 🔲 🔵 SSE-Friendly Load Balancer Timeouts
+### ✅ 🔵 SSE-Friendly Load Balancer Timeouts
+
+**Status**: `infra/loadtest/nginx-lb.conf` — upstream pool with `least_conn`, HTTP/1.1 keep-alive,
+buffering off, 1 h read timeout and retry on another replica for failed idempotent requests.
 
 **Gap**: Nginx has `proxy_read_timeout 1h` (correct), but it's not in a multi-upstream LB config yet. Once the upstream block is added, verify:
 
@@ -526,7 +534,7 @@ These items were listed as "still to build" in the design doc, but the code alre
 
 | # | Item | Type | Effort | Status |
 |---|------|------|--------|--------|
-| 1 | Multi-instance deployment (LB) | 🔵 Infra | Small | 🔲 |
+| 1 | Multi-instance deployment (LB) | 🔵 Infra | Small | ⚠️ verified in load test |
 | 2 | Edge rate limiting (Nginx) | 🔵 Infra | Small | 🔲 |
 | 3 | WAF | 🟡 External | Medium | 🔲 |
 | 4 | Checkpoint/resume mid-run | 🟢 Code | Large | 🔲 |
@@ -542,4 +550,4 @@ These items were listed as "still to build" in the design doc, but the code alre
 | 14 | Worker autoscaling | 🔵 Infra | Medium | 🔲 |
 | 15 | CD pipeline | 🔵 CI/CD | Medium | ⚠️ Git deploys, no CI gate |
 | 16 | Per-key spend caps | 🟢 Code | Small | 🔲 |
-| 17 | SSE-friendly LB timeouts | 🔵 Infra | Trivial | 🔲 |
+| 17 | SSE-friendly LB timeouts | 🔵 Infra | Trivial | ✅ |

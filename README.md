@@ -158,6 +158,18 @@ CI runs all of them on every push and pull request.
 Step-by-step guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Self-hosting with Docker Compose:
 `docker compose --profile app up -d`.
 
+### Horizontal scaling, measured
+
+[`infra/loadtest/`](infra/loadtest/README.md) runs N API replicas and M workers behind an nginx load
+balancer and drives them with k6. Same load (100 reads/s + 10 runs/s for 60 s):
+
+| | 1 API + 1 worker | 2 APIs + 2 workers |
+| --- | --- | --- |
+| Runs admitted | 86 % (rest refused by admission control) | 100 % |
+| Run end-to-end p50 / p95 | 20.5 s / 34.8 s | 2.6 s / 5.6 s |
+| API read p95 | 16.6 ms | 10.7 ms |
+| Requests per API replica | — | 50.1 % / 49.9 % |
+
 ## Documentation
 
 | Document | Contents |

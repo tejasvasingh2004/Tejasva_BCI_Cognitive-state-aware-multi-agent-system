@@ -127,9 +127,20 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
 | Fairness | Per-tenant running-slot gate in the worker; excess jobs are delayed, not dropped | `apps/worker/src/workers.ts` |
 | Usage | Daily token meter per workspace (UTC day), `GET /v1/workspace/usage` | `packages/bus/src/rate-limit.ts` |
 
-Today the system runs as one API process and one worker process per environment. API and workers
-are stateless (all shared state is in Redis/PostgreSQL), so adding replicas behind a load balancer
-needs no code change; see `ROADMAP.md` for the infrastructure steps.
+The hosted deployment runs one API and one worker. API and workers are stateless (all shared state
+is in Redis/PostgreSQL), and this is verified under load: the `infra/loadtest/` topology puts N API
+replicas and M workers behind an nginx load balancer and drives them with k6.
+
+| Same load: 100 reads/s + 10 runs/s for 60 s | 1 API + 1 worker | 2 APIs + 2 workers |
+| --- | --- | --- |
+| Runs admitted | 86 % (14 % refused by admission control) | 100 % |
+| Admitted runs completed | 100 % | 100 % |
+| Run end-to-end p50 / p95 | 20.5 s / 34.8 s | 2.6 s / 5.6 s |
+| API read p95 | 16.6 ms | 10.7 ms |
+| Load balancing | — | 50.1 % / 49.9 % |
+
+Details and method: [`infra/loadtest/README.md`](../infra/loadtest/README.md). Multi-replica
+start-up is safe: migrations take a PostgreSQL advisory lock.
 
 ## 6. Marketing site (`apps/site`)
 
@@ -186,13 +197,14 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 | 2026-10-11 | 3D landing page, then icy blue glass palette | `a032a81`, `2410e0c` |
 | 2026-10-18 | Deployment configs (Vercel, Railway), runtime dependency fixes; `v2` merged into `master` | `4d133d4` … `dfad3fa` |
 | 2026-10-22 | Usage page and usage history API; one-command worker VM setup script | `5470884`, `22ab5af` |
+| 2026-10-22 | Load-balanced topology and k6 load test: 2 + 2 vs 1 + 1 | — |
 | 2026-10-20 | Documentation brought up to date; open-source project structure (license, contributing, code of conduct, security policy, templates; docs moved to `docs/`) | — |
 
 ## 10. Open items
 
 1. **Live push / PR on github.com** — grant the fine-grained token Contents and Pull requests write.
-2. **Horizontal scale-out** — 2+ API replicas and workers behind a load balancer, SSE-friendly
-   timeouts, load test (`ROADMAP.md` §1).
+2. **Horizontal scale-out in production** — the load-balanced topology is built and load-tested
+   (`infra/loadtest/`); the hosted deployment still runs one API and one worker.
 3. **Workspace service and sandbox pool** — checkouts not tied to one host; isolated sandbox pool.
 4. **Operations** — dashboards and alerts, error tracking, backups, Redis HA, PgBouncer
    (`ROADMAP.md`).

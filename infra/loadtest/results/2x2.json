@@ -1,0 +1,28 @@
+{
+  "topology": "2x2",
+  "offered": {
+    "readsPerSecond": 100,
+    "runsPerSecond": 10,
+    "duration": "60s"
+  },
+  "reads": {
+    "requests": 6001,
+    "p50Ms": 4.816132,
+    "p95Ms": 10.729542,
+    "p99Ms": 19.880164,
+    "errorRate": 0
+  },
+  "totalHttpRequests": 10161,
+  "runs": {
+    "offered": 590,
+    "dropped": 11,
+    "completedRate": 1,
+    "completed": 590,
+    "notCompleted": 0,
+    "admittedRate": 1,
+    "rejected": 0,
+    "endToEndP50Ms": 2587,
+    "endToEndP95Ms": 5618.55,
+    "endToEndMaxMs": 6161
+  }
+}

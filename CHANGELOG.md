@@ -10,6 +10,9 @@ the project does not publish versioned releases yet, so entries are grouped by d
   and runs, and breakdowns by source, model and repository.
 - `GET /v1/workspace/usage/history` usage aggregates.
 - `infra/scripts/setup-worker-vm.sh`: one-command setup of the worker and sandbox on a VM.
+- `infra/loadtest/`: N API replicas and M workers behind an nginx load balancer, a mock model
+  provider and a k6 load test. 2 APIs + 2 workers vs 1 + 1 at 100 reads/s + 10 runs/s: every run
+  admitted (vs 86 %), run p50 2.6 s (vs 20.5 s), requests split 50/50.
 
 ## 2026-10-20
 

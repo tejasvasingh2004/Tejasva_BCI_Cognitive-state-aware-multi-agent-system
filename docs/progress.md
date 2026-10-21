@@ -219,7 +219,9 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Workspace plans (free / pro / team / enterprise) with per-tenant, per-route HTTP rate limits,
       RateLimit headers and Retry-After, admission caps and daily token quotas, usage endpoint
 - [x] Separate queues (runs / workspace / evals) with priorities and per-tenant fair scheduling
-- [ ] Load-balanced deployment (2+ API servers and workers behind Nginx) and k6 load test
+- [x] Load-balanced topology (N API replicas + M workers behind nginx) and k6 load test
+      (`infra/loadtest/`): 2 + 2 vs 1 + 1 at 100 reads/s + 10 runs/s — every run admitted, run p50
+      2.6 s vs 20.5 s, even 50/50 balancing; hosted deployment still runs one API
 - [ ] Workspace service (checkouts not tied to one host) and isolated sandbox pool
 - [x] CI: GitHub Actions for typecheck, lint, unit, integration (Postgres + Redis services), E2E
       and image builds

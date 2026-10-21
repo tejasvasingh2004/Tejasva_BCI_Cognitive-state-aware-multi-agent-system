@@ -29,7 +29,7 @@ export type MockOpenAIServer = {
   close(): Promise<void>;
 };
 
-export async function startMockOpenAIServer(script: MockScript = defaultScript, port = 0): Promise<MockOpenAIServer> {
+export async function startMockOpenAIServer(script: MockScript = defaultScript, port = 0, host = '127.0.0.1'): Promise<MockOpenAIServer> {
   let current = script;
   const requests: MockRequestBody[] = [];
   const sockets = new Set<Socket>();
@@ -108,7 +108,7 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
     s.on('close', () => sockets.delete(s));
   });
 
-  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
   const { port: actual } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${actual}/v1`,
