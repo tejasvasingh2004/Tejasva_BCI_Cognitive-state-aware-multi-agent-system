@@ -1009,6 +1009,7 @@ GET    /v1/github/connections/...             connections, owners, repositories,
 /v1/model-lab/...                             models, providers, configs, datasets, fine-tuning,
                                               evaluations, deployments
 GET    /v1/workspace/usage                    plan, limits and today's token usage
+GET    /v1/workspace/usage/history            ?days=7|30|90 — totals, per day, model, source, repository
 ```
 
 Plan Review request body (`PlanDecisionBody`, discriminated on `decision`):

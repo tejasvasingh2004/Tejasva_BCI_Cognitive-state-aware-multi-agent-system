@@ -63,6 +63,21 @@ Any Linux VM with Docker works. Oracle Cloud's Always Free Ampere VM (up to 4 OC
 free option; a small Hetzner or DigitalOcean VM is a reliable paid one. The worker only makes
 outbound connections, so no inbound ports are needed beyond SSH.
 
+### Quick setup (one command)
+
+On a fresh Ubuntu VM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system/master/infra/scripts/setup-worker-vm.sh | bash
+sudo nano /etc/neuroflow/worker.env      # fill in DATABASE_URL, REDIS_URL, GROQ_API_KEY, SECRETS_KEY, SESSION_SECRET
+curl -fsSL https://raw.githubusercontent.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system/master/infra/scripts/setup-worker-vm.sh | bash
+```
+
+The first run installs Docker and Node 22, pre-pulls the sandbox images and creates the env file;
+the second builds the worker and starts it as the `neuroflow-worker` systemd service. Re-run it to
+update. [`infra/scripts/setup-worker-vm.sh`](../infra/scripts/setup-worker-vm.sh) does exactly the
+manual steps below.
+
 ### Install Docker and Node
 
 ```bash

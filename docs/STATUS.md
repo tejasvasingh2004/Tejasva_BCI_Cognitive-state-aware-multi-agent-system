@@ -18,9 +18,9 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3-32b`, …) and local Qwen through Ollama, all behind the Model Gateway |
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
-| API | 105 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
-| Database | 7 migrations (`infra/migrations/0001` … `0007`) |
-| Tests | ~220 unit tests across 13 packages, 45 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 15 Playwright E2E flows |
+| API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
+| Database | 8 migrations (`infra/migrations/0001` … `0008`) |
+| Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
 | CI | GitHub Actions: typecheck · lint · unit · integration · E2E · app and image builds (`.github/workflows/ci.yml`) |
 | Deploy | `apps/site` and `apps/web` on Vercel (`vercel.json` in each), API on Railway (`nixpacks.toml`) |
 
@@ -103,6 +103,10 @@ PostgreSQL holds runs, events, artifacts, approvals, memory, workspaces and audi
   bar, Replay view.
 - **Tasks page** (`/code/:id/tasks`) — every run with status, duration, diff stats, tests, agent
   branch, tokens, cost and PR; filter, search, open, replay.
+- **Usage page** (`/usage`) — plan and limits, today's token quota meter, totals for 7 / 30 / 90
+  days, tokens / cost / runs per day (with a table view), and breakdowns by source (chat, code,
+  API), model (average and p95 latency) and repository. Backed by
+  `GET /v1/workspace/usage/history`, aggregated from recorded runs and model calls (migration 0008).
 - **Workspace Settings** (`/code/:id/settings`) — approval mode, default model, Plan Review default,
   project command overrides, sandbox image, instructions editor, archive. Stored in
   `code_workspaces.settings` (migration 0007).
@@ -148,7 +152,7 @@ needs no code change; see `ROADMAP.md` for the infrastructure steps.
 | Marketing site | Vercel (static, clean URLs) | `apps/site/vercel.json` — set `VITE_APP_URL` to the web app URL |
 | Web app | Vercel (static SPA with rewrites to `index.html`) | `apps/web/vercel.json` — set `VITE_API_URL` to the API URL |
 | API | Railway (Nixpacks, Node 22, pnpm 9) | `nixpacks.toml` — starts `node apps/api/dist/main.js` |
-| Worker | Separate process/service from the same build | `node apps/worker/dist/main.js` |
+| Worker | Separate process/service from the same build, on a VM with Docker | `infra/scripts/setup-worker-vm.sh` (one-command setup) |
 | PostgreSQL, Redis | Managed services | `DATABASE_URL`, `REDIS_URL` |
 | Self-host | Docker Compose (`infra`, `app`, `bci` profiles) and Dockerfiles in `infra/docker` | `docker-compose.yml` |
 
@@ -181,6 +185,7 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 | 2026-10-11 | Workspace settings + task history API, Tasks and Settings pages | `fec466e`, `f4533f7` |
 | 2026-10-11 | 3D landing page, then icy blue glass palette | `a032a81`, `2410e0c` |
 | 2026-10-18 | Deployment configs (Vercel, Railway), runtime dependency fixes; `v2` merged into `master` | `4d133d4` … `dfad3fa` |
+| 2026-10-22 | Usage page and usage history API; one-command worker VM setup script | `5470884`, `22ab5af` |
 | 2026-10-20 | Documentation brought up to date; open-source project structure (license, contributing, code of conduct, security policy, templates; docs moved to `docs/`) | — |
 
 ## 10. Open items

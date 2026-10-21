@@ -3,6 +3,14 @@
 Notable changes to NeuroFlow. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project does not publish versioned releases yet, so entries are grouped by date.
 
+## 2026-10-22
+
+### Added
+- Usage page (`/usage`): plan limits, today's token quota, 7 / 30 / 90-day totals, daily tokens, cost
+  and runs, and breakdowns by source, model and repository.
+- `GET /v1/workspace/usage/history` usage aggregates.
+- `infra/scripts/setup-worker-vm.sh`: one-command setup of the worker and sandbox on a VM.
+
 ## 2026-10-20
 
 ### Added

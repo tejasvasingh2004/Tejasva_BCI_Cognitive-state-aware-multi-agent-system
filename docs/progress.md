@@ -16,8 +16,8 @@ implemented and tested. A requirement-by-requirement audit of the four documents
 
 Verified end to end with a real local Qwen model (Ollama) and the EEG classifier sidecar.
 
-Tests: ~220 unit tests across 13 packages, 45 integration tests (real Postgres/Redis/BullMQ/Git/Docker),
-15 Playwright E2E flows (11 Phase 1, 4 Phase 2). CI runs all of them on every push.
+Tests: ~220 unit tests across 13 packages, 48 integration tests (real Postgres/Redis/BullMQ/Git/Docker),
+16 Playwright E2E flows (11 Phase 1, 4 Phase 2, 1 usage). CI runs all of them on every push.
 
 ---
 
@@ -190,6 +190,9 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
       (`plan.review_required` / `plan.approved` / `plan.rejected`, `POST /v1/code/runs/:id/plan`)
 - [x] Tasks page: every run in a workspace with status, duration, diff stats, tests, agent branch,
       tokens, cost and PR; filter, search, open and replay
+- [x] Usage page: plan limits, daily quota meter, 7 / 30 / 90-day totals, tokens / cost / runs per
+      day with a table view, breakdowns by source, model and repository
+      (`GET /v1/workspace/usage/history`)
 - [x] Workspace Settings: approval mode, default model, Plan Review default, project commands,
       sandbox image, `.neuroflow/instructions.md` editor, archive
 - [x] Tests: code package (real Git + Docker), orchestrator code runs, API integration (mock GitHub
@@ -238,7 +241,8 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Railway/Nixpacks config for the API (Node 22, pnpm 9), runtime dependencies declared for API
       and worker
 - [x] Docker Compose (`infra`, `app`, `bci` profiles) and Dockerfiles for self-hosting
-- [ ] Worker host with a Docker daemon for the sandbox in the hosted deployment
+- [~] Worker host with a Docker daemon for the sandbox in the hosted deployment — one-command
+      setup script (`infra/scripts/setup-worker-vm.sh`); the VM itself is not provisioned yet
 - [ ] Continuous deployment gated on CI, and staging environment
 
 ## Remaining (needs input or is post-MVP)
