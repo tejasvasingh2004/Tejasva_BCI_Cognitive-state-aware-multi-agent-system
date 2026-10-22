@@ -2,7 +2,7 @@ import type { ChatMessage, ToolCall } from '@neuroflow/contracts';
 import { ModelError, httpStatusToError, isAbortError } from './errors';
 import { readSseData } from './sse';
 import { ThinkFilter } from './think-filter';
-import type { FinishReason, ProviderEvent, ProviderRequest } from './types';
+import type { FinishReason, ProviderEvent, ProviderRequest, CredentialCheck } from './types';
 
 /**
  * Shared transport for providers that speak the OpenAI Chat Completions wire protocol
@@ -193,6 +193,27 @@ export async function probeOpenAICompatible(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Checks an API key with `GET {baseUrl}/models`: accepted, rejected by the provider (401/403), or
+ * not checkable right now. The key is never echoed in the result.
+ */
+export async function verifyOpenAICompatibleKey(
+  opts: OpenAICompatibleOptions,
+  signal?: AbortSignal,
+): Promise<CredentialCheck> {
+  try {
+    const res = await (opts.fetchImpl ?? fetch)(`${opts.baseUrl.replace(/\/$/, '')}/models`, {
+      headers: { authorization: `Bearer ${opts.apiKey ?? ''}` },
+      signal: signal ?? AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 401 || res.status === 403) return { ok: false, reason: 'rejected', message: 'The provider rejected this key' };
+    return { ok: false, reason: 'unreachable', message: `The provider answered HTTP ${res.status}; try again later` };
+  } catch {
+    return { ok: false, reason: 'unreachable', message: 'The provider could not be reached; try again later' };
   }
 }
 

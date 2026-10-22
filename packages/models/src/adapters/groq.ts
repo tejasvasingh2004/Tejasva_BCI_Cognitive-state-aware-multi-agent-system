@@ -1,5 +1,5 @@
-import { probeOpenAICompatible, safeHost, streamOpenAICompatible } from '../openai-compatible';
-import type { CatalogEntry, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
+import { probeOpenAICompatible, safeHost, streamOpenAICompatible, verifyOpenAICompatibleKey } from '../openai-compatible';
+import type { CatalogEntry, CredentialCheck, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
 
 export type GroqAdapterConfig = {
   /** One key, or several comma-separated keys forming a key pool. */
@@ -14,6 +14,7 @@ export const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 export class GroqAdapter implements ProviderAdapter {
   readonly id = 'groq';
   readonly displayName = 'Groq';
+  readonly acceptsCredentials = true;
   private healthy = true;
 
   private readonly keys: string[];
@@ -50,7 +51,12 @@ export class GroqAdapter implements ProviderAdapter {
   }
 
   stream(req: ProviderRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
-    return streamOpenAICompatible(this.opts(req.keyIndex), req, signal, this.reasoningOptions(req));
+    const opts = req.apiKey ? { ...this.opts(), apiKey: req.apiKey } : this.opts(req.keyIndex);
+    return streamOpenAICompatible(opts, req, signal, this.reasoningOptions(req));
+  }
+
+  verifyCredential(apiKey: string, signal?: AbortSignal): Promise<CredentialCheck> {
+    return verifyOpenAICompatibleKey({ ...this.opts(), apiKey }, signal);
   }
 
   /**

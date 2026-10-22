@@ -1,5 +1,5 @@
 import type { Principal } from '@neuroflow/contracts';
-import type { Pool } from '@neuroflow/db';
+import type { Pool, ProviderKeyVault } from '@neuroflow/db';
 import type { Redis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, UsageMeter } from '@neuroflow/bus';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { MemoryService } from '@neuroflow/memory';
@@ -36,7 +36,14 @@ export type AppDeps = {
   plans: PlanResolver;
   /** Unexpected errors (5xx, crashes) → error tracking; a no-op unless SENTRY_DSN is set. */
   errors: ErrorReporter;
+  /** Workspaces' own provider keys (BYOK), envelope-encrypted. The API stores and checks them; only workers decrypt them for runs. */
+  providerKeys: ProviderKeyVault;
 };
+
+/** The model catalogue as one workspace sees it: its own keys, plus platform keys when enabled. */
+export async function modelScope(deps: Pick<AppDeps, 'providerKeys' | 'config'>, workspaceId: string) {
+  return { credentialProviders: await deps.providerKeys.activeProviders(workspaceId), platformKeys: deps.config.PLATFORM_MODEL_KEYS === 'enabled' };
+}
 
 declare module 'fastify' {
   interface FastifyRequest {

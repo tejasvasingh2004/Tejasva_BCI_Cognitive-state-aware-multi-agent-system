@@ -15,7 +15,7 @@ export async function processWorkspaceJob(
 ) {
   const { runtime, redis, logger } = deps;
   if (job.kind === 'model.evaluate') {
-    await runModelEvaluation({ pool: deps.pool, gateway: runtime.gateway, logger, signal: deps.signal }, job.evaluationId);
+    await runModelEvaluation({ pool: deps.pool, gateway: await runtime.gatewayFor(job.workspaceId), logger, signal: deps.signal }, job.evaluationId);
     return;
   }
   const log = logger.child({ codeWorkspaceId: job.codeWorkspaceId, job: job.kind });

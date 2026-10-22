@@ -13,7 +13,7 @@ import {
 } from '@neuroflow/contracts';
 import { runsRepo } from '@neuroflow/db';
 import { requireScope } from '../auth';
-import type { AppDeps } from '../deps';
+import { type AppDeps, modelScope } from '../deps';
 import { HttpError } from '../errors';
 import type { RunManager } from '../run-manager';
 import { openSse } from '../sse';
@@ -24,11 +24,12 @@ import { openSse } from '../sse';
  */
 export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: RunManager) {
   app.get('/v1/models', async (req) => {
-    requireScope(req, Scopes.runsRead);
-    const models = deps.gateway.listModels();
+    const p = requireScope(req, Scopes.runsRead);
+    const scope = await modelScope(deps, p.workspaceId);
+    const models = deps.gateway.listModels(scope);
     return {
       object: 'list',
-      default: deps.gateway.defaultModel() ?? null,
+      default: deps.gateway.defaultModel(scope) ?? null,
       data: [
         {
           id: 'neuroflow-auto',

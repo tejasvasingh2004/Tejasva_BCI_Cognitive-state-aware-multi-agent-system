@@ -10,15 +10,7 @@ import {
 import { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER, PROVIDER_HEALTH_FAILURES, type CircuitBreakerOptions } from './circuit-breaker';
 import { ModelError, isAbortError } from './errors';
 import { estimateRequestTokens, InMemoryRateLimiter, type BucketLimits, type RateLimiter } from './rate-limit';
-import type {
-  CatalogEntry,
-  FinishReason,
-  ModelEvent,
-  ModelGateway,
-  ModelRequest,
-  ModelResponse,
-  ProviderAdapter,
-} from './types';
+import type { CatalogEntry, CredentialCheck, FinishReason, ModelEvent, ModelGateway, ModelRequest, ModelResponse, ProviderAdapter, ProviderCredential } from './types';
 
 export type GatewayPolicy = {
   /** Retries per model for retryable errors that happen before any output is produced. */
@@ -50,10 +42,15 @@ export type GatewayPolicy = {
 
 export type ProviderLimits = { tokensPerMinute?: number; requestsPerMinute?: number; concurrency?: number };
 
-type Admission = { scope: string; limits: BucketLimits; tokens: number; keyIndex: number; release: () => Promise<void> };
+type Admission = { scope: string; limits: BucketLimits; tokens: number; keyIndex: number; apiKey?: string; release: () => Promise<void> };
 
 /** Rate-limit scope of one key of a provider's key pool (never the key itself). */
 const keyScope = (provider: string, index: number) => `${provider}:key${index}`;
+/** Rate-limit scope of a tenant's own key: isolated from the platform pool and from other tenants. */
+const tenantScope = (provider: string, keyId: string) => `${provider}:tenant:${keyId}`;
+
+/** Which providers a caller can use, and with whose keys. */
+export type CredentialScope = { credentialProviders?: Iterable<string>; platformKeys?: boolean };
 
 export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   maxRetries: 2,
@@ -131,9 +128,26 @@ export class DefaultModelGateway implements ModelGateway {
     return this.policy.pricing.get(ref) ?? entry.pricing;
   }
 
-  listModels(): ModelInfo[] {
+  /**
+   * Whose key would serve this provider for a caller: the tenant's own key when it has one (and the
+   * provider takes tenant keys), else a platform key when allowed and configured; null = cannot serve.
+   */
+  private keySourceFor(adapter: ProviderAdapter, hasCredential: boolean, platformKeys: boolean): 'workspace' | 'platform' | null {
+    if (hasCredential && adapter.acceptsCredentials && adapter.catalog().length > 0) return 'workspace';
+    if (platformKeys && adapter.isAvailable()) return 'platform';
+    return null;
+  }
+
+  /**
+   * Models and their availability. Without a scope this is the platform view (server keys); with
+   * one it is a tenant's view: providers it has keys for, plus platform keys when allowed.
+   */
+  listModels(scope?: CredentialScope): ModelInfo[] {
+    const tenant = new Set(scope?.credentialProviders ?? []);
+    const platformKeys = scope?.platformKeys ?? true;
     const out: ModelInfo[] = [];
     for (const adapter of this.adapters.values()) {
+      const source = this.keySourceFor(adapter, tenant.has(adapter.id), platformKeys);
       for (const entry of adapter.catalog()) {
         out.push({
           ref: `${adapter.id}/${entry.model}`,
@@ -150,7 +164,8 @@ export class DefaultModelGateway implements ModelGateway {
             ...(entry.reasoning !== 'none' ? (['reasoningBudget'] as const) : []),
             ...(entry.tools ? (['tools'] as const) : []),
           ],
-          available: adapter.isAvailable() && this.breakerFor(adapter.id).state() !== 'open',
+          available: source !== null && this.breakerFor(adapter.id).state() !== 'open',
+          ...(scope && source ? { keySource: source } : {}),
           ...(this.pricingFor(`${adapter.id}/${entry.model}`, entry)
             ? { pricing: this.pricingFor(`${adapter.id}/${entry.model}`, entry) }
             : {}),
@@ -183,8 +198,39 @@ export class DefaultModelGateway implements ModelGateway {
     });
   }
 
-  defaultModel(): string | undefined {
-    const models = this.listModels();
+  /** Checks a tenant's key against its provider before it is stored. */
+  async verifyCredential(provider: string, apiKey: string, signal?: AbortSignal): Promise<CredentialCheck> {
+    const adapter = this.adapters.get(provider);
+    if (!adapter?.acceptsCredentials || !adapter.verifyCredential) {
+      return { ok: false, reason: 'rejected', message: `${adapter?.displayName ?? provider} does not accept workspace keys` };
+    }
+    return adapter.verifyCredential(apiKey, signal);
+  }
+
+  /** Providers that accept tenant keys (for key management screens). */
+  credentialProviders(): Array<{ id: string; displayName: string; platformKey: boolean }> {
+    return [...this.adapters.values()]
+      .filter((a) => a.acceptsCredentials)
+      .map((a) => ({ id: a.id, displayName: a.displayName, platformKey: a.isAvailable() }));
+  }
+
+  /**
+   * A view of this gateway for one tenant: every call carries the tenant's keys, and listing and
+   * defaults reflect what those keys (and, when allowed, platform keys) can serve.
+   */
+  scoped(credentials: Record<string, ProviderCredential>, opts: { platformKeys?: boolean } = {}): ModelGateway {
+    const platformKeys = opts.platformKeys ?? true;
+    const scope: CredentialScope = { credentialProviders: Object.keys(credentials), platformKeys };
+    return {
+      listModels: () => this.listModels(scope),
+      defaultModel: () => this.defaultModel(scope),
+      complete: (request) => this.complete({ ...request, credentials: { ...credentials, ...request.credentials }, platformKeys }),
+      stream: (request) => this.stream({ ...request, credentials: { ...credentials, ...request.credentials }, platformKeys }),
+    };
+  }
+
+  defaultModel(scope?: CredentialScope): string | undefined {
+    const models = this.listModels(scope);
     if (this.policy.defaultModel && models.some((m) => m.ref === this.policy.defaultModel && m.available)) {
       return this.policy.defaultModel;
     }
@@ -222,7 +268,7 @@ export class DefaultModelGateway implements ModelGateway {
       if (i > 0) {
         yield { type: 'fallback', from: chain[i - 1]!, to: ref, reason: lastError?.message ?? 'unavailable' };
       }
-      const resolved = this.resolve(ref);
+      const resolved = this.resolve(ref, request);
       if (resolved instanceof ModelError) {
         lastError = resolved;
         continue;
@@ -257,7 +303,7 @@ export class DefaultModelGateway implements ModelGateway {
 
         let producedOutput = false;
         try {
-          const result = yield* this.runAttempt(adapter, entry, model, request, admission.keyIndex, () => {
+          const result = yield* this.runAttempt(adapter, entry, model, request, admission, () => {
             producedOutput = true;
           });
           breaker.onSuccess();
@@ -323,6 +369,28 @@ export class DefaultModelGateway implements ModelGateway {
    * caller falls back to another model rather than queueing indefinitely.
    */
   private async *admit(adapter: ProviderAdapter, ref: string, request: ModelRequest): AsyncGenerator<ModelEvent, Admission> {
+    // A tenant's own key: its own scope, honouring the provider's retry-after for that key only.
+    // Platform budgets and concurrency slots protect platform keys and do not apply.
+    const credential = request.credentials?.[adapter.id];
+    if (credential && adapter.acceptsCredentials) {
+      const scope = tenantScope(adapter.id, credential.keyId);
+      const deadline = this.now() + this.policy.maxRateLimitWaitMs;
+      for (;;) {
+        throwIfAborted(request.signal);
+        const r = await this.limiter.reserve(scope, {}, 0);
+        if (r.waitMs === 0) break;
+        if (this.now() + r.waitMs > deadline) {
+          throw new ModelError('rate_limited', `${adapter.displayName} is rate limiting this workspace's key (capacity returns in ~${Math.ceil(r.waitMs / 1000)}s)`, {
+            retryAfterMs: r.waitMs,
+          });
+        }
+        yield { type: 'throttled', ref, provider: adapter.id, waitMs: r.waitMs, reason: "Waiting for the workspace key's provider rate limit" };
+        await this.sleep(r.waitMs, request.signal).catch(() => {
+          throw new ModelError('cancelled', 'Model call cancelled');
+        });
+      }
+      return { scope, limits: {}, tokens: 0, keyIndex: 0, apiKey: credential.apiKey, release: async () => {} };
+    }
     const limits = this.policy.providerLimits[adapter.id] ?? {};
     const buckets: BucketLimits = {
       ...(limits.tokensPerMinute ? { tokensPerMinute: limits.tokensPerMinute } : {}),
@@ -380,7 +448,7 @@ export class DefaultModelGateway implements ModelGateway {
     entry: CatalogEntry,
     model: string,
     request: ModelRequest,
-    keyIndex: number,
+    admission: Pick<Admission, 'keyIndex' | 'apiKey'>,
     onOutput: () => void,
   ): AsyncGenerator<ModelEvent, Omit<ModelResponse, 'provider' | 'model' | 'ref' | 'latencyMs' | 'attempts'>> {
     const controller = new AbortController();
@@ -411,8 +479,9 @@ export class DefaultModelGateway implements ModelGateway {
     let finishReason: FinishReason = 'unknown';
 
     try {
-      const { model: _ref, fallbacks: _f, signal: _s, timeoutMs: _t, ...rest } = request;
-      for await (const ev of adapter.stream({ ...rest, model, entry, keyIndex }, controller.signal)) {
+      const { model: _ref, fallbacks: _f, signal: _s, timeoutMs: _t, credentials: _c, platformKeys: _p, ...rest } = request;
+      const keys = admission.apiKey ? { keyIndex: 0, apiKey: admission.apiKey } : { keyIndex: admission.keyIndex };
+      for await (const ev of adapter.stream({ ...rest, model, entry, ...keys }, controller.signal)) {
         if (controller.signal.aborted) throw controller.signal.reason;
         armIdle(this.policy.idleTimeoutMs, 'output');
         switch (ev.type) {
@@ -451,7 +520,7 @@ export class DefaultModelGateway implements ModelGateway {
     }
   }
 
-  private resolve(ref: string): { adapter: ProviderAdapter; entry: CatalogEntry; model: string } | ModelError {
+  private resolve(ref: string, request: Pick<ModelRequest, 'credentials' | 'platformKeys'> = {}): { adapter: ProviderAdapter; entry: CatalogEntry; model: string } | ModelError {
     let parsed: { provider: string; model: string };
     try {
       parsed = parseModelRef(ref);
@@ -462,7 +531,11 @@ export class DefaultModelGateway implements ModelGateway {
     if (!adapter) return new ModelError('model_not_found', `Unknown provider "${parsed.provider}"`);
     const entry = adapter.catalog().find((e) => e.model === parsed.model);
     if (!entry) return new ModelError('model_not_found', `Model "${ref}" is not enabled`);
-    if (!adapter.isAvailable()) {
+    const hasCredential = Boolean(request.credentials?.[adapter.id]);
+    if (this.keySourceFor(adapter, hasCredential, request.platformKeys ?? true) === null) {
+      if (request.platformKeys === false && adapter.acceptsCredentials) {
+        return new ModelError('auth', `No API key for ${adapter.displayName}: add one in Settings, Provider keys`, { retryable: false });
+      }
       return new ModelError('unavailable', `Provider "${adapter.displayName}" is not configured or unreachable`);
     }
     return { adapter, entry, model: parsed.model };

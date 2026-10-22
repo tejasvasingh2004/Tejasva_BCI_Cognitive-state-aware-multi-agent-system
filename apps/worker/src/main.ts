@@ -42,6 +42,7 @@ const runtime = await createWorkerRuntime({
   controlSubscriber,
   gateway,
   bciServiceUrl: config.BCI_SERVICE_URL,
+  platformKeys: config.PLATFORM_MODEL_KEYS === 'enabled',
   approvalTimeoutMs: config.TOOL_APPROVAL_TIMEOUT_MS,
   code: { dataDir: config.CODE_DATA_DIR, secretsKey: config.SECRETS_KEY, sessionSecret: config.SESSION_SECRET, githubApiUrl: config.GITHUB_API_URL },
   onToolError: (err, info) => logger.warn({ err, ...info }, 'tool failed unexpectedly'),

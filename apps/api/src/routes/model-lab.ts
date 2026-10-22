@@ -14,7 +14,7 @@ import {
 } from '@neuroflow/contracts';
 import { modelLabRepo, patchesRepo, runsRepo, sandboxRepo, codeRunsRepo } from '@neuroflow/db';
 import { requireScope } from '../auth';
-import type { AppDeps } from '../deps';
+import { type AppDeps, modelScope } from '../deps';
 import { HttpError, notFound } from '../errors';
 
 const IdParams = z.object({ id: z.string().uuid() });
@@ -34,8 +34,8 @@ export async function modelLabRoutes(app: FastifyInstance, deps: AppDeps) {
 
   app.get('/v1/model-lab/models', async (req) => {
     const p = requireScope(req, Scopes.runsRead);
-    const deployments = await modelLabRepo.listDeployments(deps.pool, p.workspaceId);
-    return { models: deps.gateway.listModels(), default: deps.gateway.defaultModel() ?? null, deployments };
+    const [deployments, scope] = await Promise.all([modelLabRepo.listDeployments(deps.pool, p.workspaceId), modelScope(deps, p.workspaceId)]);
+    return { models: deps.gateway.listModels(scope), default: deps.gateway.defaultModel(scope) ?? null, deployments };
   });
 
   // ---- Parameters (per-surface defaults applied by the runtime) ----

@@ -1,7 +1,7 @@
 import type { Pool } from '@neuroflow/db';
 import { RunControlListener, UsageMeter, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { agentsRepo, cognitiveRepo, executionRepo, runsRepo } from '@neuroflow/db';
+import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import type { ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
@@ -19,6 +19,8 @@ export type WorkerRuntime = {
   orchestrator: Orchestrator;
   control: RunControlListener;
   gateway: ModelGateway;
+  /** The gateway as one workspace sees it: its own provider keys (BYOK), plus platform keys when allowed. */
+  gatewayFor(workspaceId: string): Promise<ModelGateway>;
   memory: PgMemoryService;
   /** Code workspaces: checkouts, sandbox, git/GitHub operations (Product Phase 2). */
   code: CodeWorkspaceService;
@@ -29,6 +31,8 @@ export type RuntimeOptions = {
   redis: Redis;
   controlSubscriber: Redis;
   gateway: ModelGateway;
+  /** Whether platform (server) keys may serve workspaces that have no key of their own. Default true. */
+  platformKeys?: boolean;
   bciServiceUrl?: string;
   approvalTimeoutMs?: number;
   /** Source of optional integrations (web search provider keys). */
@@ -98,5 +102,16 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     approvals: { wait: (runId, id, timeout, signal) => control.waitForApproval(runId, id, timeout, signal) },
     planReviewTimeoutMs: Math.max(opts.approvalTimeoutMs ?? 0, 15 * 60_000),
   });
-  return { orchestrator, control, gateway: opts.gateway, memory, code };
+  // Workspace provider keys: decrypted per run, only here, and handed straight to the gateway.
+  const providerKeys = new ProviderKeyVault(
+    pool,
+    LocalKeyEncryptionKey.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'),
+  );
+  const platformKeys = opts.platformKeys ?? true;
+  const gatewayFor = async (workspaceId: string): Promise<ModelGateway> => {
+    if (!opts.gateway.scoped) return opts.gateway;
+    const credentials = await providerKeys.credentials(workspaceId);
+    return opts.gateway.scoped(credentials, { platformKeys });
+  };
+  return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code };
 }

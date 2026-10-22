@@ -28,6 +28,8 @@ const Env = z.object({
   /** Used only to derive a development encryption key when SECRETS_KEY is unset (matches the API default). */
   SESSION_SECRET: z.string().default('dev-only-session-secret-change-me-please-0123456789'),
   GITHUB_API_URL: z.string().optional(),
+  /** `disabled`: models are served only with workspaces' own provider keys (BYOK). */
+  PLATFORM_MODEL_KEYS: z.enum(['enabled', 'disabled']).default('enabled'),
   /** Error tracking: a Sentry-compatible DSN. Unset = disabled. */
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),

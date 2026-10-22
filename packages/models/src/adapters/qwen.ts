@@ -1,6 +1,6 @@
 import type { ReasoningBudget } from '@neuroflow/contracts';
-import { probeOpenAICompatible, safeHost, streamOpenAICompatible } from '../openai-compatible';
-import type { CatalogEntry, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
+import { probeOpenAICompatible, safeHost, streamOpenAICompatible, verifyOpenAICompatibleKey } from '../openai-compatible';
+import type { CatalogEntry, CredentialCheck, ProviderAdapter, ProviderEvent, ProviderRequest } from '../types';
 
 /**
  * Qwen served either by Ollama (local, default) or DashScope compatible-mode (hosted).
@@ -63,8 +63,17 @@ export class QwenAdapter implements ProviderAdapter {
     return this.healthy;
   }
 
+  get acceptsCredentials(): boolean {
+    return this.config.flavor === 'dashscope';
+  }
+
   stream(req: ProviderRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
-    return streamOpenAICompatible(this.opts(), req, signal, this.reasoningOptions(req));
+    const opts = req.apiKey ? { ...this.opts(), apiKey: req.apiKey } : this.opts();
+    return streamOpenAICompatible(opts, req, signal, this.reasoningOptions(req));
+  }
+
+  verifyCredential(apiKey: string, signal?: AbortSignal): Promise<CredentialCheck> {
+    return verifyOpenAICompatibleKey({ ...this.opts(), apiKey }, signal);
   }
 
   /** Translates the provider-independent reasoning budget into Qwen controls. */

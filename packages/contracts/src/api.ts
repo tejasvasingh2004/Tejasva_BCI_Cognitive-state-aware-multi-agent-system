@@ -194,6 +194,9 @@ export const AuditAction = z.enum([
   'code.push',
   'code.pull_request',
   'code.patch_decided',
+  'provider_key.created',
+  'provider_key.verified',
+  'provider_key.deleted',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 

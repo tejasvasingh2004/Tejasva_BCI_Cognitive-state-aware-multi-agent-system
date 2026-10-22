@@ -40,6 +40,8 @@ export class Orchestrator {
         throwIfCancelled(input.signal);
         input.emit('router.started', {});
 
+        const gateway = input.gateway ?? this.deps.gateway;
+        const deps = input.gateway ? { ...this.deps, gateway } : this.deps;
         const custom = await this.loadAgents(input.run.workspaceId);
         const catalog = new AgentCatalog([...(this.deps.agents ?? []), ...custom]);
         const cognitive = input.run.mode === 'cognitive' ? await this.resolveCognitive(input) : undefined;
@@ -50,8 +52,8 @@ export class Orchestrator {
             mode: input.run.mode,
             request: input.request,
             lastUserMessage: lastUser,
-            models: this.deps.gateway.listModels(),
-            defaultModel: this.deps.gateway.defaultModel(),
+            models: gateway.listModels(),
+            defaultModel: gateway.defaultModel(),
             // Repository tools exist only in code runs; Restricted mode only gets side-effect-free tools.
             availableTools: this.deps.tools.registry.namesFor({
               code: Boolean(input.request.workspaceContext),
@@ -96,7 +98,7 @@ export class Orchestrator {
           scopes: input.scopes,
           signal,
           emit,
-          deps: this.deps,
+          deps,
           agents: catalog,
           budget: new RunBudget(plan),
           response,

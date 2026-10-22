@@ -15,6 +15,7 @@ import { runRoutes } from './routes/runs';
 import { adminRoutes } from './routes/admin';
 import { codeRoutes } from './routes/code';
 import { modelLabRoutes } from './routes/model-lab';
+import { providerKeyRoutes } from './routes/provider-keys';
 import { githubRoutes } from './routes/github';
 import { systemRoutes } from './routes/system';
 import { workspaceRoutes } from './routes/workspace';
@@ -88,6 +89,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     await githubRoutes(scope, deps);
     await codeRoutes(scope, deps, runs);
     await modelLabRoutes(scope, deps);
+    await providerKeyRoutes(scope, deps);
     await openaiRoutes(scope, deps, runs);
   });
   return app;

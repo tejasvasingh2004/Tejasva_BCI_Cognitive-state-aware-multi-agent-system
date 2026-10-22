@@ -17,9 +17,16 @@ export type ToolSpec = {
 
 export type ToolChoice = 'auto' | 'none' | 'required';
 
+/** A tenant's own provider key (BYOK). `keyId` is a stable, non-secret id used for budgets and logs. */
+export type ProviderCredential = { keyId: string; apiKey: string };
+
 export type ModelRequest = {
   /** `<provider>/<model>` reference. */
   model: string;
+  /** Tenant keys by provider id; a provider with a credential is called with it, never with a platform key. */
+  credentials?: Record<string, ProviderCredential>;
+  /** Whether platform (server) keys may serve providers the tenant has no key for. Default true. */
+  platformKeys?: boolean;
   /** Tried in order when the primary model fails before producing output. */
   fallbacks?: string[];
   messages: ChatMessage[];
@@ -94,7 +101,12 @@ export type ProviderRequest = Omit<ModelRequest, 'model' | 'fallbacks' | 'signal
   entry: CatalogEntry;
   /** Which API key of the provider's key pool to use (chosen by the gateway's rate limiter). */
   keyIndex?: number;
+  /** A tenant's own key; when set it replaces the provider's platform key pool. */
+  apiKey?: string;
 };
+
+/** Result of checking a key against a provider. Never contains the key. */
+export type CredentialCheck = { ok: true } | { ok: false; reason: 'rejected' | 'unreachable'; message: string };
 
 export type ProviderDescription = {
   kind: string;
@@ -115,12 +127,18 @@ export interface ProviderAdapter {
   checkHealth?(signal?: AbortSignal): Promise<boolean>;
   /** Number of API keys in the provider's key pool (each key has its own provider quota). */
   keyCount?(): number;
+  /** Whether tenants can call this provider with their own keys (BYOK). */
+  readonly acceptsCredentials?: boolean;
+  /** Checks a tenant's key with a cheap authenticated call, before it is stored. */
+  verifyCredential?(apiKey: string, signal?: AbortSignal): Promise<CredentialCheck>;
   stream(req: ProviderRequest, signal: AbortSignal): AsyncIterable<ProviderEvent>;
 }
 
 export interface ModelGateway {
   listModels(): ModelInfo[];
   defaultModel(): string | undefined;
+  /** A view whose calls use a tenant's own provider keys (BYOK); gateways without it ignore tenant keys. */
+  scoped?(credentials: Record<string, ProviderCredential>, opts?: { platformKeys?: boolean }): ModelGateway;
   complete(request: ModelRequest): Promise<ModelResponse>;
   stream(request: ModelRequest): AsyncIterable<ModelEvent>;
 }

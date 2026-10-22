@@ -25,6 +25,10 @@ export type MockScript = (body: MockRequestBody, callIndex: number) => MockReply
 export type MockOpenAIServer = {
   url: string;
   requests: MockRequestBody[];
+  /** The bearer key each chat request was sent with ('' when none), parallel to `requests`. */
+  keys: string[];
+  /** When set, only these bearer keys are accepted (401 otherwise), for chat and `GET /models`. */
+  setValidKeys(keys: string[] | null): void;
   setScript(script: MockScript): void;
   close(): Promise<void>;
 };
@@ -32,10 +36,20 @@ export type MockOpenAIServer = {
 export async function startMockOpenAIServer(script: MockScript = defaultScript, port = 0, host = '127.0.0.1'): Promise<MockOpenAIServer> {
   let current = script;
   const requests: MockRequestBody[] = [];
+  const keys: string[] = [];
+  let validKeys: Set<string> | null = null;
   const sockets = new Set<Socket>();
+  const bearer = (req: IncomingMessage) => String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+  const rejected = (req: IncomingMessage, res: ServerResponse) => {
+    if (!validKeys || validKeys.has(bearer(req))) return false;
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Invalid API Key' } }));
+    return true;
+  };
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'GET' && req.url?.endsWith('/models')) {
+      if (rejected(req, res)) return;
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ object: 'list', data: [] }));
       return;
@@ -45,8 +59,10 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
       return;
     }
     const raw = await readBody(req);
+    if (rejected(req, res)) return;
     const body = JSON.parse(raw) as MockRequestBody;
     requests.push(body);
+    keys.push(bearer(req));
     const reply = current(body, requests.length - 1);
 
     if (reply.kind === 'error') {
@@ -113,6 +129,10 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
   return {
     url: `http://127.0.0.1:${actual}/v1`,
     requests,
+    keys,
+    setValidKeys(list) {
+      validKeys = list ? new Set(list) : null;
+    },
     setScript(s) {
       current = s;
     },

@@ -69,6 +69,8 @@ export const ModelInfo = z.object({
     streaming: z.boolean(),
   }),
   available: z.boolean(),
+  /** Whose key serves this model for the caller: the workspace's own (BYOK) or the platform's. */
+  keySource: z.enum(['workspace', 'platform']).optional(),
   /** USD per million tokens, when known. Local models are free. */
   pricing: ModelPricing.optional(),
   /** Request parameters this model honours; unsupported controls must not be offered. */

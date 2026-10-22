@@ -10,7 +10,7 @@ import {
   type ModelEvent,
   type ProviderAdapter,
 } from '../src';
-import { startMockOpenAIServer, textReply, type MockOpenAIServer } from '../src/testing';
+import { defaultScript as defaultScriptRef, startMockOpenAIServer, textReply, type MockOpenAIServer } from '../src/testing';
 
 let qwen: MockOpenAIServer;
 let groq: MockOpenAIServer;
@@ -391,5 +391,75 @@ describe('ModelGateway cost and concurrency', () => {
       t.now += 10_000;
       expect(gw.circuits().pool?.state).toBe('half_open');
     });
+  });
+});
+
+describe('workspace keys (BYOK)', () => {
+  const tenantGroq = (key = 'test-key') =>
+    new DefaultModelGateway(
+      [new GroqAdapter({ baseUrl: groq.url, apiKey: key, models: buildCatalog('llama-3.3-70b-versatile') })],
+      { baseBackoffMs: 1, maxBackoffMs: 5 },
+      { sleep: async () => {} },
+    );
+  const ask = [{ role: 'user' as const, content: 'hi' }];
+
+  beforeEach(() => {
+    groq.keys.length = 0;
+    groq.setValidKeys(null);
+    groq.setScript(defaultScriptRef);
+  });
+
+  it("calls the provider with the workspace's key, never the platform key", async () => {
+    const gw = tenantGroq('platform-key');
+    const scoped = gw.scoped({ groq: { keyId: 'k1', apiKey: 'tenant-key' } });
+    await scoped.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    await gw.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    expect(groq.keys).toEqual(['tenant-key', 'platform-key']);
+  });
+
+  it('serves a provider with no platform key once the workspace has its own', async () => {
+    const gw = tenantGroq('');
+    expect(gw.listModels().every((m) => !m.available)).toBe(true);
+    const scoped = gw.scoped({ groq: { keyId: 'k1', apiKey: 'tenant-key' } });
+    expect(scoped.listModels()).toEqual([expect.objectContaining({ ref: 'groq/llama-3.3-70b-versatile', available: true, keySource: 'workspace' })]);
+    expect(scoped.defaultModel()).toBe('groq/llama-3.3-70b-versatile');
+    const res = await scoped.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    expect(res.text).toContain('NeuroFlow mock answer');
+  });
+
+  it('can refuse platform keys: without a workspace key the call fails with a clear message', async () => {
+    const gw = tenantGroq('platform-key');
+    const scoped = gw.scoped({}, { platformKeys: false });
+    expect(scoped.listModels()[0]).toMatchObject({ available: false });
+    await expect(scoped.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toThrow(/No API key for Groq/);
+    expect(groq.keys).toEqual([]);
+  });
+
+  it('a rate-limited workspace key does not block the platform key or other workspaces', async () => {
+    const t = virtualTime();
+    const gw = new DefaultModelGateway(
+      [new GroqAdapter({ baseUrl: groq.url, apiKey: 'platform-key', models: buildCatalog('llama-3.3-70b-versatile') })],
+      { baseBackoffMs: 1, maxBackoffMs: 5, maxRetries: 0, maxRateLimitWaitMs: 1_000 },
+      t.opts,
+    );
+    groq.setScript((body, i) => (i === 0 ? { kind: 'error', status: 429, retryAfter: '30' } : textReply('ok')));
+    const a = gw.scoped({ groq: { keyId: 'tenant-a', apiKey: 'key-a' } });
+    await expect(a.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toBeInstanceOf(ModelError);
+    // Tenant A's key is now blocked for 30 s; tenant B and the platform key are unaffected.
+    const b = gw.scoped({ groq: { keyId: 'tenant-b', apiKey: 'key-b' } });
+    await b.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    await gw.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    expect(groq.keys).toEqual(['key-a', 'key-b', 'platform-key']);
+    await expect(a.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toThrow(/rate limiting this workspace's key/);
+    groq.setScript(defaultScriptRef);
+  });
+
+  it('verifies a key against the provider before it is stored', async () => {
+    groq.setValidKeys(['good-key']);
+    const gw = tenantGroq('');
+    expect(await gw.verifyCredential('groq', 'good-key')).toEqual({ ok: true });
+    expect(await gw.verifyCredential('groq', 'bad-key')).toMatchObject({ ok: false, reason: 'rejected' });
+    expect(await gw.verifyCredential('qwen', 'x')).toMatchObject({ ok: false });
+    expect(gw.credentialProviders()).toEqual([{ id: 'groq', displayName: 'Groq', platformKey: false }]);
   });
 });

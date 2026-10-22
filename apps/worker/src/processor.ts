@@ -112,7 +112,10 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
     const codeContext = wc
       ? await prepareCodeRun({ pool, code: runtime.code, runId: run.id, workspaceId: run.workspaceId, wc, emit: (t, d) => emitter.emit(t, d) })
       : undefined;
+    // The run calls models with the workspace's own keys when it has them (BYOK).
+    const gateway = await runtime.gatewayFor(run.workspaceId);
     const outcome = await runtime.orchestrator.execute({
+      gateway,
       context: {
         ...(settings?.instructions ? { workspaceInstructions: settings.instructions } : {}),
         ...(summary?.summary ? { conversationSummary: summary.summary } : {}),
@@ -225,7 +228,9 @@ export async function refreshSummary(
   const unsummarized = await messagesRepo.listAfter(deps.pool, conversationId, current?.uptoPosition ?? null);
   const fold = selectForSummary(unsummarized);
   if (!fold?.length) return false;
-  const gateway = deps.runtime.gateway;
+  // Summaries are model calls too: they use the conversation's workspace keys.
+  const owner = (await deps.pool.query('SELECT workspace_id FROM conversations WHERE id = $1', [conversationId])).rows[0];
+  const gateway = owner ? await deps.runtime.gatewayFor(owner.workspace_id as string) : deps.runtime.gateway;
   const model = summaryModel(gateway.listModels(), gateway.defaultModel());
   if (!model) return false;
   const summary = await summarizeConversation(gateway, {

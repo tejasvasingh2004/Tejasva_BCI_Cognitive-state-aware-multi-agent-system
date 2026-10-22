@@ -42,6 +42,8 @@ const Env = z.object({
   GITHUB_OAUTH_URL: z.string().default('https://github.com'),
   /** Public URL of the web app (OAuth redirects). Defaults to the first CORS origin. */
   PUBLIC_WEB_URL: z.string().optional(),
+  /** `disabled`: models are served only with workspaces' own provider keys (BYOK). */
+  PLATFORM_MODEL_KEYS: z.enum(['enabled', 'disabled']).default('enabled'),
   // ---- Operations ----
   /** Error tracking: a Sentry-compatible DSN. Unset = disabled. */
   SENTRY_DSN: z.string().optional(),

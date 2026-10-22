@@ -78,6 +78,11 @@ export type ExecuteRunInput = {
   scopes: readonly string[];
   signal: AbortSignal;
   emit: EmitFn;
+  /**
+   * The gateway view for this run, e.g. scoped to the tenant's own provider keys (BYOK). Routing,
+   * defaults and every model call of the run use it; defaults to the orchestrator's gateway.
+   */
+  gateway?: ModelGateway;
   /** Additional bounded context sources. */
   context?: {
     workspaceInstructions?: string;
