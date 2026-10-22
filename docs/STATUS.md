@@ -1,7 +1,7 @@
 # NeuroFlow — Current State of the Repository
 
 Living record of what is built, how it fits together, how it is verified and what is left.
-Updated 2026-10-20 · branch `master` (includes the merged `v2` work). Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md).
+Updated 2026-10-22 · branch `master` (includes the merged `v2` work). Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Keep this file current: when a feature lands, add it here in the same commit. Requirements live in
 [`prd.md`](prd.md); detailed checklists in [`progress.md`](progress.md); design rationale in
@@ -15,7 +15,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | --- | --- |
 | Product | AI workspace (Product Phase 1) + AI Code Agent / AI IDE (Product Phase 2) on **one** runtime |
 | Stack | React 19 · Vite 7 · Tailwind 4 · TanStack Query · Zustand · Monaco — Node 22 · Fastify 5 · Zod 4 · BullMQ — PostgreSQL · Redis · Docker · OpenTelemetry |
-| Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` in preview, …) and local Qwen through Ollama, all behind the Model Gateway; the model's own identity is stated in its instructions |
+| Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` in preview, …), local Qwen through Ollama, and Anthropic (Claude), OpenAI and Google Gemini with platform or workspace keys, all behind the Model Gateway; the model's own identity is stated in its instructions |
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
@@ -129,7 +129,12 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   rate-limit scope, so one tenant's 429 never blocks another tenant or the platform pool. Model lists
   show whose key serves each model.
 - **`PLATFORM_MODEL_KEYS=disabled`** — a public deployment serves models only with tenants' keys.
-- Next in Phase 1: adapters for more providers, dollar budgets per key, SDKs, webhooks, async runs.
+- **Anthropic, OpenAI and Google providers** — Claude through the official Anthropic SDK
+  (`packages/models/src/adapters/anthropic.ts`); OpenAI and Gemini through their OpenAI-compatible
+  endpoints (`adapters/hosted.ts`). All three accept workspace keys and are listed in Settings →
+  Model providers even when the server has no key of its own. Claude's thinking blocks are replayed
+  unchanged inside a tool loop (opaque `providerState` on the assistant message) and never shown.
+- Next in Phase 1: dollar budgets per key, SDKs, webhooks, async runs.
 
 ## 5. Scalability and reliability foundation
 

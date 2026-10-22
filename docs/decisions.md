@@ -276,4 +276,31 @@ token and a test repository.
   keys serve workspaces without their own; `disabled` makes a deployment BYOK-only. A workspace key
   always wins for its provider. An invalid key is skipped until it verifies again.
 - **Not yet:** marking a key invalid automatically when a run gets an authentication error, KMS
-  implementations, per-key dollar budgets, and adapters beyond Groq and hosted Qwen.
+  implementations and per-key dollar budgets.
+
+## Anthropic, OpenAI and Google providers
+
+- **Claude uses the official SDK, not an OpenAI-compatible shim.** The Messages API differs in ways
+  that matter: system text is a top-level field, tool results are blocks in a user turn, and an
+  assistant turn's thinking blocks must be sent back unchanged while a tool loop continues (their
+  signatures are bound to the model and the conversation). The adapter maps all of this; nothing
+  outside `packages/models` sees the Anthropic format.
+- **Opaque provider state.** The gateway returns an assistant turn's provider-native content as
+  `providerState` ({ provider, model, content }). The orchestrator keeps it on the tool-loop scratch
+  message and passes it back; adapters use it only when provider and model match. It is never shown,
+  logged or persisted, and the public `ChatMessage` contract is unchanged (`ModelMessage` extends it
+  inside the models package).
+- **Stale thinking recovers once.** If the API reports that a replayed thinking block belongs to a
+  different conversation (for example after the context engine compacted an old tool result), the
+  adapter strips thinking blocks and retries once, before any output. Context compaction stays
+  allowed; it costs that turn's earlier reasoning, not the run.
+- **Parameters follow each provider's current models.** Claude: adaptive thinking with its text
+  omitted, `reasoningBudget` → `output_config.effort` (off → low), no sampling parameters, and
+  `required` tool choice sent as `auto` (forced tool choice is rejected). OpenAI reasoning models:
+  `max_completion_tokens`, `reasoning_effort`, no temperature. Gemini: `reasoning_effort`, with
+  `minimal` for off (current Gemini models always think).
+- **Registered for BYOK without platform keys.** The three providers are always registered with a
+  default catalog, so any workspace can add a key; without a server key their models are unavailable
+  in the platform view and never chosen for workspaces that lack a key.
+- **Fine-tuning is stated honestly.** No fine-tuning jobs are started for these providers; OpenAI's
+  own dashboard is named as the place where its fine-tuning lives.

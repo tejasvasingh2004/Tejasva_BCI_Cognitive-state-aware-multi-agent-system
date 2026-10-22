@@ -9,7 +9,7 @@ import {
   type ToolCall,
   type Usage,
 } from '@neuroflow/contracts';
-import { ModelError, type FinishReason, type ModelResponse, type ToolChoice } from '@neuroflow/models';
+import { ModelError, type FinishReason, type ModelMessage, type ModelResponse, type ToolChoice } from '@neuroflow/models';
 import { runtimeMetrics, withSpan } from '@neuroflow/observability';
 import { toolResultContent, type EmitFn } from '@neuroflow/tools';
 import { outputContractInstructions, type AgentCatalog, type AgentDefinition } from './agents/definitions';
@@ -381,7 +381,7 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
   const toolSpecs = ctx.deps.tools.registry.specs(allowed);
   const toolSpecTokens = toolSpecs.length ? estimateTokens(JSON.stringify(toolSpecs)) : 0;
   let compactedSoFar = 0;
-  const scratch: ChatMessage[] = [];
+  const scratch: ModelMessage[] = [];
   let toolCallsUsed = 0;
   let iterations = 0;
   let text = '';
@@ -428,7 +428,8 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
           break;
         }
 
-        scratch.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
+        // Provider state (e.g. Claude's thinking signatures) goes back unchanged on the next call.
+        scratch.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls, ...(res.providerState ? { providerState: res.providerState } : {}) });
         const remaining = ctx.plan.toolPolicy.maxToolCalls - toolCallsUsed;
         if (res.toolCalls.length > remaining) ctx.toolLimitHit = true;
         for (const call of res.toolCalls.slice(0, remaining)) {
@@ -493,7 +494,7 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
 }
 
 /** Every tool call the model made must have a tool message, even if skipped by limits. */
-function skipUnansweredCalls(calls: ToolCall[], scratch: ChatMessage[]) {
+function skipUnansweredCalls(calls: ToolCall[], scratch: ModelMessage[]) {
   const answered = new Set(scratch.filter((m) => m.role === 'tool').map((m) => m.toolCallId));
   for (const c of calls) {
     if (!answered.has(c.id)) {

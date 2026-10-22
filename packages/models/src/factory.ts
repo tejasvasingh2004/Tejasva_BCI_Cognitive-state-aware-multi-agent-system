@@ -1,4 +1,6 @@
+import { AnthropicAdapter } from './adapters/anthropic';
 import { GroqAdapter } from './adapters/groq';
+import { createGoogleAdapter, createOpenAIAdapter } from './adapters/hosted';
 import { QwenAdapter, type QwenFlavor } from './adapters/qwen';
 import { buildCatalog, parsePricing } from './catalog';
 import { DefaultModelGateway, type GatewayPolicy, type ProviderLimits } from './gateway';
@@ -39,6 +41,29 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
       apiKey: env.GROQ_API_KEY || undefined,
       baseUrl: env.GROQ_BASE_URL || undefined,
       models: buildCatalog(env.GROQ_MODELS ?? 'openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b'),
+      fetchImpl: opts.fetchImpl,
+    }),
+  );
+
+  // Hosted providers are always registered with a default catalog so workspaces can bring their
+  // own keys; without a platform key they serve only workspaces that have one.
+  adapters.push(
+    new AnthropicAdapter({
+      apiKey: env.ANTHROPIC_API_KEY || undefined,
+      baseUrl: env.ANTHROPIC_BASE_URL || undefined,
+      models: buildCatalog(env.ANTHROPIC_MODELS ?? 'claude-sonnet-5-5,claude-haiku-5-5,claude-opus-5-5'),
+      fetchImpl: opts.fetchImpl,
+    }),
+    createOpenAIAdapter({
+      apiKey: env.OPENAI_API_KEY || undefined,
+      baseUrl: env.OPENAI_BASE_URL || undefined,
+      models: buildCatalog(env.OPENAI_MODELS ?? 'gpt-6.1-sol,gpt-6-luna,gpt-6-astra'),
+      fetchImpl: opts.fetchImpl,
+    }),
+    createGoogleAdapter({
+      apiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || undefined,
+      baseUrl: env.GOOGLE_BASE_URL || undefined,
+      models: buildCatalog(env.GOOGLE_MODELS ?? 'gemini-3.8-flash'),
       fetchImpl: opts.fetchImpl,
     }),
   );

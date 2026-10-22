@@ -195,7 +195,8 @@ describe('ModelGateway', () => {
       code: 'unavailable',
     });
     await expect(gw.complete({ model: 'groq/nope', messages: user })).rejects.toMatchObject({ code: 'model_not_found' });
-    expect(gw.listModels()[0]!.available).toBe(false);
+    // A key-based provider without any key is offered in Settings, not listed as models.
+    expect(gw.listModels()).toEqual([]);
   });
 
   it('times out when the first token never arrives', async () => {

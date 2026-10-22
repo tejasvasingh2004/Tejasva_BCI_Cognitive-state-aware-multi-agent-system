@@ -35,7 +35,7 @@ manual setting or an EEG workload classifier (research origin of the project).
 | | |
 | --- | --- |
 | **Adaptive runtime** | Six execution strategies (direct → supervisor / evaluator-optimizer); the router picks the smallest reliable one and chooses agents and models independently |
-| **Model Gateway** | Provider-independent streaming, reasoning budgets, timeouts, retries, fallbacks, shared rate budgets and a circuit breaker per provider — Groq and Qwen today |
+| **Model Gateway** | Provider-independent streaming, reasoning budgets, timeouts, retries, fallbacks, shared rate budgets and a circuit breaker per provider — Groq, Qwen, Anthropic, OpenAI and Google |
 | **Safe tool runtime** | Every tool call is schema-validated, authorized and, when consequential, approved by the user; 27 Code Agent tools for repositories, editing, execution, Git and GitHub |
 | **Plan Review** | Approve, edit or revise the agent's plan before it touches the repository |
 | **Reviewable changes** | Suggest / Review / Auto / Restricted modes; patches are validated before they are shown; deletes and large changes always ask |
@@ -70,7 +70,7 @@ React (apps/web) ──HTTP/SSE──► Fastify API (apps/api)
                                  ▼
                      Orchestrator ─► Context Engine ─► Router ─► Agent Runtime
                                  │                                  │
-                                 ├─► Model Gateway ─► Groq / Qwen   │
+                                 ├─► Model Gateway ─► Groq, Qwen, Claude, OpenAI, Gemini
                                  ├─► Tool Runtime ─► Docker sandbox, Git, GitHub
                                  └─► Evaluation
                                  ▼
@@ -91,7 +91,7 @@ models, tools, events and persistence — not a second backend. Details:
 | Frontend | React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query, Zustand, Monaco |
 | Backend | Node.js 22, Fastify 5, Zod 4, BullMQ |
 | Data | PostgreSQL, Redis |
-| AI | Groq (GPT-OSS 120B / 20B, Qwen3 32B), Qwen via Ollama, OpenAI-compatible providers |
+| AI | Groq (GPT-OSS 120B / 20B, Qwen3.8 27B), Qwen via Ollama, Anthropic Claude, OpenAI, Google Gemini — server keys or each workspace's own |
 | Infrastructure | Docker, OpenTelemetry, GitHub Actions, Vercel, Railway |
 | Research | Python, MNE, scikit-learn, LightGBM, XGBoost, FastAPI (EEG workload classifier and sidecar) |
 

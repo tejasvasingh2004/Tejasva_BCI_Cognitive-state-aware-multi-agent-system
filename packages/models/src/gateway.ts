@@ -10,7 +10,7 @@ import {
 import { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER, PROVIDER_HEALTH_FAILURES, type CircuitBreakerOptions } from './circuit-breaker';
 import { ModelError, isAbortError } from './errors';
 import { estimateRequestTokens, InMemoryRateLimiter, type BucketLimits, type RateLimiter } from './rate-limit';
-import type { CatalogEntry, CredentialCheck, FinishReason, ModelEvent, ModelGateway, ModelRequest, ModelResponse, ProviderAdapter, ProviderCredential } from './types';
+import type { CatalogEntry, CredentialCheck, FinishReason, ModelEvent, ModelGateway, ModelRequest, ModelResponse, ProviderAdapter, ProviderCredential, ProviderState } from './types';
 
 export type GatewayPolicy = {
   /** Retries per model for retryable errors that happen before any output is produced. */
@@ -148,6 +148,9 @@ export class DefaultModelGateway implements ModelGateway {
     const out: ModelInfo[] = [];
     for (const adapter of this.adapters.values()) {
       const source = this.keySourceFor(adapter, tenant.has(adapter.id), platformKeys);
+      // A key-based provider with neither a server key nor this tenant's key is offered in
+      // Settings → Model providers, not as a list of models nobody here can use.
+      if (source === null && adapter.acceptsCredentials && adapter.describe?.().configured === false) continue;
       for (const entry of adapter.catalog()) {
         out.push({
           ref: `${adapter.id}/${entry.model}`,
@@ -477,6 +480,7 @@ export class DefaultModelGateway implements ModelGateway {
     const toolCalls: ToolCall[] = [];
     let usage: Usage | undefined;
     let finishReason: FinishReason = 'unknown';
+    let providerState: ProviderState | undefined;
 
     try {
       const { model: _ref, fallbacks: _f, signal: _s, timeoutMs: _t, credentials: _c, platformKeys: _p, ...rest } = request;
@@ -500,13 +504,16 @@ export class DefaultModelGateway implements ModelGateway {
           case 'usage':
             usage = ev.usage;
             break;
+          case 'state':
+            providerState = ev.state;
+            break;
           case 'finish':
             finishReason = ev.reason;
             break;
         }
       }
       if (controller.signal.aborted) throw controller.signal.reason;
-      return { text, toolCalls, usage, finishReason, firstTokenMs };
+      return { text, toolCalls, usage, finishReason, firstTokenMs, ...(providerState ? { providerState } : {}) };
     } catch (err) {
       // Prefer the abort reason (timeout/cancel) over the generic AbortError thrown by fetch.
       if (controller.signal.aborted && controller.signal.reason instanceof ModelError) {

@@ -30,6 +30,16 @@ const KNOWN: Record<string, KnownModel> = {
   'qwen/qwen3.8-27b': km('Qwen3.8 27B (Groq, preview)', 'balanced', 131_072, true, 'toggle'),
   'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]),
   'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
+  // Anthropic (Claude). Haiku 5.5's price applies to prompts up to 100K tokens.
+  'claude-opus-5-5': km('Claude Opus 5.5', 'strong', 1_000_000, true, 'effort', [4, 20]),
+  'claude-sonnet-5-5': km('Claude Sonnet 5.5', 'strong', 1_000_000, true, 'effort', [2, 10]),
+  'claude-haiku-5-5': km('Claude Haiku 5.5', 'fast', 1_000_000, true, 'effort', [0.1, 0.5]),
+  // OpenAI
+  'gpt-6-astra': km('GPT-6 Astra', 'strong', 1_050_000, true, 'effort', [10, 50]),
+  'gpt-6.1-sol': km('GPT-6.1 Sol', 'balanced', 1_050_000, true, 'effort', [2, 10]),
+  'gpt-6-luna': km('GPT-6 Luna', 'fast', 1_050_000, true, 'effort', [0.1, 0.5]),
+  // Google Gemini (no list price recorded here; set MODEL_PRICING)
+  'gemini-3.8-flash': km('Gemini 3.8 Flash', 'balanced', 1_048_576, true, 'effort'),
 };
 
 function km(

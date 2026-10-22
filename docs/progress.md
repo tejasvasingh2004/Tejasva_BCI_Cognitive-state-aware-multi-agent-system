@@ -245,7 +245,9 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
       hint-only display, used by runs through a tenant-scoped gateway with isolated rate limits;
       `PLATFORM_MODEL_KEYS=disabled` for BYOK-only deployments; Settings → Model providers
 - [ ] KMS-backed key-encryption key (interface ready: `KeyEncryptionKey`)
-- [ ] Adapters for OpenAI, Anthropic, Google and OpenAI-compatible open-model hosts
+- [x] Adapters for Anthropic (official SDK, thinking blocks preserved across tool calls), OpenAI and
+      Google Gemini (OpenAI-compatible endpoints), with workspace keys and platform keys
+- [ ] Adapters for OpenAI-compatible open-model hosts (Together, Fireworks, OpenRouter)
 - [ ] Dollar budgets per key and per workspace
 - [ ] SDKs (TypeScript, Python), webhooks, async runs
 

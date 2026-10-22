@@ -20,6 +20,16 @@ export type ToolChoice = 'auto' | 'none' | 'required';
 /** A tenant's own provider key (BYOK). `keyId` is a stable, non-secret id used for budgets and logs. */
 export type ProviderCredential = { keyId: string; apiKey: string };
 
+/**
+ * Provider-native content of an assistant turn (for example Anthropic thinking blocks with their
+ * signatures). It is opaque outside the adapter that produced it, replayed unchanged to the same
+ * provider and model within a tool loop, and never shown, logged or persisted.
+ */
+export type ProviderState = { provider: string; model: string; content: unknown };
+
+/** A chat message as the gateway accepts it: the public contract plus optional provider state. */
+export type ModelMessage = ChatMessage & { providerState?: ProviderState };
+
 export type ModelRequest = {
   /** `<provider>/<model>` reference. */
   model: string;
@@ -29,7 +39,7 @@ export type ModelRequest = {
   platformKeys?: boolean;
   /** Tried in order when the primary model fails before producing output. */
   fallbacks?: string[];
-  messages: ChatMessage[];
+  messages: ModelMessage[];
   tools?: ToolSpec[];
   toolChoice?: ToolChoice;
   temperature?: number;
@@ -57,6 +67,8 @@ export type ModelResponse = {
   attempts: number;
   /** Set when the response came from a fallback model. */
   fallbackFrom?: string;
+  /** Attach to the assistant message when continuing a tool loop (see ProviderState). */
+  providerState?: ProviderState;
 };
 
 /** Normalised events produced by the gateway. Provider reasoning is never surfaced. */
@@ -75,6 +87,7 @@ export type ProviderEvent =
   | { type: 'delta'; text: string }
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'usage'; usage: Usage }
+  | { type: 'state'; state: ProviderState }
   | { type: 'finish'; reason: FinishReason };
 
 export type ReasoningStyle =

@@ -6,6 +6,9 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-22
 
 ### Added
+- Anthropic (Claude Opus, Sonnet and Haiku 5.5), OpenAI and Google Gemini providers, served with a
+  workspace's own key or a server key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
+  Claude's tool loops keep its reasoning between tool calls without ever showing it.
 - Bring your own key: workspaces store their own model provider keys (Settings → Model providers,
   `/v1/provider-keys`). Keys are checked with the provider, envelope-encrypted, shown only as a
   4-character hint, and used by the workspace's runs in their own rate-limit scope.

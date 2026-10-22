@@ -41,6 +41,7 @@ On Railway, connect the repository; `nixpacks.toml` builds with pnpm 9 on Node 2
 | `CORS_ORIGINS` | the web app's URL |
 | `PUBLIC_WEB_URL` | the web app's URL |
 | `GROQ_API_KEY`, `GROQ_MODELS` | provider key and models (optional when every workspace brings its own key) |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY` | optional platform keys; without them these providers serve only workspaces that add their own key (`*_MODELS` to change the list) |
 | `PLATFORM_MODEL_KEYS` | `disabled` on a public deployment: models run only with workspaces' own keys; same value on the worker |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | optional; users can connect with a token instead |
 
@@ -208,6 +209,9 @@ sandbox) and the web app behind nginx. Add `--profile bci` for the EEG Cognitive
 ## Models
 
 - **Groq** serves GPT-OSS 120B / 20B, Llama 3.3 70B and Llama 3.1 8B in production and Qwen3.8 27B in preview ([models](https://console.groq.com/docs/models)); no model hosting is needed. Preview models can be withdrawn, so keep a production model in `GROQ_MODELS` as a fallback.
+- **Anthropic, OpenAI, Google** — hosted APIs; set a platform key, or let each workspace add its own
+  under Settings → Model providers. Defaults: `claude-sonnet-5-5`, `claude-haiku-5-5`,
+  `claude-opus-5-5`; `gpt-6.1-sol`, `gpt-6-luna`, `gpt-6-astra`; `gemini-3.8-flash`.
 - **Self-hosted Qwen**: run Ollama (or any OpenAI-compatible server) and set `QWEN_BASE_URL` and
   `QWEN_MODELS` on the API and the worker. Small models (`qwen3:0.6b`, `qwen3:1.7b`) run on CPU;
   larger ones need a GPU to be responsive.
