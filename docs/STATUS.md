@@ -19,7 +19,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
-| Database | 8 migrations (`infra/migrations/0001` … `0008`) |
+| Database | 9 migrations (`infra/migrations/0001` … `0009`) |
 | Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
 | CI | GitHub Actions: typecheck · lint · unit · integration · E2E · app and image builds (`.github/workflows/ci.yml`) |
 | Deploy | `apps/site` and `apps/web` on Vercel (`vercel.json` in each), API on Railway (`nixpacks.toml`) |
@@ -115,6 +115,22 @@ Real-repository validation: the Code Agent ran against `tejasvasingh2004/Code_ma
 a local commit on an agent branch. Push and draft PR on github.com need a token with
 **Contents** and **Pull requests** write permission.
 
+## 4b. Bring your own key (Phase 1 of the orchestrator roadmap)
+
+- **Provider keys per workspace** — Settings → Model providers, or `/v1/provider-keys`: add, check,
+  remove. A key is verified with the provider before it is stored and shown afterwards only as its
+  last four characters.
+- **Envelope encryption** — a random data key per workspace, wrapped by a key-encryption key
+  (`SECRETS_KEY` today; `KeyEncryptionKey` is the KMS integration point); provider keys sealed with
+  AES-256-GCM, bound to workspace, provider and id (`infra/migrations/0009_provider_keys.sql`,
+  `packages/db/src/provider-keys.ts`).
+- **Runs use the workspace's key** — the worker gives each run (and its conversation summary and
+  Model Lab evaluations) a gateway view scoped to the workspace's keys; a tenant key has its own
+  rate-limit scope, so one tenant's 429 never blocks another tenant or the platform pool. Model lists
+  show whose key serves each model.
+- **`PLATFORM_MODEL_KEYS=disabled`** — a public deployment serves models only with tenants' keys.
+- Next in Phase 1: adapters for more providers, dollar budgets per key, SDKs, webhooks, async runs.
+
 ## 5. Scalability and reliability foundation
 
 | Concern | Implementation | Where |
@@ -200,7 +216,8 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 | 2026-10-18 | Deployment configs (Vercel, Railway), runtime dependency fixes; `v2` merged into `master` | `4d133d4` … `dfad3fa` |
 | 2026-10-22 | Usage page and usage history API; one-command worker VM setup script | `5470884`, `22ab5af` |
 | 2026-10-22 | Load-balanced topology and k6 load test: 2 + 2 vs 1 + 1 | `f3bf172` |
-| 2026-10-22 | Model identity in system instructions; error tracking; /status, worker heartbeats and uptime alerts | — |
+| 2026-10-22 | Model identity in system instructions; error tracking; /status, worker heartbeats and uptime alerts | `03fff36`, `c652f57` |
+| 2026-10-22 | Bring your own key: encrypted workspace provider keys, tenant-scoped gateway, Settings → Model providers | `654a5f2` |
 | 2026-10-20 | Documentation brought up to date; open-source project structure (license, contributing, code of conduct, security policy, templates; docs moved to `docs/`) | — |
 
 ## 10. Open items
@@ -213,8 +230,5 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
    PgBouncer (`ROADMAP.md`). Error tracking and uptime alerts are in place.
 5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory,
    mid-run checkpoint/resume.
-6. **Intermittent E2E failure** — the Model Lab deployments test (`apps/web/e2e/code.spec.ts`)
-   occasionally times out when the whole suite runs under load; it passes on its own. Cause not yet
-   found.
-7. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic
+6. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic
    deployment or merging, automatic training or fine-tuning on private code.

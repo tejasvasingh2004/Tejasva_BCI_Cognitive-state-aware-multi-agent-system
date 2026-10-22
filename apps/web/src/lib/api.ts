@@ -4,6 +4,9 @@ import type {
   ApiKeyInfo,
   AuditEvent,
   CreatedApiKey,
+  CreateProviderKeyBody,
+  ProviderKeyInfo,
+  ProviderKeysResponse,
   WorkspaceSettings,
   CognitivePolicy,
   CognitiveState,
@@ -91,6 +94,10 @@ export const api = {
   revokeApiKey: (id: string) => request<void>(`/v1/api-keys/${id}`, { method: 'DELETE' }),
 
   usage: () => request<WorkspaceUsage>('/v1/workspace/usage'),
+  providerKeys: () => request<ProviderKeysResponse>('/v1/provider-keys'),
+  createProviderKey: (body: CreateProviderKeyBody) => request<{ key: ProviderKeyInfo }>('/v1/provider-keys', { method: 'POST', json: body }),
+  verifyProviderKey: (id: string) => request<{ key: ProviderKeyInfo }>(`/v1/provider-keys/${id}/verify`, { method: 'POST' }),
+  deleteProviderKey: (id: string) => request<void>(`/v1/provider-keys/${id}`, { method: 'DELETE' }),
   usageHistory: (days: number) => request<UsageHistory>(`/v1/workspace/usage/history?days=${days}`),
 
   settings: () => request<{ settings: WorkspaceSettings; canEdit: boolean }>('/v1/workspace/settings'),

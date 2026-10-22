@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plus, ScrollText, Sun, Trash2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plug, Plus, ScrollText, ShieldCheck, Sun, Trash2 } from 'lucide-react';
 import type { AgentSpec } from '@neuroflow/contracts';
 import { api, ApiRequestError } from '@/lib/api';
 import { cn, relativeTime } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { useUi } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
-type Tab = 'general' | 'workspace' | 'agents' | 'keys' | 'audit';
+type Tab = 'general' | 'workspace' | 'agents' | 'providers' | 'keys' | 'audit';
 
 const input =
   'w-full rounded-2xl border border-line bg-surface/80 px-3.5 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-accent/50';
@@ -25,6 +25,7 @@ export function SettingsDialog() {
     { id: 'general', label: 'General', icon: Sun },
     { id: 'workspace', label: 'Workspace', icon: Building2 },
     { id: 'agents', label: 'Agents', icon: Bot },
+    { id: 'providers', label: 'Model providers', icon: Plug },
     { id: 'keys', label: 'API keys', icon: KeyRound },
     { id: 'audit', label: 'Audit log', icon: ScrollText, admin: true },
   ];
@@ -53,6 +54,7 @@ export function SettingsDialog() {
           {tab === 'general' && <GeneralTab authMode={me?.authMode} />}
           {tab === 'workspace' && <WorkspaceTab />}
           {tab === 'agents' && <AgentsTab />}
+          {tab === 'providers' && <ProviderKeysTab />}
           {tab === 'keys' && <ApiKeysTab />}
           {tab === 'audit' && isAdmin && <AuditTab />}
         </div>
@@ -372,6 +374,134 @@ const KEY_SCOPES = [
   { id: 'memory:read', label: 'Read memory' },
   { id: 'memory:write', label: 'Write memory' },
 ];
+
+/**
+ * Bring your own provider keys. A key is checked with the provider before it is saved and is never
+ * shown again — only its last four characters.
+ */
+function ProviderKeysTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: keys.providerKeys, queryFn: api.providerKeys });
+  const [provider, setProvider] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const providers = data?.providers ?? [];
+  const chosen = provider || providers[0]?.id || '';
+
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: keys.providerKeys }), qc.invalidateQueries({ queryKey: keys.models })]);
+  const act = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id);
+    setError(null);
+    try {
+      await fn();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Something went wrong');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const save = () =>
+    act('save', async () => {
+      await api.createProviderKey({ provider: chosen, apiKey: apiKey.trim(), ...(label.trim() ? { label: label.trim() } : {}) });
+      setApiKey('');
+      setLabel('');
+    });
+
+  if (isLoading || !data) return <p className="text-xs text-muted">Loading…</p>;
+  return (
+    <>
+      <Section
+        title="Use your own provider accounts"
+        description={
+          data.platformKeysEnabled
+            ? 'Add a key and runs call that provider with it, billed to your provider account. Providers without your key use NeuroFlow\'s key.'
+            : 'This deployment runs models only with your own keys: add a key for each provider you want to use.'
+        }
+      >
+        <div className="space-y-2" data-testid="provider-list">
+          {providers.map((p) => {
+            const mine = data.keys.filter((k) => k.provider === p.id);
+            const active = mine.find((k) => k.status === 'active');
+            const source = active ? `Using your key …${active.hint}` : p.platformKey && data.platformKeysEnabled ? 'Using NeuroFlow\'s key' : 'No key: add one to use these models';
+            return (
+              <div key={p.id} className="rounded-2xl border border-line bg-surface/50 p-3" data-testid={`provider-${p.id}`}>
+                <div className="flex items-center gap-2">
+                  <Plug className="size-4 text-faint" />
+                  <span className="text-sm font-medium text-ink">{p.displayName}</span>
+                  <span className={cn('ml-auto rounded-full px-2 py-0.5 text-[11px]', active ? 'bg-mint-soft text-emerald-700 dark:text-emerald-300' : 'bg-surface text-muted')} data-testid={`provider-source-${p.id}`}>
+                    {source}
+                  </span>
+                </div>
+                {mine.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {mine.map((k) => (
+                      <div key={k.id} className="flex items-center gap-2 rounded-xl bg-surface/60 px-3 py-2 text-xs" data-testid="provider-key-row">
+                        <ShieldCheck className={cn('size-3.5', k.status === 'active' ? 'text-emerald-600' : 'text-rose-500')} />
+                        <span className="text-ink">{k.label}</span>
+                        <code className="text-faint">…{k.hint}</code>
+                        <span className={cn('truncate', k.status === 'active' ? 'text-faint' : 'text-rose-500')}>
+                          {k.status === 'active' ? (k.lastUsedAt ? `used ${relativeTime(k.lastUsedAt)}` : 'not used yet') : (k.lastError ?? 'invalid')}
+                        </span>
+                        {data.canEdit && (
+                          <span className="ml-auto flex shrink-0 gap-1">
+                            <Button variant="ghost" size="sm" className="h-7" disabled={busy !== null} onClick={() => void act(k.id, () => api.verifyProviderKey(k.id))} data-testid="provider-key-verify">
+                              Check
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7" disabled={busy !== null} onClick={() => void act(k.id, () => api.deleteProviderKey(k.id))} data-testid="provider-key-delete">
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+      {data.canEdit && providers.length > 0 && (
+        <Section title="Add a key" description="The key is checked with the provider, encrypted, and never shown again.">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,0.6fr)_minmax(0,1.4fr)]">
+            <select className={input} value={chosen} onChange={(e) => setProvider(e.target.value)} aria-label="Provider" data-testid="provider-key-provider">
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.displayName}
+                </option>
+              ))}
+            </select>
+            <input
+              className={input}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Provider API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              aria-label="Provider API key"
+              data-testid="provider-key-input"
+            />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input className={input} placeholder="Label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Label" />
+            <Button variant="primary" size="md" disabled={apiKey.trim().length < 8 || busy !== null} onClick={() => void save()} data-testid="provider-key-save">
+              {busy === 'save' ? 'Checking…' : 'Check and save'}
+            </Button>
+          </div>
+        </Section>
+      )}
+      {error && (
+        <p className="text-xs text-rose-500" role="alert" data-testid="provider-key-error">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
 
 function ApiKeysTab() {
   const { data: apiKeys = [] } = useApiKeys();

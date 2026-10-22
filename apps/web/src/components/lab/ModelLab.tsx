@@ -227,10 +227,10 @@ function ProvidersSection() {
 
 // ---------------------------------------------------------------------------------- parameters
 
-function ModelSelect({ value, onChange, includeAuto = true, disabled }: { value: string; onChange(v: string): void; includeAuto?: boolean; disabled?: boolean }) {
+function ModelSelect({ value, onChange, includeAuto = true, disabled, testId }: { value: string; onChange(v: string): void; includeAuto?: boolean; disabled?: boolean; testId?: string }) {
   const { data } = useLabModels();
   return (
-    <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
+    <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} data-testid={testId}>
       {includeAuto && <option value="auto">Auto (router decides)</option>}
       {data?.models.map((m) => (
         <option key={m.ref} value={m.ref}>
@@ -762,7 +762,7 @@ function DeploymentsSection() {
           <input className={cn(inputClass, 'font-mono')} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="support-bot" data-testid="deployment-name" />
         </Field>
         <Field label="Model">
-          <ModelSelect value={draft.model || ''} includeAuto={false} onChange={(v) => setDraft({ ...draft, model: v })} />
+          <ModelSelect value={draft.model || ''} includeAuto={false} onChange={(v) => setDraft({ ...draft, model: v })} testId='deployment-model' />
         </Field>
         {(!model || model.supportedParameters?.includes('temperature') !== false) && (
           <Field label={`Temperature ${draft.parameters.temperature ?? 'default'}`}>

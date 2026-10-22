@@ -176,7 +176,9 @@ test('Model Lab: providers state fine-tuning honestly; deployments, datasets and
 
   await page.getByTestId('lab-deployments').click();
   await page.getByTestId('deployment-name').fill('e2e-bot');
-  await page.getByLabel('Model', { exact: true }).selectOption('qwen/qwen3:8b');
+  // By test id: the wrapping label's text grows to include every option once models load, so a
+  // label locator that resolves after loading never matches 'Model' exactly (a timing-dependent race).
+  await page.getByTestId('deployment-model').selectOption('qwen/qwen3:8b');
   await page.getByTestId('save-deployment').click();
   await expect(page.getByTestId('deployment')).toContainText('deployment/e2e-bot');
 

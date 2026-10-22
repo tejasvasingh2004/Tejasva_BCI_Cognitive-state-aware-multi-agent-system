@@ -17,6 +17,7 @@ export const keys = {
   agents: ['agents'] as const,
   settings: ['settings'] as const,
   apiKeys: ['api-keys'] as const,
+  providerKeys: ['provider-keys'] as const,
   audit: ['audit'] as const,
 };
 

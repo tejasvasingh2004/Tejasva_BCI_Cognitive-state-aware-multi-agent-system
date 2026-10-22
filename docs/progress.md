@@ -239,6 +239,16 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Icy blue glass palette (sky canvas, frosted panels, cyan edges, cobalt accents, navy text)
 - [ ] Desktop download builds and payments (later phase)
 
+## Orchestrator roadmap — Phase 1: customer-ready core
+
+- [x] Bring your own key: workspace provider keys, envelope-encrypted, verified before storage,
+      hint-only display, used by runs through a tenant-scoped gateway with isolated rate limits;
+      `PLATFORM_MODEL_KEYS=disabled` for BYOK-only deployments; Settings → Model providers
+- [ ] KMS-backed key-encryption key (interface ready: `KeyEncryptionKey`)
+- [ ] Adapters for OpenAI, Anthropic, Google and OpenAI-compatible open-model hosts
+- [ ] Dollar budgets per key and per workspace
+- [ ] SDKs (TypeScript, Python), webhooks, async runs
+
 ## Deployment
 
 - [x] Vercel configs for `apps/site` (static, clean URLs) and `apps/web` (SPA rewrites)

@@ -40,7 +40,8 @@ On Railway, connect the repository; `nixpacks.toml` builds with pnpm 9 on Node 2
 | `DATABASE_URL`, `REDIS_URL` | from step 1 |
 | `CORS_ORIGINS` | the web app's URL |
 | `PUBLIC_WEB_URL` | the web app's URL |
-| `GROQ_API_KEY`, `GROQ_MODELS` | provider key and models |
+| `GROQ_API_KEY`, `GROQ_MODELS` | provider key and models (optional when every workspace brings its own key) |
+| `PLATFORM_MODEL_KEYS` | `disabled` on a public deployment: models run only with workspaces' own keys; same value on the worker |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | optional; users can connect with a token instead |
 
 Create the first account after the API is up:
@@ -131,7 +132,9 @@ WORKER_QUEUES=runs,workspace,evals
 LOG_LEVEL=info
 ```
 
-`SECRETS_KEY` must match the API: the worker decrypts stored GitHub tokens to clone repositories.
+`SECRETS_KEY` must match the API: the worker decrypts stored GitHub tokens to clone repositories and
+workspaces' provider keys to run their models. Changing it makes stored keys unreadable, so rotate it
+only with a migration plan.
 
 ### Run as a service
 

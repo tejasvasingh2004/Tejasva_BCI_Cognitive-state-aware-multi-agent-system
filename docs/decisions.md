@@ -252,3 +252,28 @@ token and a test repository.
   `apps/worker`.
 - The worker is a separate process from the same build and needs a Docker daemon for the sandbox;
   hosts without Docker can still serve the API and the web app.
+
+## Bring your own key (BYOK)
+
+- **Envelope encryption, KMS-ready.** Each workspace gets a random 256-bit data key, stored only
+  wrapped by a key-encryption key; provider keys are sealed with AES-256-GCM under the data key. The
+  authenticated data binds each ciphertext to workspace, provider and key id, so a ciphertext copied
+  to another row will not open. The KEK sits behind `KeyEncryptionKey`: `SECRETS_KEY` derives it
+  today (with a distinct derivation from the key that seals GitHub tokens); a KMS implementation
+  replaces it without touching stored provider keys, which only need their data keys re-wrapped.
+- **Write-only keys.** A key is verified with the provider (`GET /models` with the key) before it is
+  stored. Afterwards the API returns only its last four characters; a keyed hash (HMAC with the
+  workspace's data key) detects duplicates without storing anything reversible. Only workers decrypt,
+  per run, and the result is never logged, persisted or sent to a model.
+- **The gateway does not know about tenants.** A request carries optional credentials; the worker
+  builds a per-run view with `gateway.scoped(credentials, { platformKeys })` and hands it to the
+  orchestrator for the whole run (routing, defaults, every model call). The orchestrator, router and
+  strategies are unchanged.
+- **Isolated budgets.** A tenant key gets its own rate-limit scope (`<provider>:tenant:<keyId>`):
+  a provider `retry-after` on one tenant's key blocks only that key. Platform token buckets and
+  concurrency slots protect the platform's keys and do not apply to tenant keys.
+- **Platform keys are a deployment choice.** `PLATFORM_MODEL_KEYS=enabled` (default) lets platform
+  keys serve workspaces without their own; `disabled` makes a deployment BYOK-only. A workspace key
+  always wins for its provider. An invalid key is skipped until it verifies again.
+- **Not yet:** marking a key invalid automatically when a run gets an authentication error, KMS
+  implementations, per-key dollar budgets, and adapters beyond Groq and hosted Qwen.

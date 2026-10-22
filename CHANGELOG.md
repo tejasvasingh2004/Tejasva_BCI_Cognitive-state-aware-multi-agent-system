@@ -6,12 +6,18 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-22
 
 ### Added
+- Bring your own key: workspaces store their own model provider keys (Settings → Model providers,
+  `/v1/provider-keys`). Keys are checked with the provider, envelope-encrypted, shown only as a
+  4-character hint, and used by the workspace's runs in their own rate-limit scope.
+  `PLATFORM_MODEL_KEYS=disabled` runs models only with workspace keys.
 - Error tracking for the API and worker (`SENTRY_DSN`): server errors, crashes and actionable run
   failures, with credentials redacted.
 - `GET /status` health summary (database, Redis, live workers, queue age, model providers) and an
   `Uptime` GitHub Actions workflow that opens and closes an incident issue.
 
 ### Fixed
+- The Model Lab end-to-end test no longer fails intermittently: it located the model field by a
+  label whose text changed once the model list loaded.
 - Models now know which model they are: the system instructions name the model and provider the
   router chose (an open-weight GPT-OSS model had claimed to be "GPT-4-turbo").
 
