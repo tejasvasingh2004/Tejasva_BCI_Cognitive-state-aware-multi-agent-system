@@ -12,7 +12,7 @@ export type MockAnthropicBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown };
 
 export type MockAnthropicReply =
-  | { kind: 'message'; blocks: MockAnthropicBlock[]; stopReason?: string; cacheReadTokens?: number }
+  | { kind: 'message'; blocks: MockAnthropicBlock[]; stopReason?: string; cacheReadTokens?: number; headers?: Record<string, string> }
   | { kind: 'error'; status: number; message?: string; retryAfter?: string };
 
 export type MockAnthropicRequest = {
@@ -74,7 +74,7 @@ export async function startMockAnthropicServer(script: MockAnthropicScript = def
       return error(res, reply.status, reply.message ?? `mock error ${reply.status}`, reply.retryAfter ? { 'retry-after': reply.retryAfter } : {});
     }
 
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...reply.headers });
     const send = (event: string, data: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`);
     send('message_start', {
       message: {

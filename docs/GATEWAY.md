@@ -82,6 +82,6 @@ opt-in:
 | --- | --- | --- |
 | Provider failover | The same model (e.g. GPT-OSS 120B on Groq, Together, Fireworks, OpenRouter) on another provider is tried before a different model | `MODEL_EQUIVALENT_FAILOVER` |
 | Adaptive concurrency | A per-provider limit that grows while time to first token is flat, shrinks when it climbs, backs off on 429/5xx/timeouts | `MODEL_ADAPTIVE_CONCURRENCY`, `MODEL_ADAPTIVE_INITIAL`, `MODEL_ADAPTIVE_MAX` |
-| Provider rate-limit headers | A key the provider reports as nearly exhausted is held until the provider's reset, across all workers | always on |
+| Provider rate-limit headers | A key the provider reports as nearly exhausted (OpenAI-style `x-ratelimit-*` or Anthropic `anthropic-ratelimit-*` headers) is held until the provider's reset, across all workers | always on |
 | Learned routing | Without an explicit model, the router picks the cheapest model whose measured quality for the task class is within 0.05 of the best | `ROUTER_LEARNING`, `ROUTER_EXPLORATION`, `ROUTER_MIN_SAMPLES` |
 | Durable steps | A run interrupted by a worker crash resumes from its last completed model call on another worker | always on |

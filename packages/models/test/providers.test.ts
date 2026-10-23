@@ -199,6 +199,43 @@ describe('Anthropic adapter', () => {
     expect(res.usage?.costUsd).toBeCloseTo(0.2 + (12 * 2 + 1 * 10) / 1e6, 6);
   });
 
+  it("holds a key Anthropic reports as exhausted until Anthropic's reset time", async () => {
+    const { anthropicRateLimitHeaders } = await import('../src/adapters/anthropic');
+    const now = Date.parse('2026-10-24T10:00:00Z');
+    const parsed = anthropicRateLimitHeaders(
+      new Headers({
+        'anthropic-ratelimit-requests-remaining': '40',
+        'anthropic-ratelimit-requests-reset': '2026-10-24T10:00:30Z',
+        'anthropic-ratelimit-tokens-remaining': '9000',
+        'anthropic-ratelimit-tokens-reset': '2026-10-24T10:00:20Z',
+        'anthropic-ratelimit-input-tokens-remaining': '300',
+        'anthropic-ratelimit-input-tokens-reset': '2026-10-24T10:00:12Z',
+      }),
+      now,
+    );
+    // The tighter of tokens and input tokens wins.
+    expect(parsed).toEqual({ type: 'ratelimit', remainingRequests: 40, resetRequestsMs: 30_000, remainingTokens: 300, resetTokensMs: 12_000 });
+    expect(anthropicRateLimitHeaders(new Headers({}))).toBeUndefined();
+
+    // End to end: an exhausted key makes the next call wait for the reset instead of collecting a 429.
+    const t = { now: 1_000_000, slept: [] as number[] };
+    const gw = new DefaultModelGateway(
+      [new AnthropicAdapter({ baseUrl: claude.url, apiKey: 'k', models: buildCatalog('claude-haiku-5-5') })],
+      { ...policy, maxRateLimitWaitMs: 60_000 },
+      { now: () => t.now, sleep: async (ms) => void (t.slept.push(ms), (t.now += ms)) },
+    );
+    const resetAt = new Date(Date.now() + 9_000).toISOString();
+    claude.setScript(() => ({ kind: 'message', blocks: [{ type: 'text', text: 'ok' }], headers: { 'anthropic-ratelimit-tokens-remaining': '0', 'anthropic-ratelimit-tokens-reset': resetAt } }));
+    await gw.complete({ model: 'anthropic/claude-haiku-5-5', messages: ask });
+    await new Promise((r) => setTimeout(r, 10));
+    claude.setScript(defaultAnthropicScript);
+    const events: string[] = [];
+    for await (const ev of gw.stream({ model: 'anthropic/claude-haiku-5-5', messages: ask })) events.push(ev.type);
+    expect(events).toContain('throttled');
+    expect(t.slept.reduce((s, x) => s + x, 0)).toBeGreaterThanOrEqual(8_000);
+    expect(events.at(-1)).toBe('done');
+  });
+
   it('builds turns: system collected, tool results merged into one user turn, foreign provider state ignored', () => {
     const { system, messages } = toAnthropicMessages(
       [

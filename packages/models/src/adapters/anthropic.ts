@@ -105,6 +105,10 @@ export class AnthropicAdapter implements ProviderAdapter {
     for (let replay = 0; ; replay++) {
       try {
         const stream = client.messages.stream(params, { signal });
+        // The key's remaining budget, before any output: the gateway holds an exhausted key.
+        const { response } = await stream.withResponse();
+        const limits = anthropicRateLimitHeaders(response.headers);
+        if (limits) yield limits;
         for await (const ev of stream) {
           if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && ev.delta.text) {
             yielded = true;
@@ -243,6 +247,37 @@ function stripThinking(messages: MessageParam[]): boolean {
     }
   }
   return removed;
+}
+
+/**
+ * Anthropic's `anthropic-ratelimit-*` headers: remaining requests and tokens with RFC 3339 reset
+ * times. Input-token limits count too (the tighter of tokens and input tokens is used).
+ */
+export function anthropicRateLimitHeaders(h: Headers, now = Date.now()): Extract<ProviderEvent, { type: 'ratelimit' }> | undefined {
+  const num = (name: string) => {
+    const v = h.get(name);
+    return v === null || v === '' || !Number.isFinite(Number(v)) ? undefined : Number(v);
+  };
+  const reset = (name: string) => {
+    const v = h.get(name);
+    const t = v ? Date.parse(v) : NaN;
+    return Number.isFinite(t) ? Math.max(0, t - now) : undefined;
+  };
+  const tokenSources = [
+    { remaining: num('anthropic-ratelimit-tokens-remaining'), reset: reset('anthropic-ratelimit-tokens-reset') },
+    { remaining: num('anthropic-ratelimit-input-tokens-remaining'), reset: reset('anthropic-ratelimit-input-tokens-reset') },
+  ].filter((s) => s.remaining !== undefined);
+  const tightest = tokenSources.sort((a, b) => a.remaining! - b.remaining!)[0];
+  const remainingRequests = num('anthropic-ratelimit-requests-remaining');
+  if (remainingRequests === undefined && !tightest) return undefined;
+  const resetRequestsMs = reset('anthropic-ratelimit-requests-reset');
+  return {
+    type: 'ratelimit',
+    ...(remainingRequests !== undefined ? { remainingRequests } : {}),
+    ...(resetRequestsMs !== undefined ? { resetRequestsMs } : {}),
+    ...(tightest ? { remainingTokens: tightest.remaining! } : {}),
+    ...(tightest?.reset !== undefined ? { resetTokensMs: tightest.reset } : {}),
+  };
 }
 
 function isThinkingBindingError(err: unknown): boolean {
