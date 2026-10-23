@@ -408,7 +408,11 @@ export class DefaultModelGateway implements ModelGateway {
       for (const leg of legs) {
         if (leg === winner) continue;
         leg.ctrl.abort(new ModelError('cancelled', 'Hedged request lost'));
-        void leg.next?.catch(() => {});
+        // Close the loser's stream (after any pending read settles) so its admission is released.
+        void (leg.next ?? Promise.resolve())
+          .catch(() => {})
+          .then(() => leg.it.return?.(undefined))
+          .catch(() => {});
       }
       if (hedgeEvent) yield hedgeEvent;
       for (const ev of winner.held) yield ev;
@@ -480,90 +484,104 @@ export class DefaultModelGateway implements ModelGateway {
           break;
         }
 
-        // Adaptive concurrency: beyond the provider's current limit, wait for a slot.
-        const adaptive = this.adaptiveFor(adapter.id);
-        let releaseSlot: ((sample: { rttMs?: number; overloaded?: boolean }) => void) | undefined;
-        if (adaptive) {
-          const snap = adaptive.snapshot();
-          if (snap.inflight >= snap.limit) {
-            yield { type: 'throttled', ref, provider: adapter.id, waitMs: 0, reason: `Waiting for a ${adapter.displayName} slot (adaptive limit ${snap.limit})` };
-          }
-          try {
-            releaseSlot = await adaptive.acquire(request.signal, this.policy.maxRateLimitWaitMs);
-          } catch (err) {
-            await admission.release().catch(() => {});
-            const error = toModelError(err, request.signal);
-            if (error.code === 'cancelled') throw error;
-            lastError = error;
-            break;
-          }
-        }
-
-        totalAttempts++;
-        yield { type: 'attempt', ref, provider: adapter.id, model, attempt };
-
-        let producedOutput = false;
+        // The admission (a concurrency slot, a budget reservation) is released exactly once: before
+        // the final event, or in `finally` if the caller stops reading early (e.g. a hedge loser).
+        let admissionReleased = false;
+        const releaseAdmission = async () => {
+          if (admissionReleased) return;
+          admissionReleased = true;
+          await admission.release().catch(() => {});
+        };
         try {
-          const result = yield* this.runAttempt(adapter, entry, model, request, admission, () => {
-            producedOutput = true;
-          });
-          releaseSlot?.({ ...(result.firstTokenMs !== undefined ? { rttMs: result.firstTokenMs } : {}) });
-          breaker.onSuccess();
-          // Correct the reservation with what the provider actually counted.
-          const actual = result.usage?.totalTokens;
-          if (actual !== undefined) void this.limiter.adjust(admission.scope, admission.limits, actual - admission.tokens).catch(() => {});
-          const costUsd = estimateCostUsd(result.usage, this.pricingFor(ref, entry));
-          yield {
-            type: 'done',
-            response: {
-              ...result,
-              ...(result.usage && costUsd !== undefined ? { usage: { ...result.usage, costUsd } } : {}),
-              provider: adapter.id,
-              model,
-              ref,
-              latencyMs: Date.now() - started,
-              attempts: totalAttempts,
-              ...(i > 0 ? { fallbackFrom: chain[0] } : {}),
-              ...(credential ? { keyId: credential.keyId } : {}),
-            },
-          };
-          return;
-        } catch (err) {
-          const error = toModelError(err, request.signal);
-          releaseSlot?.({ overloaded: error.code === 'rate_limited' || error.code === 'unavailable' || error.code === 'timeout' });
-          // A tenant's own key the provider no longer accepts: let the host mark it invalid.
-          if (error.code === 'auth' && error.status === 401 && credential && request.onCredentialRejected) {
-            void Promise.resolve(request.onCredentialRejected({ provider: adapter.id, keyId: credential.keyId })).catch(() => {});
+          // Adaptive concurrency: beyond the provider's current limit, wait for a slot.
+          const adaptive = this.adaptiveFor(adapter.id);
+          let releaseSlot: ((sample: { rttMs?: number; overloaded?: boolean }) => void) | undefined;
+          if (adaptive) {
+            const snap = adaptive.snapshot();
+            if (snap.inflight >= snap.limit) {
+              yield { type: 'throttled', ref, provider: adapter.id, waitMs: 0, reason: `Waiting for a ${adapter.displayName} slot (adaptive limit ${snap.limit})` };
+            }
+            try {
+              releaseSlot = await adaptive.acquire(request.signal, this.policy.maxRateLimitWaitMs);
+            } catch (err) {
+              await releaseAdmission();
+              const error = toModelError(err, request.signal);
+              if (error.code === 'cancelled') throw error;
+              lastError = error;
+              break;
+            }
           }
-          if (PROVIDER_HEALTH_FAILURES.has(error.code)) breaker.onFailure();
-          else breaker.onNeutral();
-          if (error.code === 'cancelled') throw error;
-          if (producedOutput) {
-            // Output already reached the caller: retrying would duplicate it.
-            throw new ModelError('interrupted', `Stream interrupted: ${error.message}`, {
-              retryable: false,
-              cause: error,
+
+          totalAttempts++;
+          yield { type: 'attempt', ref, provider: adapter.id, model, attempt };
+
+          let producedOutput = false;
+          try {
+            const result = yield* this.runAttempt(adapter, entry, model, request, admission, () => {
+              producedOutput = true;
             });
-          }
-          // Nothing was produced: give the reservation back. A provider rate limit also tells
-          // every worker sharing this key to hold off until the provider says so.
-          void this.limiter.adjust(admission.scope, admission.limits, -admission.tokens).catch(() => {});
-          if (error.code === 'rate_limited' && error.retryAfterMs !== undefined) {
-            void this.limiter.block(admission.scope, error.retryAfterMs).catch(() => {});
-          }
-          lastError = error;
-          if (!error.retryable || attempt > this.policy.maxRetries) break;
-          const delayMs = this.backoff(attempt, error.retryAfterMs, error.code);
-          yield { type: 'retry', ref, attempt, reason: error.message, delayMs };
-          // A blocked key is waited for by the next admission (or another key is used), so a
-          // rate-limited attempt does not sleep here.
-          if (!(error.code === 'rate_limited' && error.retryAfterMs !== undefined)) {
-            await this.sleep(delayMs, request.signal).catch(() => {
-              throw new ModelError('cancelled', 'Model call cancelled');
-            });
+            releaseSlot?.({ ...(result.firstTokenMs !== undefined ? { rttMs: result.firstTokenMs } : {}) });
+            breaker.onSuccess();
+            // Correct the reservation with what the provider actually counted.
+            const actual = result.usage?.totalTokens;
+            if (actual !== undefined) void this.limiter.adjust(admission.scope, admission.limits, actual - admission.tokens).catch(() => {});
+            const costUsd = estimateCostUsd(result.usage, this.pricingFor(ref, entry));
+            // Released before the final event: a caller that stops reading after `done` must not hold it.
+            await releaseAdmission();
+            yield {
+              type: 'done',
+              response: {
+                ...result,
+                ...(result.usage && costUsd !== undefined ? { usage: { ...result.usage, costUsd } } : {}),
+                provider: adapter.id,
+                model,
+                ref,
+                latencyMs: Date.now() - started,
+                attempts: totalAttempts,
+                ...(i > 0 ? { fallbackFrom: chain[0] } : {}),
+                ...(credential ? { keyId: credential.keyId } : {}),
+              },
+            };
+            return;
+          } catch (err) {
+            const error = toModelError(err, request.signal);
+            releaseSlot?.({ overloaded: error.code === 'rate_limited' || error.code === 'unavailable' || error.code === 'timeout' });
+            // A tenant's own key the provider no longer accepts: let the host mark it invalid.
+            if (error.code === 'auth' && error.status === 401 && credential && request.onCredentialRejected) {
+              void Promise.resolve(request.onCredentialRejected({ provider: adapter.id, keyId: credential.keyId })).catch(() => {});
+            }
+            if (PROVIDER_HEALTH_FAILURES.has(error.code)) breaker.onFailure();
+            else breaker.onNeutral();
+            if (error.code === 'cancelled') throw error;
+            if (producedOutput) {
+              // Output already reached the caller: retrying would duplicate it.
+              throw new ModelError('interrupted', `Stream interrupted: ${error.message}`, {
+                retryable: false,
+                cause: error,
+              });
+            }
+            // Nothing was produced: give the reservation back. A provider rate limit also tells
+            // every worker sharing this key to hold off until the provider says so.
+            void this.limiter.adjust(admission.scope, admission.limits, -admission.tokens).catch(() => {});
+            if (error.code === 'rate_limited' && error.retryAfterMs !== undefined) {
+              void this.limiter.block(admission.scope, error.retryAfterMs).catch(() => {});
+            }
+            lastError = error;
+            if (!error.retryable || attempt > this.policy.maxRetries) break;
+            const delayMs = this.backoff(attempt, error.retryAfterMs, error.code);
+            yield { type: 'retry', ref, attempt, reason: error.message, delayMs };
+            // A blocked key is waited for by the next admission (or another key is used), so a
+            // rate-limited attempt does not sleep here.
+            if (!(error.code === 'rate_limited' && error.retryAfterMs !== undefined)) {
+              await this.sleep(delayMs, request.signal).catch(() => {
+                throw new ModelError('cancelled', 'Model call cancelled');
+              });
+            }
+          } finally {
+            await releaseAdmission();
           }
         } finally {
-          await admission.release().catch(() => {});
+          await releaseAdmission();
         }
       }
     }

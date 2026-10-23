@@ -154,3 +154,51 @@ describe('hedged first token', () => {
     expect(events).not.toContain('hedge');
   });
 });
+
+describe('admission release', () => {
+  let server: MockOpenAIServer;
+  beforeAll(async () => {
+    server = await startMockOpenAIServer(() => textReply('ok'));
+  });
+  afterAll(async () => {
+    await server.close();
+  });
+
+  it('releases the concurrency slot before the final event, even when the caller stops reading there', async () => {
+    // One slot: a leaked slot would make the second call wait until it times out.
+    const gw = new DefaultModelGateway([new GroqAdapter({ baseUrl: server.url, apiKey: 'k', models: buildCatalog('llama-3.3-70b-versatile') })], {
+      maxRetries: 0,
+      maxRateLimitWaitMs: 300,
+      providerLimits: { groq: { concurrency: 1 } },
+      adaptiveConcurrency: false,
+    });
+    const it = gw.stream({ model: 'groq/llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'a' }] })[Symbol.asyncIterator]();
+    for (;;) {
+      const { value } = await it.next();
+      if (value?.type === 'done') break; // stop reading without draining the generator
+    }
+    const second = await gw.complete({ model: 'groq/llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'b' }] });
+    expect(second.text).toBe('ok');
+  });
+
+  it('releases the losing hedged request', async () => {
+    const slow = await startMockOpenAIServer(() => ({ kind: 'stream', chunks: [{}, {}, { content: 'late' }], chunkDelayMs: 200 }));
+    try {
+      const gw = new DefaultModelGateway(
+        [
+          new GroqAdapter({ baseUrl: slow.url, apiKey: 'k', models: buildCatalog('openai/gpt-oss-120b') }),
+          createTogetherAdapter({ baseUrl: server.url, apiKey: 'k', models: buildCatalog('openai/gpt-oss-120b') }),
+        ],
+        { maxRetries: 0, maxRateLimitWaitMs: 300, providerLimits: { groq: { concurrency: 1 } }, adaptiveConcurrency: false },
+      );
+      const first = await gw.complete({ model: 'groq/openai/gpt-oss-120b', messages: [{ role: 'user', content: 'a' }], hedge: { afterMs: 50 } });
+      expect(first.ref).toBe('together/openai/gpt-oss-120b');
+      // The cancelled Groq request gave its slot back: a direct Groq call gets it.
+      await new Promise((r) => setTimeout(r, 50));
+      const direct = await gw.complete({ model: 'groq/openai/gpt-oss-120b', messages: [{ role: 'user', content: 'b' }] });
+      expect(direct.text).toBe('late');
+    } finally {
+      await slow.close();
+    }
+  });
+});

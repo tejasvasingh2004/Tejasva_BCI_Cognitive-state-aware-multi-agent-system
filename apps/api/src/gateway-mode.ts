@@ -229,6 +229,8 @@ export async function serveGatewayCompletion(req: FastifyRequest, reply: Fastify
     throw new HttpError('unavailable', error.message, { code: `model_${error.code}` }, error.retryable);
   } finally {
     req.raw.off('close', onClose);
+    // Close the gateway stream: everything it holds is released even when we stop reading early.
+    void events.return?.(undefined)?.catch?.(() => {});
   }
 }
 
