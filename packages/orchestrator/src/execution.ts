@@ -253,7 +253,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
             break;
           case 'fallback':
             runtimeMetrics.modelFallbacks.add(1, { from: ev.from, to: ev.to });
-            ctx.emit('model.fallback', { callId, from: ev.from, to: ev.to, reason: ev.reason });
+            ctx.emit('model.fallback', { callId, from: ev.from, to: ev.to, reason: ev.reason, ...(ev.sameModel ? { sameModel: true } : {}) });
             break;
           case 'delta':
             if (opts.streamToUser) ctx.response.write(ev.text);

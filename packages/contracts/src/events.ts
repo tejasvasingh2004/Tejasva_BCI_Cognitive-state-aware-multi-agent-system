@@ -72,6 +72,8 @@ export const RunEventData = {
     from: z.string(),
     to: z.string(),
     reason: z.string(),
+    /** Failover to the same model on another provider (not a downgrade). */
+    sameModel: z.boolean().optional(),
   }),
   'model.completed': z.object({
     callId: z.string(),

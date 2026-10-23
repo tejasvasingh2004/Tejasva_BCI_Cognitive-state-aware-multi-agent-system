@@ -170,7 +170,7 @@ export function applyRunEvent(view: RunView, e: RunEvent): RunView {
       break;
     case 'model.fallback':
       v.fallbacks++;
-      v.phase = `Switching to ${modelName(e.data.to)}`;
+      v.phase = e.data.sameModel ? `Same model, another provider: ${modelName(e.data.to)}` : `Switching to ${modelName(e.data.to)}`;
       break;
     case 'model.completed':
       finish(`model-${e.data.callId}`, e.data.status === 'completed' ? 'done' : 'failed');

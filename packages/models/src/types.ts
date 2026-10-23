@@ -87,7 +87,8 @@ export type ModelEvent =
   | { type: 'retry'; ref: string; attempt: number; reason: string; delayMs: number }
   /** Waiting for provider budget (tokens/requests per minute or a concurrency slot) before sending. */
   | { type: 'throttled'; ref: string; provider: string; waitMs: number; reason: string }
-  | { type: 'fallback'; from: string; to: string; reason: string }
+  /** `sameModel`: failover to the same model on another provider (no downgrade). */
+  | { type: 'fallback'; from: string; to: string; reason: string; sameModel?: boolean }
   | { type: 'delta'; text: string }
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'done'; response: ModelResponse };
@@ -117,6 +118,12 @@ export type CatalogEntry = {
   reasoning: ReasoningStyle;
   /** USD per million tokens; undefined when unknown. */
   pricing?: ModelPricing;
+  /**
+   * Equivalence class: the same model (same weights) served by different providers, e.g.
+   * `gpt-oss-120b` on Groq, Together, Fireworks and OpenRouter. Failover tries an equivalent on
+   * another provider before falling back to a different model.
+   */
+  family?: string;
 };
 
 export type ProviderRequest = Omit<ModelRequest, 'model' | 'fallbacks' | 'signal' | 'timeoutMs'> & {

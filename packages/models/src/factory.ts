@@ -93,6 +93,7 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    equivalentFailover: env.MODEL_EQUIVALENT_FAILOVER !== 'disabled',
     ...num(env.MODEL_MAX_RETRIES, (v) => ({ maxRetries: v })),
     ...num(env.MODEL_TIMEOUT_MS, (v) => ({ attemptTimeoutMs: v })),
     ...num(env.MODEL_FIRST_TOKEN_TIMEOUT_MS, (v) => ({ firstTokenTimeoutMs: v })),

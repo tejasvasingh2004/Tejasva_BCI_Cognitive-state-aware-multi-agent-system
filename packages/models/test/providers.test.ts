@@ -323,3 +323,44 @@ describe('OpenAI and Google adapters', () => {
     expect(scoped.listModels().find((m) => m.ref === 'openai/gpt-6.1-sol')).toMatchObject({ available: true, keySource: 'workspace' });
   });
 });
+
+describe('provider failover (model equivalence classes)', () => {
+  it('fails over to the same model on another provider before falling back to a different model', async () => {
+    const { GroqAdapter } = await import('../src');
+    const groq = await startMockOpenAIServer(() => ({ kind: 'error', status: 503, message: 'groq outage' }));
+    const together = await startMockOpenAIServer();
+    try {
+      const gw = new DefaultModelGateway(
+        [
+          new GroqAdapter({ baseUrl: groq.url, apiKey: 'g', models: buildCatalog('openai/gpt-oss-120b,llama-3.3-70b-versatile') }),
+          createTogetherAdapter({ baseUrl: together.url, apiKey: 't', models: buildCatalog('openai/gpt-oss-120b') }),
+        ],
+        { ...policy, maxRetries: 0 },
+        { sleep: async () => {} },
+      );
+      const events: Array<{ type: string; to?: string; sameModel?: boolean }> = [];
+      for await (const ev of gw.stream({ model: 'groq/openai/gpt-oss-120b', fallbacks: ['groq/llama-3.3-70b-versatile'], messages: ask })) events.push(ev as never);
+      const done = events.find((e) => e.type === 'done') as unknown as { response: { ref: string } };
+      expect(done.response.ref).toBe('together/openai/gpt-oss-120b');
+      expect(events).toContainEqual(expect.objectContaining({ type: 'fallback', to: 'together/openai/gpt-oss-120b', sameModel: true }));
+      // The different model in the chain was never needed.
+      expect(groq.requests.map((r) => r.model)).toEqual(['openai/gpt-oss-120b']);
+
+      // A provider the caller cannot use (no platform key, no workspace key) is not an equivalent.
+      const keyless = new DefaultModelGateway(
+        [
+          new GroqAdapter({ baseUrl: groq.url, apiKey: 'g', models: buildCatalog('openai/gpt-oss-120b,llama-3.3-70b-versatile') }),
+          createTogetherAdapter({ baseUrl: together.url, apiKey: '', models: buildCatalog('openai/gpt-oss-120b') }),
+        ],
+        { ...policy, maxRetries: 0 },
+        { sleep: async () => {} },
+      );
+      groq.setScript((body) => (body.model === 'llama-3.3-70b-versatile' ? { kind: 'stream', chunks: [{ content: 'llama' }] } : { kind: 'error', status: 503 }));
+      const res = await keyless.complete({ model: 'groq/openai/gpt-oss-120b', fallbacks: ['groq/llama-3.3-70b-versatile'], messages: ask });
+      expect(res.ref).toBe('groq/llama-3.3-70b-versatile');
+    } finally {
+      await groq.close();
+      await together.close();
+    }
+  });
+});

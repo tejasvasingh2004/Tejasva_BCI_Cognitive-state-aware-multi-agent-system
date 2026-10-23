@@ -23,13 +23,15 @@ const KNOWN: Record<string, KnownModel> = {
   'qwen-max': km('Qwen Max', 'strong', 32_768, true, 'none'),
   // Groq (list prices, USD per 1M input/output tokens; override with MODEL_PRICING)
   'llama-3.1-8b-instant': km('Llama 3.1 8B Instant', 'fast', 131_072, true, 'none', [0.05, 0.08]),
-  'llama-3.3-70b-versatile': km('Llama 3.3 70B', 'strong', 131_072, true, 'none', [0.59, 0.79]),
+  'llama-3.3-70b-versatile': { ...km('Llama 3.3 70B', 'strong', 131_072, true, 'none', [0.59, 0.79]), family: 'llama-3.3-70b' },
+  'meta-llama/Llama-3.3-70B-Instruct-Turbo': { ...km('Llama 3.3 70B (Together)', 'strong', 131_072, true, 'none'), family: 'llama-3.3-70b' },
+  'meta-llama/llama-3.3-70b-instruct': { ...km('Llama 3.3 70B (OpenRouter)', 'strong', 131_072, true, 'none'), family: 'llama-3.3-70b' },
   // No longer on Groq's model list (October 2026); kept so existing configurations still resolve.
   'qwen/qwen3-32b': km('Qwen3 32B (Groq)', 'strong', 131_072, true, 'toggle', [0.29, 0.59]),
   // Preview on Groq (may be withdrawn at short notice); no published list price yet — set MODEL_PRICING.
-  'qwen/qwen3.8-27b': km('Qwen3.8 27B (Groq, preview)', 'balanced', 131_072, true, 'toggle'),
-  'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]),
-  'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
+  'qwen/qwen3.8-27b': { ...km('Qwen3.8 27B (Groq, preview)', 'balanced', 131_072, true, 'toggle'), family: 'qwen3.8-27b' },
+  'openai/gpt-oss-20b': { ...km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]), family: 'gpt-oss-20b' },
+  'openai/gpt-oss-120b': { ...km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]), family: 'gpt-oss-120b' },
   // Anthropic (Claude): input, output and cache-read prices. Haiku 5.5's price applies to prompts up to 100K tokens.
   'claude-opus-5-5': km('Claude Opus 5.5', 'strong', 1_000_000, true, 'effort', [4, 20, 0.2]),
   'claude-sonnet-5-5': km('Claude Sonnet 5.5', 'strong', 1_000_000, true, 'effort', [2, 10, 0.2]),
@@ -41,7 +43,7 @@ const KNOWN: Record<string, KnownModel> = {
   // Hosted open-weight models (Together list prices; other hosts differ, override with MODEL_PRICING)
   'Qwen/Qwen3.8-Flash': km('Qwen3.8 Flash', 'balanced', 1_000_000, true, 'toggle', [0.15, 0.47]),
   'deepseek-ai/DeepSeek-V4.1-Flash': km('DeepSeek V4.1 Flash', 'balanced', 1_000_000, true, 'none', [0.3, 1.2]),
-  'accounts/fireworks/models/gpt-oss-120b': km('GPT-OSS 120B (Fireworks)', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
+  'accounts/fireworks/models/gpt-oss-120b': { ...km('GPT-OSS 120B (Fireworks)', 'strong', 131_072, true, 'effort', [0.15, 0.6]), family: 'gpt-oss-120b' },
   // Google Gemini (no list price recorded here; set MODEL_PRICING)
   'gemini-3.8-flash': km('Gemini 3.8 Flash', 'balanced', 1_048_576, true, 'effort'),
 };
@@ -82,7 +84,7 @@ export function parsePricing(spec: string | undefined): Map<string, ModelPricing
 
 /**
  * Builds catalog entries from a comma separated list. Each item may override metadata:
- * `model[|tier][|contextWindow]`, e.g. `qwen3:8b,my-finetune|strong|65536`.
+ * `model[|tier][|contextWindow][|family]`, e.g. `qwen3:8b,my-finetune|strong|65536|my-family`.
  */
 export function buildCatalog(spec: string | undefined, fallbackReasoning: ReasoningStyle = 'none'): CatalogEntry[] {
   if (!spec) return [];
@@ -91,7 +93,7 @@ export function buildCatalog(spec: string | undefined, fallbackReasoning: Reason
     .map((s) => s.trim())
     .filter(Boolean)
     .map((item) => {
-      const [model = '', tier, ctx] = item.split('|').map((p) => p.trim());
+      const [model = '', tier, ctx, family] = item.split('|').map((p) => p.trim());
       const known = KNOWN[model];
       const base: KnownModel = known ?? km(model, 'balanced', 32_768, true, fallbackReasoning);
       return {
@@ -99,6 +101,7 @@ export function buildCatalog(spec: string | undefined, fallbackReasoning: Reason
         ...base,
         tier: isTier(tier) ? tier : base.tier,
         contextWindow: ctx && Number(ctx) > 0 ? Number(ctx) : base.contextWindow,
+        ...(family ? { family } : {}),
       };
     });
 }

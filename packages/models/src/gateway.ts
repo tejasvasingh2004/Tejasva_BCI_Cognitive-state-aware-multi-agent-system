@@ -27,6 +27,8 @@ export type GatewayPolicy = {
   maxRateLimitWaitMs: number;
   /** Default fallback chain applied when a request does not specify one. */
   defaultFallbacks: string[];
+  /** Fail over to the same model on another provider before falling back to other models. */
+  equivalentFailover: boolean;
   defaultModel?: string;
   /** Per-model pricing overrides keyed by model ref (USD per 1M tokens). */
   pricing: Map<string, ModelPricing>;
@@ -61,6 +63,7 @@ export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   maxBackoffMs: 8_000,
   maxRateLimitWaitMs: 60_000,
   defaultFallbacks: [],
+  equivalentFailover: true,
   pricing: new Map(),
   providerConcurrency: {},
   providerLimits: {},
@@ -261,8 +264,39 @@ export class DefaultModelGateway implements ModelGateway {
     return response;
   }
 
+  private familyOf(ref: string): string | undefined {
+    try {
+      const { provider, model } = parseModelRef(ref);
+      return this.adapters.get(provider)?.catalog().find((e) => e.model === model)?.family;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Provider failover: right after each model in the chain, the same model (same family) on the
+   * other providers this caller can use, so an outage fails over before the model is downgraded.
+   */
+  private withEquivalents(chain: string[], request: Pick<ModelRequest, 'credentials' | 'platformKeys'>): string[] {
+    if (!this.policy.equivalentFailover) return chain;
+    const out: string[] = [];
+    for (const ref of chain) {
+      out.push(ref);
+      const family = this.familyOf(ref);
+      if (!family) continue;
+      for (const adapter of this.adapters.values()) {
+        const usable = this.keySourceFor(adapter, Boolean(request.credentials?.[adapter.id]), request.platformKeys ?? true) !== null;
+        if (!usable) continue;
+        for (const entry of adapter.catalog()) {
+          if (entry.family === family) out.push(`${adapter.id}/${entry.model}`);
+        }
+      }
+    }
+    return dedupe(out);
+  }
+
   async *stream(request: ModelRequest): AsyncGenerator<ModelEvent> {
-    const chain = dedupe([request.model, ...(request.fallbacks ?? this.policy.defaultFallbacks)]);
+    const chain = this.withEquivalents(dedupe([request.model, ...(request.fallbacks ?? this.policy.defaultFallbacks)]), request);
     const started = Date.now();
     let totalAttempts = 0;
     let lastError: ModelError | undefined;
@@ -270,7 +304,8 @@ export class DefaultModelGateway implements ModelGateway {
     for (let i = 0; i < chain.length; i++) {
       const ref = chain[i]!;
       if (i > 0) {
-        yield { type: 'fallback', from: chain[i - 1]!, to: ref, reason: lastError?.message ?? 'unavailable' };
+        const sameModel = this.familyOf(chain[i - 1]!) !== undefined && this.familyOf(chain[i - 1]!) === this.familyOf(ref);
+        yield { type: 'fallback', from: chain[i - 1]!, to: ref, reason: lastError?.message ?? 'unavailable', ...(sameModel ? { sameModel: true } : {}) };
       }
       const resolved = this.resolve(ref, request);
       if (resolved instanceof ModelError) {
