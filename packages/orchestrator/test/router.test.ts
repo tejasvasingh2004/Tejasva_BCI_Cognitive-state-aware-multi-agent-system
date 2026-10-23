@@ -189,9 +189,9 @@ describe('buildContext', () => {
         { role: 'user', content: 'second' },
       ],
     });
-    expect(messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'assistant', 'user']);
+    expect(messages.map((m) => m.role)).toEqual(['system', 'system', 'user', 'assistant', 'assistant', 'user']);
     expect(messages.some((m) => m.toolCalls)).toBe(false);
-    expect(messages[2]!.content).toContain('[called tools: lookup({})]');
+    expect(messages[3]!.content).toContain('[called tools: lookup({})]');
   });
 });
 

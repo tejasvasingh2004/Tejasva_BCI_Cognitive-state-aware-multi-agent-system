@@ -319,7 +319,12 @@ function History({ data }: { data: UsageHistory }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Tokens" value={fmtCount(tokens)} detail={`${fmtCount(t.promptTokens)} in · ${fmtCount(t.completionTokens)} out`} testId="usage-total-tokens" />
+        <Stat
+          label="Tokens"
+          value={fmtCount(tokens)}
+          detail={`${fmtCount(t.promptTokens)} in${t.cachedPromptTokens && t.promptTokens ? ` (${Math.round((100 * t.cachedPromptTokens) / t.promptTokens)}% cached)` : ''} · ${fmtCount(t.completionTokens)} out`}
+          testId="usage-total-tokens"
+        />
         <Stat label="Estimated cost" value={fmtUsd(t.costUsd)} detail="from provider prices" />
         <Stat label="Runs" value={fmtCount(t.runs)} detail={`${t.completedRuns} completed · ${t.failedRuns} failed${t.cancelledRuns ? ` · ${t.cancelledRuns} stopped` : ''}`} testId="usage-total-runs" />
         <Stat label="Model calls" value={fmtCount(t.modelCalls)} detail={`${t.failedModelCalls} failed · ${t.fallbacks} fallbacks`} />

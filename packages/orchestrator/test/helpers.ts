@@ -3,7 +3,7 @@ import { DefaultModelGateway, GroqAdapter, QwenAdapter, buildCatalog } from '@ne
 import { builtinTools, ToolRegistry, ToolRuntime } from '@neuroflow/tools';
 import type { MockOpenAIServer } from '@neuroflow/models/testing';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
-import { Orchestrator, type OrchestratorDeps, type RunStore } from '../src';
+import { Orchestrator, planExecution, type OrchestratorDeps, type RunStore } from '../src';
 
 export class MemoryStore implements RunStore {
   plans: unknown[] = [];
@@ -92,3 +92,26 @@ export const streamed = (events: RunEvent[]) => {
   }
   return text;
 };
+
+/** A routed plan for context-building tests (two local models, standard mode). */
+export function planFor(lastUserMessage = 'hello') {
+  const model = (ref: string, tier: 'fast' | 'balanced' | 'strong') => ({
+    ref,
+    provider: ref.split('/')[0]!,
+    model: ref.split('/').slice(1).join('/'),
+    displayName: ref,
+    tier,
+    contextWindow: 32_768,
+    capabilities: { tools: true, reasoning: false, streaming: true },
+    available: true,
+  });
+  const plan = planExecution({
+    mode: 'standard',
+    request: { agentStrategy: 'auto', modelStrategy: 'auto' },
+    models: [model('qwen/qwen3:8b', 'balanced'), model('groq/openai/gpt-oss-120b', 'strong')],
+    defaultModel: 'qwen/qwen3:8b',
+    availableTools: ['calculator'],
+    lastUserMessage,
+  });
+  return { plan };
+}

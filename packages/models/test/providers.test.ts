@@ -63,7 +63,9 @@ describe('Anthropic adapter', () => {
     expect(res.usage?.costUsd).toBeGreaterThan(0);
     expect(res.providerState).toBeUndefined();
     const body = claude.requests[0]!;
-    expect(body.system).toBe('You are NeuroFlow.');
+    expect(body.system).toEqual([{ type: 'text', text: 'You are NeuroFlow.', cache_control: { type: 'ephemeral' } }]);
+    // No tools: no automatic (tail) caching, which a single-shot call would only pay for.
+    expect(body).not.toHaveProperty('cache_control');
     expect(body.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }]);
     expect(body.thinking).toEqual({ type: 'adaptive', display: 'omitted' });
     expect(body.output_config).toEqual({ effort: 'high' });
@@ -77,7 +79,12 @@ describe('Anthropic adapter', () => {
     expect(body.output_config).toEqual({ effort: 'low' });
     expect(body.tool_choice).toEqual({ type: 'auto' });
     expect(body.tools).toEqual([expect.objectContaining({ name: 'calculator', input_schema: expect.objectContaining({ type: 'object' }) })]);
-    expect(body.system).toContain('single JSON object');
+    expect(body.system).toEqual([
+      { type: 'text', text: 'You are NeuroFlow.', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'Respond with a single JSON object and nothing else.' },
+    ]);
+    // A tool loop caches its growing transcript automatically.
+    expect(body.cache_control).toEqual({ type: 'ephemeral' });
   });
 
   it('returns tool calls with provider state and replays thinking blocks unchanged in the tool loop', async () => {
@@ -177,6 +184,21 @@ describe('Anthropic adapter', () => {
     expect(claude.keys).toEqual(['tenant-key']);
   });
 
+  it('caches the stable system core, sends the volatile tail after it, and bills cache reads at the cache price', async () => {
+    claude.setScript(() => ({ kind: 'message', blocks: [{ type: 'text', text: 'ok' }], cacheReadTokens: 1_000_000 }));
+    const res = await anthropic().complete({
+      model: 'anthropic/claude-sonnet-5-5',
+      messages: [{ role: 'system', content: 'stable core' }, { role: 'system', content: 'Current date: today' }, { role: 'user', content: 'hi' }],
+    });
+    expect(claude.requests[0]!.system).toEqual([
+      { type: 'text', text: 'stable core', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'Current date: today' },
+    ]);
+    expect(res.usage).toMatchObject({ promptTokens: 1_000_012, cachedPromptTokens: 1_000_000 });
+    // 1M cached tokens at $0.20 + 12 uncached at $2 + 1 output token at $10 (per million).
+    expect(res.usage?.costUsd).toBeCloseTo(0.2 + (12 * 2 + 1 * 10) / 1e6, 6);
+  });
+
   it('builds turns: system collected, tool results merged into one user turn, foreign provider state ignored', () => {
     const { system, messages } = toAnthropicMessages(
       [
@@ -229,6 +251,22 @@ describe('OpenAI and Google adapters', () => {
     expect(body).toMatchObject({ model: 'gpt-6.1-sol', max_completion_tokens: 500, reasoning_effort: 'medium' });
     expect(body).not.toHaveProperty('max_tokens');
     expect(body).not.toHaveProperty('temperature');
+  });
+
+  it('OpenAI-compatible providers get one system message (stable core first) and report cached prompt tokens', async () => {
+    openai.setScript(() => ({ kind: 'stream', chunks: [{ content: 'hi' }], cachedTokens: 8 }));
+    const gw = new DefaultModelGateway([createOpenAIAdapter({ baseUrl: openai.url, apiKey: 'k', models: buildCatalog('gpt-6.1-sol') })], policy, {
+      sleep: async () => {},
+    });
+    const res = await gw.complete({
+      model: 'openai/gpt-6.1-sol',
+      messages: [{ role: 'system', content: 'stable core' }, { role: 'system', content: 'Current date: today' }, { role: 'user', content: 'hi' }],
+    });
+    expect(openai.requests[0]!.messages.slice(0, 2)).toEqual([
+      { role: 'system', content: 'stable core\n\nCurrent date: today' },
+      { role: 'user', content: 'hi' },
+    ]);
+    expect(res.usage?.cachedPromptTokens).toBe(8);
   });
 
   it('Google: minimal reasoning when off, keeps temperature and max_tokens', async () => {

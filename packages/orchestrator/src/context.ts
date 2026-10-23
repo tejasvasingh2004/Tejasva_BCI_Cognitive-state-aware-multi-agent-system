@@ -83,7 +83,11 @@ export function buildContext(input: ContextInput): BuiltContext {
   const max = plan.contextPolicy.maxInputTokens;
   const budget = Math.max(Math.floor(max / 4), max - (input.reserveTokens ?? 0));
 
-  const systemParts = [BASE_INSTRUCTIONS, `Current date: ${now.toISOString().slice(0, 10)}.`];
+  // Prompt caching: providers reuse the longest unchanged prefix of a request. The system prompt is
+  // therefore split into a stable core (the same for every call of this agent in this workspace)
+  // and a volatile tail (date, cognitive state, summary, editor context) sent after it.
+  const systemParts = [BASE_INSTRUCTIONS];
+  const volatileParts = [`Current date: ${now.toISOString().slice(0, 10)}.`];
   if (input.model) systemParts.push(modelIdentity(input.model));
   if (input.instructions) systemParts.push(input.instructions);
   const workspace = input.workspaceInstructions?.trim();
@@ -91,8 +95,8 @@ export function buildContext(input: ContextInput): BuiltContext {
   // System messages supplied by API clients are honoured as additional (bounded) instructions.
   const clientSystem = input.history.filter((m) => m.role === 'system').map((m) => m.content.trim()).filter(Boolean);
   if (clientSystem.length) systemParts.push(`Client instructions:\n${clientSystem.join('\n').slice(0, 4000)}`);
-  if (plan.cognitive) systemParts.push(plan.cognitive.presentationInstructions);
   if (input.outputInstructions) systemParts.push(input.outputInstructions);
+  if (plan.cognitive) volatileParts.push(plan.cognitive.presentationInstructions);
   const code = input.code;
   const codeParts: Array<{ kind: string; text: string }> = [];
   if (code) {
@@ -102,15 +106,19 @@ ${clampText(code.repository, Math.floor(budget * 0.1))}` });
       codeParts.push({ kind: 'repository_instructions', text: `Repository instructions (.neuroflow/instructions.md — follow them):
 ${clampText(code.instructions.trim(), Math.floor(budget * 0.1))}` });
     }
-    if (code.editor?.trim()) codeParts.push({ kind: 'editor', text: `Editor context:
-${clampText(code.editor, Math.floor(budget * 0.2))}` });
-    if (code.pinned?.trim()) codeParts.push({ kind: 'pinned_files', text: `Pinned files:
-${clampText(code.pinned, Math.floor(budget * 0.2))}` });
     systemParts.push(...codeParts.map((p) => p.text));
+    const live: Array<{ kind: string; text: string }> = [];
+    if (code.pinned?.trim()) live.push({ kind: 'pinned_files', text: `Pinned files:
+${clampText(code.pinned, Math.floor(budget * 0.2))}` });
+    if (code.editor?.trim()) live.push({ kind: 'editor', text: `Editor context:
+${clampText(code.editor, Math.floor(budget * 0.2))}` });
+    volatileParts.push(...live.map((p) => p.text));
+    codeParts.push(...live);
   }
   const summaryText = input.summary?.trim() ? clampText(input.summary.trim(), Math.floor(budget * 0.15)) : '';
-  if (summaryText) systemParts.push(`Summary of the earlier conversation (older messages are not shown):\n${summaryText}`);
+  if (summaryText) volatileParts.push(`Summary of the earlier conversation (older messages are not shown):\n${summaryText}`);
   const system: ChatMessage = { role: 'system', content: systemParts.join('\n\n') };
+  const systemTail: ChatMessage = { role: 'system', content: volatileParts.join('\n\n') };
 
   const conversation = input.history.filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'tool');
   const lastUserIdx = findLastIndex(conversation, (m) => m.role === 'user');
@@ -126,7 +134,7 @@ ${clampText(code.pinned, Math.floor(budget * 0.2))}` });
   const trailing = input.replaceTask !== undefined || lastUserIdx < 0 ? [] : conversation.slice(lastUserIdx + 1);
 
   const cap = Math.floor(budget * 0.5);
-  const fixed: ChatMessage[] = [system, clampMessage(currentTask, cap)];
+  const fixed: ChatMessage[] = [system, clampMessage(currentTask, cap), systemTail];
   const scratch = [...trailing, ...(input.scratch ?? [])].map((m) => clampMessage(m, Math.floor(budget * 0.25)));
   const notes = (input.taskMessages ?? []).map((m) => clampMessage(m, Math.floor(budget * 0.25)));
 
@@ -169,12 +177,12 @@ ${clampText(code.pinned, Math.floor(budget * 0.2))}` });
     used += cost;
   }
 
-  const messages: ChatMessage[] = [system, ...kept, ...notes, fixed[1]!, ...scratch];
+  const messages: ChatMessage[] = [system, systemTail, ...kept, ...notes, fixed[1]!, ...scratch];
   return {
     messages,
     report: {
       sources: [
-        { kind: 'system', items: 1, tokens: messageTokens(system) },
+        { kind: 'system', items: 2, tokens: messageTokens(system) + messageTokens(systemTail) },
         ...(workspace ? [{ kind: 'workspace', items: 1, tokens: estimateTokens(workspace.slice(0, 4000)) }] : []),
         ...(summaryText ? [{ kind: 'summary', items: 1, tokens: estimateTokens(summaryText) }] : []),
         ...codeParts.map((p) => ({ kind: p.kind, items: 1, tokens: estimateTokens(p.text) })),

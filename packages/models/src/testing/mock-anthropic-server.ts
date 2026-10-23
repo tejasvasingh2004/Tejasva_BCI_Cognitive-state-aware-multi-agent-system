@@ -12,7 +12,7 @@ export type MockAnthropicBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown };
 
 export type MockAnthropicReply =
-  | { kind: 'message'; blocks: MockAnthropicBlock[]; stopReason?: string }
+  | { kind: 'message'; blocks: MockAnthropicBlock[]; stopReason?: string; cacheReadTokens?: number }
   | { kind: 'error'; status: number; message?: string; retryAfter?: string };
 
 export type MockAnthropicRequest = {
@@ -85,7 +85,7 @@ export async function startMockAnthropicServer(script: MockAnthropicScript = def
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 12, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        usage: { input_tokens: 12, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: reply.cacheReadTokens ?? 0 },
       },
     });
     let output = 0;

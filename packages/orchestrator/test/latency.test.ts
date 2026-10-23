@@ -103,3 +103,27 @@ describe('parallel tool calls', () => {
     expect(order.every((v, i) => v >= 0 && (i === 0 || v > order[i - 1]!))).toBe(true);
   });
 });
+
+describe('cache-friendly context', () => {
+  it('keeps the system core byte-identical across days, cognitive states and summaries, and only appends inside a tool loop', async () => {
+    const { buildContext } = await import('../src');
+    const { plan } = (await import('./helpers')).planFor();
+    const base = { plan, model: 'groq/openai/gpt-oss-120b', instructions: 'Agent rules.', workspaceInstructions: 'Be brief.', history: [{ role: 'user' as const, content: 'hi' }] };
+    const a = buildContext({ ...base, now: new Date('2026-10-24T10:00:00Z') });
+    const b = buildContext({ ...base, now: new Date('2026-10-25T10:00:00Z'), summary: 'Earlier we discussed caching.' });
+    expect(a.messages[0]).toEqual(b.messages[0]);
+    expect(a.messages[0]!.content).not.toContain('2026-10-24');
+    expect(a.messages[1]!.content).toContain('Current date: 2026-10-24');
+    expect(b.messages[1]!.content).toContain('Earlier we discussed caching.');
+
+    // Tool loop: each iteration's messages start with the previous iteration's messages.
+    const scratch1 = [{ role: 'assistant' as const, content: '', toolCalls: [{ id: 't1', name: 'calculator', arguments: '{}' }] }, { role: 'tool' as const, content: '2', toolCallId: 't1' }];
+    const i1 = buildContext({ ...base, now: new Date('2026-10-24T10:00:00Z'), scratch: scratch1 }).messages;
+    const i2 = buildContext({
+      ...base,
+      now: new Date('2026-10-24T10:00:01Z'),
+      scratch: [...scratch1, { role: 'assistant' as const, content: '', toolCalls: [{ id: 't2', name: 'calculator', arguments: '{}' }] }, { role: 'tool' as const, content: '4', toolCallId: 't2' }],
+    }).messages;
+    expect(i2.slice(0, i1.length)).toEqual(i1);
+  });
+});

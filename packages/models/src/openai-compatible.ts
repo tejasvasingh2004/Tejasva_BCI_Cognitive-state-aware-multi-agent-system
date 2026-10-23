@@ -27,12 +27,18 @@ type WireChunk = {
     delta?: { content?: string | null; tool_calls?: WireToolCallDelta[] };
     finish_reason?: string | null;
   }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | null;
   error?: { message?: string };
 };
 
 export function toWireMessages(messages: ChatMessage[]): unknown[] {
-  return messages.map((m) => {
+  // Leading system messages (stable core, then volatile tail) are joined so every provider gets one
+  // system message whose unchanged beginning its prompt cache can reuse.
+  let lead = 0;
+  while (messages[lead]?.role === 'system') lead++;
+  const merged: ChatMessage[] =
+    lead > 1 ? [{ role: 'system', content: messages.slice(0, lead).map((m) => m.content).filter(Boolean).join('\n\n') }, ...messages.slice(lead)] : messages;
+  return merged.map((m) => {
     if (m.role === 'tool') return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
     if (m.role === 'assistant' && m.toolCalls?.length) {
       return {
@@ -147,6 +153,7 @@ export async function* streamOpenAICompatible(
           promptTokens: chunk.usage.prompt_tokens ?? 0,
           completionTokens: chunk.usage.completion_tokens ?? 0,
           totalTokens: chunk.usage.total_tokens ?? 0,
+          ...(chunk.usage.prompt_tokens_details?.cached_tokens ? { cachedPromptTokens: chunk.usage.prompt_tokens_details.cached_tokens } : {}),
         },
       };
     }

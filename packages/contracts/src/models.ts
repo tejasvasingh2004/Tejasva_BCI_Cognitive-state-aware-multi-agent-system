@@ -19,16 +19,21 @@ export type ModelTier = z.infer<typeof ModelTier>;
 export const ModelPricing = z.object({
   inputPerMTok: z.number().nonnegative(),
   outputPerMTok: z.number().nonnegative(),
+  /** Price of input tokens read from the provider's prompt cache, when it differs. */
+  cachedInputPerMTok: z.number().nonnegative().optional(),
 });
 export type ModelPricing = z.infer<typeof ModelPricing>;
 
 /** Cost of a call in USD, rounded to 1e-6. Undefined when pricing is unknown. */
 export function estimateCostUsd(
-  usage: { promptTokens: number; completionTokens: number } | undefined,
+  usage: { promptTokens: number; completionTokens: number; cachedPromptTokens?: number } | undefined,
   pricing: ModelPricing | undefined,
 ): number | undefined {
   if (!usage || !pricing) return undefined;
-  const cost = (usage.promptTokens * pricing.inputPerMTok + usage.completionTokens * pricing.outputPerMTok) / 1_000_000;
+  // Cached input (a subset of prompt tokens) is billed at the cache-read price when one is known.
+  const cached = pricing.cachedInputPerMTok !== undefined ? Math.min(usage.cachedPromptTokens ?? 0, usage.promptTokens) : 0;
+  const input = (usage.promptTokens - cached) * pricing.inputPerMTok + cached * (pricing.cachedInputPerMTok ?? 0);
+  const cost = (input + usage.completionTokens * pricing.outputPerMTok) / 1_000_000;
   return Math.round(cost * 1e6) / 1e6;
 }
 

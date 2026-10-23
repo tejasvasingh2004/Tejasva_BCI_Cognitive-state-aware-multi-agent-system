@@ -52,9 +52,9 @@ export const executionRepo = {
     await db.query(
       `INSERT INTO model_calls (run_id, agent_execution_id, role, provider, model, status, latency_ms, first_token_ms,
                                 prompt_tokens, completion_tokens, attempts, fallback_from, finish_reason, error, cost_usd,
-                                workspace_id, provider_key_id)
+                                workspace_id, provider_key_id, cached_prompt_tokens)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-               COALESCE($16::uuid, (SELECT workspace_id FROM runs WHERE id = $1)), $17)`,
+               COALESCE($16::uuid, (SELECT workspace_id FROM runs WHERE id = $1)), $17, $18)`,
       [
         input.runId,
         input.agentExecutionId ?? null,
@@ -73,6 +73,7 @@ export const executionRepo = {
         input.usage?.costUsd ?? null,
         input.workspaceId ?? null,
         input.providerKeyId ?? null,
+        input.usage?.cachedPromptTokens ?? null,
       ],
     );
   },

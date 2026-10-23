@@ -24,6 +24,8 @@ export const Usage = z.object({
   promptTokens: z.number().int().nonnegative(),
   completionTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
+  /** Prompt tokens the provider served from its prompt cache (a subset of promptTokens). */
+  cachedPromptTokens: z.number().int().nonnegative().optional(),
   /** Estimated USD cost, present only when every contributing model has known pricing. */
   costUsd: z.number().nonnegative().optional(),
 });
@@ -38,6 +40,7 @@ export function addUsage(a: Usage | undefined, b: Usage | undefined): Usage | un
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens: a.completionTokens + b.completionTokens,
     totalTokens: a.totalTokens + b.totalTokens,
+    ...(a.cachedPromptTokens || b.cachedPromptTokens ? { cachedPromptTokens: (a.cachedPromptTokens ?? 0) + (b.cachedPromptTokens ?? 0) } : {}),
     ...(cost !== undefined ? { costUsd: cost } : {}),
   };
 }

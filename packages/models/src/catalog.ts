@@ -30,10 +30,10 @@ const KNOWN: Record<string, KnownModel> = {
   'qwen/qwen3.8-27b': km('Qwen3.8 27B (Groq, preview)', 'balanced', 131_072, true, 'toggle'),
   'openai/gpt-oss-20b': km('GPT-OSS 20B', 'balanced', 131_072, true, 'effort', [0.075, 0.3]),
   'openai/gpt-oss-120b': km('GPT-OSS 120B', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
-  // Anthropic (Claude). Haiku 5.5's price applies to prompts up to 100K tokens.
-  'claude-opus-5-5': km('Claude Opus 5.5', 'strong', 1_000_000, true, 'effort', [4, 20]),
-  'claude-sonnet-5-5': km('Claude Sonnet 5.5', 'strong', 1_000_000, true, 'effort', [2, 10]),
-  'claude-haiku-5-5': km('Claude Haiku 5.5', 'fast', 1_000_000, true, 'effort', [0.1, 0.5]),
+  // Anthropic (Claude): input, output and cache-read prices. Haiku 5.5's price applies to prompts up to 100K tokens.
+  'claude-opus-5-5': km('Claude Opus 5.5', 'strong', 1_000_000, true, 'effort', [4, 20, 0.2]),
+  'claude-sonnet-5-5': km('Claude Sonnet 5.5', 'strong', 1_000_000, true, 'effort', [2, 10, 0.2]),
+  'claude-haiku-5-5': km('Claude Haiku 5.5', 'fast', 1_000_000, true, 'effort', [0.1, 0.5, 0.01]),
   // OpenAI
   'gpt-6-astra': km('GPT-6 Astra', 'strong', 1_050_000, true, 'effort', [10, 50]),
   'gpt-6.1-sol': km('GPT-6.1 Sol', 'balanced', 1_050_000, true, 'effort', [2, 10]),
@@ -52,7 +52,7 @@ function km(
   contextWindow: number,
   tools: boolean,
   reasoning: ReasoningStyle,
-  price?: [number, number],
+  price?: [number, number, number?],
 ): KnownModel {
   return {
     displayName,
@@ -60,7 +60,7 @@ function km(
     contextWindow,
     tools,
     reasoning,
-    ...(price ? { pricing: { inputPerMTok: price[0], outputPerMTok: price[1] } } : {}),
+    ...(price ? { pricing: { inputPerMTok: price[0], outputPerMTok: price[1], ...(price[2] !== undefined ? { cachedInputPerMTok: price[2] } : {}) } } : {}),
   };
 }
 

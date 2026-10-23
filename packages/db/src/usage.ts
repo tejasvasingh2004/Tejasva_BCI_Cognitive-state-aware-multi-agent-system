@@ -57,6 +57,7 @@ export const usageRepo = {
                 sum(coalesce(mc.prompt_tokens, 0))::bigint AS prompt_tokens,
                 sum(coalesce(mc.completion_tokens, 0))::bigint AS completion_tokens,
                 sum(coalesce(mc.cost_usd, 0)) AS cost_usd,
+                sum(coalesce(mc.cached_prompt_tokens, 0))::bigint AS cached_prompt_tokens,
                 sum(mc.latency_ms)::bigint AS latency_sum,
                 percentile_cont(0.95) WITHIN GROUP (ORDER BY mc.latency_ms) AS p95_latency
            FROM model_calls mc
@@ -134,6 +135,7 @@ export const usageRepo = {
         promptTokens: num(r.prompt_tokens),
         completionTokens: num(r.completion_tokens),
         costUsd: money(num(r.cost_usd)),
+        cachedPromptTokens: num(r.cached_prompt_tokens),
         latencySum: num(r.latency_sum),
         p95LatencyMs: Math.round(num(r.p95_latency)),
       }))
@@ -155,9 +157,10 @@ export const usageRepo = {
         failedModelCalls: byModel.reduce((s, m) => s + m.failedCalls, 0),
         fallbacks: byModel.reduce((s, m) => s + m.fallbacks, 0),
         avgLatencyMs: modelCalls ? Math.round(latencySum / modelCalls) : null,
+        cachedPromptTokens: byModel.reduce((s, m) => s + m.cachedPromptTokens, 0),
       },
       daily: [...daily].map(([date, b]) => ({ date, ...round(b) })),
-      byModel: byModel.map(({ latencySum: sum, fallbacks: _f, ...m }) => ({ ...m, avgLatencyMs: m.calls ? Math.round(sum / m.calls) : 0 })),
+      byModel: byModel.map(({ latencySum: sum, fallbacks: _f, cachedPromptTokens: _c, ...m }) => ({ ...m, avgLatencyMs: m.calls ? Math.round(sum / m.calls) : 0 })),
       bySource: [...sources].map(([source, b]) => ({ source, ...round(b) })),
       byCodeWorkspace: codeRows.rows.map((r) => ({
         codeWorkspaceId: String(r.id),

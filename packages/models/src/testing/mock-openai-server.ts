@@ -9,7 +9,7 @@ import type { AddressInfo, Socket } from 'node:net';
 export type MockChunk = { content?: string; reasoning?: string; toolCalls?: Array<{ id: string; name: string; arguments: string }> };
 
 export type MockReply =
-  | { kind: 'stream'; chunks: MockChunk[]; chunkDelayMs?: number; finishReason?: string; usage?: boolean; hangAfter?: number }
+  | { kind: 'stream'; chunks: MockChunk[]; chunkDelayMs?: number; finishReason?: string; usage?: boolean; hangAfter?: number; cachedTokens?: number }
   | { kind: 'error'; status: number; message?: string; retryAfter?: string }
   | { kind: 'hang' };
 
@@ -113,7 +113,12 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
         object: 'chat.completion.chunk',
         model: body.model,
         choices: [],
-        usage: { prompt_tokens: 10, completion_tokens: Math.ceil(completion / 4), total_tokens: 10 + Math.ceil(completion / 4) },
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: Math.ceil(completion / 4),
+          total_tokens: 10 + Math.ceil(completion / 4),
+          ...(reply.cachedTokens ? { prompt_tokens_details: { cached_tokens: reply.cachedTokens } } : {}),
+        },
       });
     }
     res.write('data: [DONE]\n\n');

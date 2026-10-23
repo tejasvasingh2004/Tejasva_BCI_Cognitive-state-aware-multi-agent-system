@@ -117,8 +117,12 @@ export class AnthropicAdapter implements ProviderAdapter {
           if (block.type === 'tool_use') calls.push({ id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}) });
         }
         const u = message.usage;
-        const prompt = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-        yield { type: 'usage', usage: { promptTokens: prompt, completionTokens: u.output_tokens, totalTokens: prompt + u.output_tokens } };
+        const cached = u.cache_read_input_tokens ?? 0;
+        const prompt = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + cached;
+        yield {
+          type: 'usage',
+          usage: { promptTokens: prompt, completionTokens: u.output_tokens, totalTokens: prompt + u.output_tokens, ...(cached ? { cachedPromptTokens: cached } : {}) },
+        };
         if (calls.length > 0) {
           yield { type: 'state', state: { provider: this.id, model: req.model, content: message.content } };
           for (const call of calls) yield { type: 'tool_call', call };
@@ -156,15 +160,19 @@ export class AnthropicAdapter implements ProviderAdapter {
 
 export function buildParams(req: ProviderRequest): CreateParams {
   const { system, messages } = toAnthropicMessages(req.messages, req.model);
-  const instructions = [
-    ...system,
-    ...(req.responseFormat === 'json' ? ['Respond with a single JSON object and nothing else.'] : []),
-  ].join('\n\n');
+  // Prompt caching: the first system message is the stable core (see the context engine) and gets
+  // an explicit breakpoint; later system text (date, summary, editor context) follows uncached.
+  const [core, ...rest] = system;
+  const tail = [...rest, ...(req.responseFormat === 'json' ? ['Respond with a single JSON object and nothing else.'] : [])].join('\n\n');
+  const blocks: Anthropic.TextBlockParam[] = [
+    ...(core ? [{ type: 'text' as const, text: core, cache_control: { type: 'ephemeral' as const } }] : []),
+    ...(tail ? [{ type: 'text' as const, text: tail }] : []),
+  ];
   const params: CreateParams = {
     model: req.model,
     max_tokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
     messages,
-    ...(instructions ? { system: instructions } : {}),
+    ...(blocks.length ? { system: blocks } : {}),
   };
   if (req.tools?.length && req.entry.tools) {
     params.tools = req.tools.map((t) => ({
@@ -174,6 +182,9 @@ export function buildParams(req: ProviderRequest): CreateParams {
     }));
     // Forced tool use ('required') is rejected by current models; the instructions ask for tools.
     params.tool_choice = req.toolChoice === 'none' ? { type: 'none' } : { type: 'auto' };
+    // A tool loop re-sends a growing transcript: automatic caching moves a breakpoint to its end so
+    // each iteration reads the previous one from cache. (Single-shot calls would only pay the write.)
+    params.cache_control = { type: 'ephemeral' };
   }
   if (req.entry.reasoning !== 'none') {
     const budget = req.reasoningBudget ?? 'off';

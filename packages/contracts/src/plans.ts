@@ -67,6 +67,8 @@ export const UsageHistory = z.object({
     failedModelCalls: z.number(),
     fallbacks: z.number(),
     avgLatencyMs: z.number().nullable(),
+    /** Prompt tokens served from providers' prompt caches (a subset of promptTokens). */
+    cachedPromptTokens: z.number(),
   }),
   /** One entry per UTC day in the window, oldest first, including days without usage. */
   daily: z.array(z.object({ date: z.string(), ...Amounts })),
