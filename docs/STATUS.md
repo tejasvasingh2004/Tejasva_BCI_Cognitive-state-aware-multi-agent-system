@@ -285,7 +285,7 @@ Admin CLI: `pnpm --filter @neuroflow/db cli set-plan --email <owner email> --pla
 3. **Workspace service and sandbox pool** — checkouts not tied to one host; isolated sandbox pool.
 4. **Operations** — dashboards and metric alerts, frontend error reporting, backups, Redis HA,
    PgBouncer (`ROADMAP.md`). Error tracking and uptime alerts are in place.
-5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory,
-   mid-run checkpoint/resume.
+5. **Product** — desktop app builds, payments, web search provider key, OIDC/SSO, pgvector memory.
+   (Mid-run checkpoint/resume is done: durable steps, §4d.)
 6. **Phase 2 non-goals stay out of scope** — VS Code parity, unrestricted shell, automatic
    deployment or merging, automatic training or fine-tuning on private code.

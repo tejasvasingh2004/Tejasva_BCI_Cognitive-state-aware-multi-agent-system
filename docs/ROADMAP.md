@@ -1,8 +1,8 @@
 # NeuroFlow — System Design TODO
 
 > Generated from the System Design Audit — every item links to the gap it closes.  
-> **Scorecard**: 62 ✅ Exists · 3 ⚠️ Partial · 18 ❌ Missing  
-> Updated 2026-10-20 — current state of the whole repository: [`STATUS.md`](STATUS.md).
+> **Scorecard**: 64 ✅ Exists · 3 ⚠️ Partial · 16 ❌ Missing  
+> Updated 2026-10-24 — current state of the whole repository: [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -132,9 +132,17 @@ buffering off, 1 h read timeout and retry on another replica for failed idempote
 
 ## Priority 3 — Fault Tolerance
 
-### 🔲 🟢 Checkpoint & Resume for Mid-Run Recovery
+### ✅ 🟢 Checkpoint & Resume for Mid-Run Recovery
 
-**Gap**: Events are persisted incrementally, but there's no mechanism to resume an orchestration from a checkpoint. A retried run starts from the beginning.
+**Status**: Done as *durable steps* (`infra/migrations/0013_run_steps.sql`,
+`packages/orchestrator/src/execution.ts`): every completed model call is checkpointed under a
+content-addressed key; a resumed attempt keeps its first plan, replays checkpoints without calling
+or billing the provider again, and reuses recorded tool results. Verified by
+`apps/api/test/integration/durable-steps.test.ts` (worker killed mid-answer, run resumes). The
+original proposal below (a single linear checkpoint) was replaced by per-step keys, which also work
+for parallel strategies.
+
+**Gap** (original): Events are persisted incrementally, but there's no mechanism to resume an orchestration from a checkpoint. A retried run starts from the beginning.
 
 **What to do**:
 1. Define a `RunCheckpoint` schema in `packages/contracts/`:
@@ -503,9 +511,13 @@ gated on CI, there is no staging environment and no smoke tests after deploy.
 
 ## Priority 9 — LLM Rate Limiting
 
-### 🔲 🟢 Per-Key Monetary Spend Caps
+### ✅ 🟢 Per-Key Monetary Spend Caps
 
-**Gap**: Daily token quota exists per workspace, but no per-key monetary spend cap.
+**Status**: Done as dollar budgets (`packages/bus/src/budgets.ts`, migration 0010): daily and
+monthly workspace limits and a monthly budget per workspace provider key, checked at run admission
+and before every model call; alerts as audit events and webhooks.
+
+**Gap** (original): Daily token quota exists per workspace, but no per-key monetary spend cap.
 
 **What to do**:
 1. Add `dailySpendCapUsd` to provider config in `packages/models/src/factory.ts`.
