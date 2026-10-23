@@ -275,8 +275,15 @@ token and a test repository.
 - **Platform keys are a deployment choice.** `PLATFORM_MODEL_KEYS=enabled` (default) lets platform
   keys serve workspaces without their own; `disabled` makes a deployment BYOK-only. A workspace key
   always wins for its provider. An invalid key is skipped until it verifies again.
-- **Not yet:** marking a key invalid automatically when a run gets an authentication error, KMS
-  implementations and per-key dollar budgets.
+- **KMS.** `KEK_PROVIDER=aws-kms` wraps data keys with AWS KMS `Encrypt`, binding each to its
+  workspace with the KMS encryption context (enforced by `Decrypt`, visible in CloudTrail); the SDK
+  is loaded only when configured. `KEK_PROVIDER=vault` uses HashiCorp Vault or OpenBao Transit,
+  free and self-hostable; the workspace context is sealed with the data key and checked on unwrap,
+  so it works with any Transit key. A key ring holds the primary KEK plus the local one: data keys
+  wrapped before a migration still open and are re-wrapped with the primary on first use, or all
+  at once with `pnpm keys:rewrap`. Provider keys themselves are never re-encrypted. Google Cloud KMS
+  fits the same `KeyEncryptionKey` interface (not implemented).
+- **Not yet:** marking a key invalid automatically when a run gets an authentication error.
 
 ## Dollar budgets
 

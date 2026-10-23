@@ -17,6 +17,7 @@
     "cli": "tsx --env-file-if-exists=../../.env src/cli.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1156.0",
     "@neuroflow/contracts": "workspace:*",
     "pg": "^8.16.0"
   },

@@ -1,7 +1,7 @@
 import { BudgetService, createRedis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, SpendMeter, UsageMeter, WorkspaceEventHub } from '@neuroflow/bus';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox } from '@neuroflow/code';
 import { BciHttpProvider } from '@neuroflow/cognitive';
-import { createPool, migrate, seedDev, LocalKeyEncryptionKey, ProviderKeyVault } from '@neuroflow/db';
+import { createPool, keyRingFromEnv, migrate, seedDev, ProviderKeyVault } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { createGatewayFromEnv } from '@neuroflow/models';
 import { createErrorReporter, type Logger } from '@neuroflow/observability';
@@ -65,7 +65,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     budgets: new BudgetService(pool, new SpendMeter(redis, pool)),
     plans: new PlanResolver(pool, config),
     errors,
-    providerKeys: new ProviderKeyVault(pool, LocalKeyEncryptionKey.fromEnv(config.SECRETS_KEY, config.SESSION_SECRET)),
+    providerKeys: new ProviderKeyVault(pool, keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET })),
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };
 

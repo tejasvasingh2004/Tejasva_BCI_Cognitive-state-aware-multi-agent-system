@@ -6,6 +6,8 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-24
 
 ### Added
+- Workspace provider keys can be protected by AWS KMS or HashiCorp Vault Transit
+  (`KEK_PROVIDER`); existing keys move over without downtime (`pnpm keys:rewrap`).
 - Hosted open-weight models through Together AI, Fireworks AI and OpenRouter, with server keys
   (`TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY`) or each workspace's own key.
 

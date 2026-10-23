@@ -1,7 +1,7 @@
 import type { Pool } from '@neuroflow/db';
 import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault } from '@neuroflow/db';
+import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { ModelError, type ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
@@ -35,6 +35,8 @@ export type RuntimeOptions = {
   gateway: ModelGateway;
   /** Whether platform (server) keys may serve workspaces that have no key of their own. Default true. */
   platformKeys?: boolean;
+  /** Key-encryption keys for workspace provider keys (KMS); defaults to the SECRETS_KEY-derived KEK. */
+  keyRing?: KeyRing;
   bciServiceUrl?: string;
   approvalTimeoutMs?: number;
   /** Source of optional integrations (web search provider keys). */
@@ -112,7 +114,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   // Workspace provider keys: decrypted per run, only here, and handed straight to the gateway.
   const providerKeys = new ProviderKeyVault(
     pool,
-    LocalKeyEncryptionKey.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'),
+    opts.keyRing ?? LocalKeyEncryptionKey.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'),
   );
   const platformKeys = opts.platformKeys ?? true;
   const gatewayFor = async (workspaceId: string): Promise<ModelGateway> => {

@@ -4,7 +4,7 @@ import { createErrorReporter, initTelemetry, reportProcessErrors, shutdownTeleme
 await initTelemetry('neuroflow-worker');
 
 const { createRedis, RunQueue, RedisRateLimiter, startWorkerHeartbeat } = await import('@neuroflow/bus');
-const { createPool, migrate } = await import('@neuroflow/db');
+const { createPool, keyRingFromEnv, migrate } = await import('@neuroflow/db');
 const { createGatewayFromEnv } = await import('@neuroflow/models');
 const { loadConfig } = await import('./config');
 const { createWorkerRuntime } = await import('./runtime');
@@ -43,6 +43,7 @@ const runtime = await createWorkerRuntime({
   gateway,
   bciServiceUrl: config.BCI_SERVICE_URL,
   platformKeys: config.PLATFORM_MODEL_KEYS === 'enabled',
+  keyRing: keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET }),
   approvalTimeoutMs: config.TOOL_APPROVAL_TIMEOUT_MS,
   code: { dataDir: config.CODE_DATA_DIR, secretsKey: config.SECRETS_KEY, sessionSecret: config.SESSION_SECRET, githubApiUrl: config.GITHUB_API_URL },
   onToolError: (err, info) => logger.warn({ err, ...info }, 'tool failed unexpectedly'),

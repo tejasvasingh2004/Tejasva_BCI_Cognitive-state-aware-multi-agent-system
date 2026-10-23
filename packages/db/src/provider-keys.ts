@@ -15,6 +15,25 @@ export interface KeyEncryptionKey {
   unwrap(wrapped: string, context: string): Promise<Buffer>;
 }
 
+/**
+ * The KEK that wraps new data keys, plus earlier KEKs that can still unwrap old ones. Moving from
+ * `SECRETS_KEY` to a KMS (or between KMS keys) needs no downtime: old data keys are unwrapped with
+ * their KEK and re-wrapped with the primary on first use, or all at once with `rewrap`.
+ */
+export class KeyRing {
+  readonly primary: KeyEncryptionKey;
+  private readonly all = new Map<string, KeyEncryptionKey>();
+
+  constructor(primary: KeyEncryptionKey, previous: KeyEncryptionKey[] = []) {
+    this.primary = primary;
+    for (const k of [primary, ...previous]) this.all.set(k.id, k);
+  }
+
+  get(id: string): KeyEncryptionKey | undefined {
+    return this.all.get(id);
+  }
+}
+
 const seal = (key: Buffer, plaintext: Buffer, aad: string): string => {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -95,11 +114,15 @@ const PUBLIC_COLUMNS = 'id, provider, label, hint, status, last_error, created_a
 export class ProviderKeyVault {
   private readonly dataKeys = new Map<string, { key: Buffer; expires: number }>();
 
+  private readonly ring: KeyRing;
+
   constructor(
     private readonly db: Queryable,
-    private readonly kek: KeyEncryptionKey,
+    kek: KeyEncryptionKey | KeyRing,
     private readonly opts: { dataKeyCacheMs?: number; now?: () => number } = {},
-  ) {}
+  ) {
+    this.ring = kek instanceof KeyRing ? kek : new KeyRing(kek);
+  }
 
   private now() {
     return this.opts.now?.() ?? Date.now();
@@ -115,14 +138,44 @@ export class ProviderKeyVault {
       const fresh = randomBytes(32);
       await this.db.query(
         'INSERT INTO workspace_data_keys (workspace_id, kek_id, wrapped_key) VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING',
-        [workspaceId, this.kek.id, await this.kek.wrap(fresh, context)],
+        [workspaceId, this.ring.primary.id, await this.ring.primary.wrap(fresh, context)],
       );
       row = (await this.db.query('SELECT kek_id, wrapped_key FROM workspace_data_keys WHERE workspace_id = $1', [workspaceId])).rows[0];
     }
-    if (row.kek_id !== this.kek.id) throw new Error(`Data key of workspace was wrapped by KEK ${row.kek_id}, not the configured ${this.kek.id}`);
-    const key = await this.kek.unwrap(row.wrapped_key as string, context);
+    const kek = this.ring.get(row.kek_id as string);
+    if (!kek) throw new Error(`Data key of workspace was wrapped by KEK ${row.kek_id}, which is not configured`);
+    const key = await kek.unwrap(row.wrapped_key as string, context);
+    // Rotation: a data key wrapped by an earlier KEK is re-wrapped with the primary on first use.
+    if (kek.id !== this.ring.primary.id) await this.rewrapRow(workspaceId, key, kek.id);
     this.dataKeys.set(workspaceId, { key, expires: this.now() + (this.opts.dataKeyCacheMs ?? 5 * 60_000) });
     return key;
+  }
+
+  private async rewrapRow(workspaceId: string, key: Buffer, fromKekId: string): Promise<void> {
+    await this.db.query('UPDATE workspace_data_keys SET kek_id = $2, wrapped_key = $3 WHERE workspace_id = $1 AND kek_id = $4', [
+      workspaceId,
+      this.ring.primary.id,
+      await this.ring.primary.wrap(key, `nf-dek:${workspaceId}`),
+      fromKekId,
+    ]);
+  }
+
+  /**
+   * Re-wraps every data key not yet wrapped by the primary KEK (after configuring a KMS or rotating
+   * to a new key). Provider keys are untouched: only their data keys change wrapping.
+   */
+  async rewrapAll(): Promise<{ total: number; rewrapped: number }> {
+    const { rows } = await this.db.query('SELECT workspace_id, kek_id, wrapped_key FROM workspace_data_keys');
+    let rewrapped = 0;
+    for (const r of rows) {
+      if (r.kek_id === this.ring.primary.id) continue;
+      const kek = this.ring.get(r.kek_id as string);
+      if (!kek) throw new Error(`Workspace ${r.workspace_id}: data key wrapped by KEK ${r.kek_id}, which is not configured`);
+      await this.rewrapRow(r.workspace_id as string, await kek.unwrap(r.wrapped_key as string, `nf-dek:${r.workspace_id}`), kek.id);
+      this.dataKeys.delete(r.workspace_id as string);
+      rewrapped++;
+    }
+    return { total: rows.length, rewrapped };
   }
 
   private static aad(workspaceId: string, provider: string, id: string) {

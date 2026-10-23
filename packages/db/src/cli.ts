@@ -3,6 +3,8 @@ import { ALL_SCOPES, PASSWORD_MIN_LENGTH, Plan } from '@neuroflow/contracts';
 import { authRepo } from './auth';
 import { createPool } from './client';
 import { migrate } from './migrate';
+import { keyRingFromEnv } from './kms';
+import { ProviderKeyVault } from './provider-keys';
 import { seedDev } from './seed';
 
 const USAGE = `Usage:
@@ -11,7 +13,8 @@ const USAGE = `Usage:
   cli.ts create-user --email <email> --name <display name> [--workspace <name>]   (password read from NEUROFLOW_PASSWORD)
   cli.ts set-password --email <email>                                           (password read from NEUROFLOW_PASSWORD)
   cli.ts create-api-key --email <email> --name <key name>                       (prints the key once)
-  cli.ts set-plan --email <owner email> --plan <free|pro|team|enterprise>      (plan of the owner's workspaces)`;
+  cli.ts set-plan --email <owner email> --plan <free|pro|team|enterprise>      (plan of the owner's workspaces)
+  cli.ts rewrap-keys                                                            (re-wrap workspace data keys with the configured KEK_PROVIDER)`;
 
 const cmd = process.argv[2];
 const { values } = parseArgs({
@@ -53,6 +56,12 @@ try {
     });
     await authRepo.setPassword(pool, ids.userId, pw);
     console.log(`User ${email} ready (user ${ids.userId}, workspace ${ids.workspaceId}).`);
+  } else if (cmd === 'rewrap-keys') {
+    // After configuring a KMS (or rotating to a new key): every data key is re-wrapped by the primary
+    // KEK. Uses the same KEK settings as the API and worker (KEK_PROVIDER, SECRETS_KEY, ...).
+    const ring = keyRingFromEnv(process.env, { secretsKey: process.env.SECRETS_KEY, fallbackSecret: process.env.SESSION_SECRET ?? 'dev-only-session-secret-change-me-please-0123456789' });
+    const { total, rewrapped } = await new ProviderKeyVault(pool, ring).rewrapAll();
+    console.log(`Re-wrapped ${rewrapped} of ${total} workspace data keys with ${ring.primary.id}.`);
   } else if (cmd === 'set-plan') {
     const email = required(values.email, 'email');
     const plan = Plan.parse(required(values.plan, 'plan'));

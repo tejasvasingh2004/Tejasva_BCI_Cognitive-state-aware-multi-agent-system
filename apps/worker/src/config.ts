@@ -30,6 +30,16 @@ const Env = z.object({
   GITHUB_API_URL: z.string().optional(),
   /** `disabled`: models are served only with workspaces' own provider keys (BYOK). */
   PLATFORM_MODEL_KEYS: z.enum(['enabled', 'disabled']).default('enabled'),
+  /** Key-encryption key for workspace provider keys: local (SECRETS_KEY), aws-kms or vault. Same on API and worker. */
+  KEK_PROVIDER: z.enum(['local', 'aws-kms', 'vault']).default('local'),
+  AWS_KMS_KEY_ID: z.string().optional(),
+  AWS_REGION: z.string().optional(),
+  AWS_KMS_ENDPOINT: z.string().optional(),
+  VAULT_ADDR: z.string().optional(),
+  VAULT_TOKEN: z.string().optional(),
+  VAULT_TRANSIT_KEY: z.string().optional(),
+  VAULT_TRANSIT_MOUNT: z.string().optional(),
+  VAULT_NAMESPACE: z.string().optional(),
   /** Error tracking: a Sentry-compatible DSN. Unset = disabled. */
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),

@@ -30,7 +30,8 @@
     "infra:down": "docker compose down",
     "user:create": "pnpm --filter @neuroflow/db cli create-user",
     "user:password": "pnpm --filter @neuroflow/db cli set-password",
-    "apikey:create": "pnpm --filter @neuroflow/db cli create-api-key"
+    "apikey:create": "pnpm --filter @neuroflow/db cli create-api-key",
+    "keys:rewrap": "pnpm --filter @neuroflow/db cli rewrap-keys"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
