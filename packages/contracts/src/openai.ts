@@ -76,6 +76,8 @@ export const OpenAIChatCompletionRequest = z
         gateway: z.boolean().optional(),
         /** Gateway mode: reuse an identical earlier answer for up to this many seconds (single-turn, no tools). */
         cache_ttl_seconds: z.number().int().positive().max(86_400).optional(),
+        /** Hedged first token after this many ms (see RunRequest.hedgeAfterMs). */
+        hedge_after_ms: z.number().int().min(100).max(60_000).optional(),
       })
       .optional(),
   })

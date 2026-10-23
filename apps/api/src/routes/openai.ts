@@ -92,6 +92,7 @@ export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: Ru
           ...(rf ? { responseFormat: 'json' as const } : {}),
           stream: Boolean(body.stream),
           ...(body.neuroflow?.cache_ttl_seconds ? { cacheTtlSeconds: body.neuroflow.cache_ttl_seconds } : {}),
+          ...(body.neuroflow?.hedge_after_ms ? { hedgeAfterMs: body.neuroflow.hedge_after_ms } : {}),
           options: { ...(body.metadata ? { metadata: body.metadata } : {}), ...(auto ? {} : { selectedModel: body.model }) },
         },
         () => runs.admitGatewayCall(principal),

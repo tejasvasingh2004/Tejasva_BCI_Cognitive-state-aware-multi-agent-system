@@ -59,6 +59,7 @@ export type GatewayCompletionInput = {
   responseFormat?: 'text' | 'json';
   stream: boolean;
   cacheTtlSeconds?: number;
+  hedgeAfterMs?: number;
   options: Record<string, unknown>;
 };
 
@@ -123,6 +124,7 @@ export async function serveGatewayCompletion(req: FastifyRequest, reply: Fastify
     ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
     ...(input.reasoningBudget ? { reasoningBudget: input.reasoningBudget } : {}),
     ...(input.responseFormat ? { responseFormat: input.responseFormat } : {}),
+    ...(input.hedgeAfterMs ? { hedge: { afterMs: input.hedgeAfterMs } } : {}),
     signal: controller.signal,
   })[Symbol.asyncIterator]();
 

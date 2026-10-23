@@ -228,6 +228,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
         temperature: ctx.temperature,
         maxOutputTokens: opts.maxOutputTokens ?? ctx.maxOutputTokens,
         responseFormat: opts.responseFormat,
+        ...(ctx.request.hedgeAfterMs ? { hedge: { afterMs: ctx.request.hedgeAfterMs } } : {}),
         signal: ctx.signal,
       })) {
         switch (ev.type) {
@@ -250,6 +251,9 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
             break;
           case 'throttled':
             ctx.emit('model.throttled', { callId, provider: ev.provider, waitMs: ev.waitMs, reason: ev.reason });
+            break;
+          case 'hedge':
+            ctx.emit('model.hedged', { callId, from: ev.from, to: ev.to, afterMs: ev.afterMs });
             break;
           case 'fallback':
             runtimeMetrics.modelFallbacks.add(1, { from: ev.from, to: ev.to });

@@ -94,6 +94,7 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
       .map((s) => s.trim())
       .filter(Boolean),
     equivalentFailover: env.MODEL_EQUIVALENT_FAILOVER !== 'disabled',
+    ...(positive(env.MODEL_HEDGE_AFTER_MS) ? { hedgeAfterMs: positive(env.MODEL_HEDGE_AFTER_MS)! } : {}),
     adaptiveConcurrency:
       env.MODEL_ADAPTIVE_CONCURRENCY === 'disabled'
         ? false

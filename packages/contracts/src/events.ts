@@ -67,6 +67,7 @@ export const RunEventData = {
     waitMs: z.number().nonnegative(),
     reason: z.string(),
   }),
+  'model.hedged': z.object({ callId: z.string(), from: z.string(), to: z.string(), afterMs: z.number() }),
   'model.fallback': z.object({
     callId: z.string(),
     from: z.string(),

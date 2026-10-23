@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AdaptiveLimit, DefaultModelGateway, GroqAdapter, ModelError, buildCatalog, parseResetDuration } from '../src';
+import { AdaptiveLimit, DefaultModelGateway, GroqAdapter, ModelError, buildCatalog, createTogetherAdapter, parseResetDuration } from '../src';
 import { startMockOpenAIServer, textReply, type MockOpenAIServer } from '../src/testing';
 
 describe('adaptive concurrency limit', () => {
@@ -95,5 +95,62 @@ describe("provider rate-limit headers", () => {
     expect((second as ModelError).code).toBe('rate_limited');
     expect((await first).text).toBe('slow answer');
     expect(gw.adaptiveLimits().groq).toMatchObject({ limit: 1, inflight: 0 });
+  });
+});
+
+describe('hedged first token', () => {
+  let slow: MockOpenAIServer;
+  let fast: MockOpenAIServer;
+  beforeAll(async () => {
+    slow = await startMockOpenAIServer();
+    fast = await startMockOpenAIServer();
+  });
+  afterAll(async () => {
+    await slow.close();
+    await fast.close();
+  });
+  const gateway = () =>
+    new DefaultModelGateway(
+      [
+        new GroqAdapter({ baseUrl: slow.url, apiKey: 'k', models: buildCatalog('openai/gpt-oss-120b') }),
+        createTogetherAdapter({ baseUrl: fast.url, apiKey: 'k', models: buildCatalog('openai/gpt-oss-120b') }),
+      ],
+      { maxRetries: 0, baseBackoffMs: 1, maxBackoffMs: 2 },
+    );
+  const ask = [{ role: 'user' as const, content: 'hi' }];
+
+  it('starts the same model on another provider when the first token is late, and keeps whichever answers first', async () => {
+    // First content after ~600 ms on the primary; the backup answers at once.
+    slow.setScript(() => ({ kind: 'stream', chunks: [{}, {}, { content: 'late answer' }], chunkDelayMs: 300 }));
+    fast.setScript(() => textReply('fast answer'));
+    const events: Array<{ type: string }> = [];
+    const started = Date.now();
+    for await (const ev of gateway().stream({ model: 'groq/openai/gpt-oss-120b', messages: ask, hedge: { afterMs: 100 } })) events.push(ev);
+    const done = events.find((e) => e.type === 'done') as unknown as { response: { ref: string; text: string; hedge: unknown } };
+    expect(done.response).toMatchObject({ ref: 'together/openai/gpt-oss-120b', text: 'fast answer', hedge: { with: 'groq/openai/gpt-oss-120b', won: true } });
+    expect(events[0]).toMatchObject({ type: 'hedge', from: 'groq/openai/gpt-oss-120b', to: 'together/openai/gpt-oss-120b', afterMs: 100 });
+    // Only the winner's events reach the caller: no attempt event from the cancelled primary.
+    expect(events.filter((e) => e.type === 'attempt')).toEqual([expect.objectContaining({ ref: 'together/openai/gpt-oss-120b' })]);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it('does not hedge when the first token arrives in time, and hands over without hedging when the primary fails first', async () => {
+    slow.setScript(() => textReply('quick primary'));
+    fast.requests.length = 0;
+    const res = await gateway().complete({ model: 'groq/openai/gpt-oss-120b', messages: ask, hedge: { afterMs: 500 } });
+    expect(res).toMatchObject({ ref: 'groq/openai/gpt-oss-120b', text: 'quick primary' });
+    expect(res.hedge).toBeUndefined();
+    expect(fast.requests).toHaveLength(0);
+
+    slow.setScript(() => ({ kind: 'error', status: 503, message: 'down' }));
+    fast.setScript(() => textReply('backup'));
+    const events: string[] = [];
+    let ref = '';
+    for await (const ev of gateway().stream({ model: 'groq/openai/gpt-oss-120b', messages: ask, hedge: { afterMs: 2_000 } })) {
+      events.push(ev.type);
+      if (ev.type === 'done') ref = ev.response.ref;
+    }
+    expect(ref).toBe('together/openai/gpt-oss-120b');
+    expect(events).not.toContain('hedge');
   });
 });

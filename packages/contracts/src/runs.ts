@@ -86,6 +86,12 @@ export const RunRequest = z.object({
    * `run.*` webhook here, in addition to the workspace's webhook endpoints.
    */
   webhookUrl: z.string().trim().url().max(2048).optional(),
+  /**
+   * Hedged first token: if a model call has produced no output after this many ms, the same call
+   * also goes to the next model (usually the same model on another provider); the first to answer
+   * wins. Lowers tail latency at the cost of extra prompt tokens.
+   */
+  hedgeAfterMs: z.number().int().min(100).max(60_000).optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;
 export type RunRequestInput = z.input<typeof RunRequest>;

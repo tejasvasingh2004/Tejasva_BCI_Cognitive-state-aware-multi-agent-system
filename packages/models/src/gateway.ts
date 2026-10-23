@@ -30,6 +30,8 @@ export type GatewayPolicy = {
   defaultFallbacks: string[];
   /** Fail over to the same model on another provider before falling back to other models. */
   equivalentFailover: boolean;
+  /** Default hedge delay for calls that set none (undefined = no hedging unless requested). */
+  hedgeAfterMs?: number;
   /** Latency-adaptive concurrency limit per provider in this process; false = fixed limits only. */
   adaptiveConcurrency: AdaptiveLimitOptions | false;
   defaultModel?: string;
@@ -317,6 +319,117 @@ export class DefaultModelGateway implements ModelGateway {
   }
 
   async *stream(request: ModelRequest): AsyncGenerator<ModelEvent> {
+    const hedge = request.hedge ?? (this.policy.hedgeAfterMs ? { afterMs: this.policy.hedgeAfterMs } : undefined);
+    if (hedge && hedge.afterMs > 0) {
+      const chain = this.withEquivalents(dedupe([request.model, ...(request.fallbacks ?? this.policy.defaultFallbacks)]), request);
+      if (chain.length > 1) {
+        yield* this.hedged(request, chain, hedge.afterMs);
+        return;
+      }
+    }
+    yield* this.streamChain(request);
+  }
+
+  /**
+   * Hedged first token (The Tail at Scale): the primary attempt runs alone until it produces output
+   * or `afterMs` passes; then the rest of the chain starts in parallel. Events before output are
+   * held back, so only the winner's events reach the caller; the loser is cancelled. A primary
+   * that fails before output simply hands over to the backup.
+   */
+  private async *hedged(request: ModelRequest, chain: string[], afterMs: number): AsyncGenerator<ModelEvent> {
+    type Leg = { ref: string; ctrl: AbortController; it: AsyncIterator<ModelEvent>; held: ModelEvent[]; next?: Promise<{ leg: Leg; r: IteratorResult<ModelEvent> } | { leg: Leg; err: unknown }>; done: boolean };
+    const unlink: Array<() => void> = [];
+    const start = (req: ModelRequest, ref: string): Leg => {
+      const ctrl = new AbortController();
+      const onAbort = () => ctrl.abort(request.signal?.reason);
+      if (request.signal?.aborted) ctrl.abort();
+      request.signal?.addEventListener('abort', onAbort, { once: true });
+      unlink.push(() => request.signal?.removeEventListener('abort', onAbort));
+      const { hedge: _h, ...rest } = req;
+      return { ref, ctrl, it: this.streamChain({ ...rest, signal: ctrl.signal })[Symbol.asyncIterator](), held: [], done: false };
+    };
+    const pull = (leg: Leg) =>
+      (leg.next ??= leg.it.next().then(
+        (r) => ({ leg, r }),
+        (err: unknown) => ({ leg, err }),
+      ));
+    const isOutput = (ev: ModelEvent) => ev.type === 'delta' || ev.type === 'tool_call' || ev.type === 'done';
+
+    const primary = start({ ...request, model: chain[0]!, fallbacks: [] }, chain[0]!);
+    const legs: Leg[] = [primary];
+    let backup: Leg | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => (timer = setTimeout(() => resolve('timeout'), afterMs)));
+    const startBackup = () => {
+      if (backup) return;
+      backup = start({ ...request, model: chain[1]!, fallbacks: chain.slice(2) }, chain[1]!);
+      legs.push(backup);
+    };
+    let lastError: unknown;
+    let winner: Leg | undefined;
+    let first: ModelEvent | undefined;
+    let hedgeEvent: ModelEvent | undefined;
+    try {
+      while (!winner) {
+        const live = legs.filter((l) => !l.done);
+        if (live.length === 0) {
+          if (!backup) {
+            startBackup();
+            continue;
+          }
+          throw lastError ?? new ModelError('unavailable', 'No model available');
+        }
+        const raced = await Promise.race([...live.map(pull), ...(backup ? [] : [timeout])]);
+        if (raced === 'timeout') {
+          startBackup();
+          hedgeEvent = { type: 'hedge', from: chain[0]!, to: chain[1]!, afterMs };
+          continue;
+        }
+        const { leg } = raced;
+        leg.next = undefined;
+        if ('err' in raced) {
+          leg.done = true;
+          lastError = raced.err;
+          if ((raced.err as ModelError)?.code === 'cancelled' && request.signal?.aborted) throw raced.err;
+          continue;
+        }
+        if (raced.r.done) {
+          leg.done = true;
+          continue;
+        }
+        if (isOutput(raced.r.value)) {
+          winner = leg;
+          first = raced.r.value;
+        } else {
+          leg.held.push(raced.r.value);
+        }
+      }
+      // Cancel the loser; its pending pull settles in the background.
+      for (const leg of legs) {
+        if (leg === winner) continue;
+        leg.ctrl.abort(new ModelError('cancelled', 'Hedged request lost'));
+        void leg.next?.catch(() => {});
+      }
+      if (hedgeEvent) yield hedgeEvent;
+      for (const ev of winner.held) yield ev;
+      const mark = (ev: ModelEvent): ModelEvent =>
+        ev.type === 'done' && backup ? { ...ev, response: { ...ev.response, hedge: { with: winner === backup ? primary.ref : backup.ref, won: winner === backup } } } : ev;
+      yield mark(first!);
+      if (first!.type !== 'done') {
+        for (;;) {
+          const r = await winner.it.next();
+          if (r.done) break;
+          yield mark(r.value);
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      for (const leg of legs) if (leg !== winner) leg.ctrl.abort();
+      for (const u of unlink) u();
+    }
+  }
+
+  private async *streamChain(request: ModelRequest): AsyncGenerator<ModelEvent> {
     const chain = this.withEquivalents(dedupe([request.model, ...(request.fallbacks ?? this.policy.defaultFallbacks)]), request);
     const started = Date.now();
     let totalAttempts = 0;

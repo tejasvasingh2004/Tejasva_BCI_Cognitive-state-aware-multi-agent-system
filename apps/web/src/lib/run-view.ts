@@ -168,6 +168,9 @@ export function applyRunEvent(view: RunView, e: RunEvent): RunView {
     case 'model.throttled':
       v.phase = `Waiting for ${e.data.provider} capacity (~${Math.max(1, Math.round(e.data.waitMs / 1000))}s)`;
       break;
+    case 'model.hedged':
+      v.phase = `Slow first token: also asking ${modelName(e.data.to)}`;
+      break;
     case 'model.fallback':
       v.fallbacks++;
       v.phase = e.data.sameModel ? `Same model, another provider: ${modelName(e.data.to)}` : `Switching to ${modelName(e.data.to)}`;

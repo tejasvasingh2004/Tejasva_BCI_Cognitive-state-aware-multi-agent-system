@@ -45,6 +45,12 @@ export type ModelRequest = {
   /** Whether platform (server) keys may serve providers the tenant has no key for. Default true. */
   platformKeys?: boolean;
   guard?: ModelCallGuard;
+  /**
+   * Hedged first token: when no output has arrived after `afterMs`, the same request also goes to
+   * the next model of the chain; the first to produce output wins and the other is cancelled.
+   * Costs extra prompt tokens on the cancelled request, so it is opt-in.
+   */
+  hedge?: { afterMs: number };
   /** Tried in order when the primary model fails before producing output. */
   fallbacks?: string[];
   messages: ModelMessage[];
@@ -77,6 +83,8 @@ export type ModelResponse = {
   fallbackFrom?: string;
   /** The tenant key that served the call (BYOK); absent when a platform key did. */
   keyId?: string;
+  /** Set when a hedged request was started: the other model, and whether it won. */
+  hedge?: { with: string; won: boolean };
   /** Attach to the assistant message when continuing a tool loop (see ProviderState). */
   providerState?: ProviderState;
 };
@@ -89,6 +97,8 @@ export type ModelEvent =
   | { type: 'throttled'; ref: string; provider: string; waitMs: number; reason: string }
   /** `sameModel`: failover to the same model on another provider (no downgrade). */
   | { type: 'fallback'; from: string; to: string; reason: string; sameModel?: boolean }
+  /** A hedged request to `to` was started because `from` had produced no output after `afterMs`. */
+  | { type: 'hedge'; from: string; to: string; afterMs: number }
   | { type: 'delta'; text: string }
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'done'; response: ModelResponse };
