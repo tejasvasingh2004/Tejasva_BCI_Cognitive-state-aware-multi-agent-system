@@ -26,10 +26,18 @@ credentials generated per run.
 infra/loadtest/run.sh                                   # 1x1 and 2x2, 100 reads/s + 5 runs/s, 60 s
 RUN_RATE=10 infra/loadtest/run.sh                       # heavier run load
 TOPOLOGIES="1x1 2x2 3x3" DURATION=90s infra/loadtest/run.sh
+MODE=gateway GATEWAY_RATE=40 infra/loadtest/run.sh      # gateway mode: overhead gate, p95 < 50 ms
 ```
 
 Requirements: Docker with Compose v2.24+, Node 22, `pnpm install`. Results are written to
-`infra/loadtest/results/<topology>.json` and `<topology>-balance.txt` (requests per API replica).
+`infra/loadtest/results/<topology>.json` and `<topology>-balance.txt` (requests per API replica);
+gateway mode writes `gateway-<topology>.json` with NeuroFlow's own overhead measurement
+(`server-timing`) at p50 / p95 / p99, total time and whether the gate passed (real samples, > 99 %
+successful calls and p95 < 50 ms).
+
+The first gateway-mode run (2026-10-24) found a slot leak: with a provider concurrency limit, calls
+hung after the first 64. Fixed in the gateway (admissions are released before the final event and
+on any early exit); regression test in `packages/models/test/adaptive.test.ts`.
 
 ## Results (2026-10-22)
 

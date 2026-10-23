@@ -5,6 +5,7 @@
 #
 #   infra/loadtest/run.sh                      # topologies 1x1 and 2x2, 60 s each
 #   TOPOLOGIES="1x1 2x2 3x3" DURATION=90s RUN_RATE=6 infra/loadtest/run.sh
+#   MODE=gateway GATEWAY_RATE=40 infra/loadtest/run.sh   # gateway mode: overhead gate (p95 < 50 ms)
 #
 # Requires Docker (compose v2.24+) and Node 22 with the repo's dependencies installed.
 set -euo pipefail
@@ -15,7 +16,9 @@ cd "$ROOT"
 PROJECT=neuroflow-loadtest
 TOPOLOGIES=${TOPOLOGIES:-"1x1 2x2"}
 TENANTS=${TENANTS:-8}
-export DURATION=${DURATION:-60s} READ_RATE=${READ_RATE:-100} RUN_RATE=${RUN_RATE:-5}
+export DURATION=${DURATION:-60s} READ_RATE=${READ_RATE:-100} RUN_RATE=${RUN_RATE:-5} GATEWAY_RATE=${GATEWAY_RATE:-40}
+MODE=${MODE:-runs}
+SCRIPT=$([ "$MODE" = gateway ] && echo gateway.js || echo load.js)
 export MOCK_PORT=${MOCK_PORT:-11500} LB_PORT=${LB_PORT:-8088} LOADTEST_PG_PORT=${LOADTEST_PG_PORT:-5434}
 export WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
 K6_IMAGE=${K6_IMAGE:-grafana/k6:0.54.0}
@@ -74,12 +77,12 @@ for topo in $TOPOLOGIES; do
 
   "${COMPOSE[@]}" exec -T lb sh -c ': > /var/log/nginx/upstream.log'
 
-  log "Running k6 ($DURATION: $READ_RATE reads/s + $RUN_RATE runs/s)"
+  if [ "$MODE" = gateway ]; then log "Running k6 ($DURATION: $GATEWAY_RATE gateway-mode calls/s)"; else log "Running k6 ($DURATION: $READ_RATE reads/s + $RUN_RATE runs/s)"; fi
   MSYS_NO_PATHCONV=1 docker run --rm --network "${PROJECT}_default" \
     -v "$(host_path "$ROOT/infra/loadtest/k6"):/scripts:ro" -v "$(host_path "$RESULTS"):/results" \
     -e BASE_URL=http://lb -e API_KEYS="$KEYS" -e TOPOLOGY="$topo" \
-    -e DURATION -e READ_RATE -e RUN_RATE \
-    "$K6_IMAGE" run --quiet /scripts/load.js || true
+    -e DURATION -e READ_RATE -e RUN_RATE -e GATEWAY_RATE \
+    "$K6_IMAGE" run --quiet "/scripts/$SCRIPT" || true
 
   log "Requests per API replica during the test"
   "${COMPOSE[@]}" exec -T lb sh -c 'sort /var/log/nginx/upstream.log | uniq -c' | tee "$RESULTS/$topo-balance.txt"
@@ -88,4 +91,5 @@ for topo in $TOPOLOGIES; do
 done
 
 log "Results"
-for topo in $TOPOLOGIES; do echo "--- $topo"; cat "$RESULTS/$topo.json" 2>/dev/null || echo "(no result)"; done
+prefix=$([ "$MODE" = gateway ] && echo gateway- || echo "")
+for topo in $TOPOLOGIES; do echo "--- $topo"; cat "$RESULTS/$prefix$topo.json" 2>/dev/null || echo "(no result)"; done
