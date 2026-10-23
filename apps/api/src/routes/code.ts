@@ -49,7 +49,7 @@ import {
 } from '@neuroflow/db';
 import { audit } from '../audit';
 import { requireScope } from '../auth';
-import type { AppDeps } from '../deps';
+import { type AppDeps, modelScope } from '../deps';
 import { forbidden, HttpError, notFound } from '../errors';
 import type { RunManager } from '../run-manager';
 import { openSse } from '../sse';
@@ -185,7 +185,7 @@ export async function codeRoutes(app: FastifyInstance, deps: AppDeps, runs: RunM
     if (body.approvalMode) await codeWorkspacesRepo.setApprovalMode(deps.pool, id, p.workspaceId, body.approvalMode);
     if (body.settings) {
       const s = body.settings;
-      if (s.defaultModel && !s.defaultModel.startsWith('deployment/') && !deps.gateway.listModels().some((m) => m.ref === s.defaultModel)) {
+      if (s.defaultModel && !s.defaultModel.startsWith('deployment/') && !deps.gateway.listModels(await modelScope(deps, p.workspaceId)).some((m) => m.ref === s.defaultModel)) {
         throw new HttpError('bad_request', `Unknown model "${s.defaultModel}"`);
       }
       if (s.sandboxImage && !SANDBOX_IMAGE_CHOICES.includes(s.sandboxImage)) {

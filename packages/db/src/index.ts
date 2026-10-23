@@ -17,3 +17,4 @@ export * from './provider-keys';
 export * from './budgets';
 export * from './kms';
 export * from './webhooks';
+export * from './gateway-calls';

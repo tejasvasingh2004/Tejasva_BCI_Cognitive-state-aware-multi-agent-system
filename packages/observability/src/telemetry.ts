@@ -99,4 +99,7 @@ export const runtimeMetrics = {
   evaluations: meter.createCounter('neuroflow.evaluation.total'),
   cost: meter.createCounter('neuroflow.run.cost', { unit: 'USD' }),
   authFailures: meter.createCounter('neuroflow.auth.failures'),
+  /** Gateway mode: time from request arrival until the provider request is sent. */
+  gatewayOverhead: meter.createHistogram('neuroflow.gateway.overhead', { unit: 'ms' }),
+  responseCache: meter.createCounter('neuroflow.gateway.response_cache'),
 };

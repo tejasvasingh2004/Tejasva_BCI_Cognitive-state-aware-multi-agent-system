@@ -7,3 +7,4 @@ export * from './rate-limit';
 export * from './heartbeat';
 export * from './budgets';
 export * from './webhooks';
+export * from './response-cache';

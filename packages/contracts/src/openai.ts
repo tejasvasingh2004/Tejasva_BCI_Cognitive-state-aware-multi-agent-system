@@ -72,6 +72,10 @@ export const OpenAIChatCompletionRequest = z
         mode: z.enum(['standard', 'cognitive']).optional(),
         agent_strategy: z.string().optional(),
         conversation_id: z.string().uuid().optional(),
+        /** Gateway mode: one model call streamed straight from the API (no queue, no agents). */
+        gateway: z.boolean().optional(),
+        /** Gateway mode: reuse an identical earlier answer for up to this many seconds (single-turn, no tools). */
+        cache_ttl_seconds: z.number().int().positive().max(86_400).optional(),
       })
       .optional(),
   })

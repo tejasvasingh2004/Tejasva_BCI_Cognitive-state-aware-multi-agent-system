@@ -24,7 +24,9 @@ const MAX_EVAL_EXAMPLES = 50;
 
 /** Model Lab: Models · Providers · Parameters · Datasets · Fine-tuning · Evaluations · Deployments. */
 export async function modelLabRoutes(app: FastifyInstance, deps: AppDeps) {
-  const knownModel = (ref: string) => deps.gateway.listModels().some((m) => m.ref === ref);
+  // The workspace's own view: models of providers it has keys for are known too (BYOK).
+  const workspaceModels = async (workspaceId: string) => deps.gateway.listModels(await modelScope(deps, workspaceId));
+  const knownModel = async (workspaceId: string, ref: string) => (await workspaceModels(workspaceId)).some((m) => m.ref === ref);
 
   // ---- Models & Providers (read-only views of the Gateway) ----
   app.get('/v1/model-lab/providers', async (req) => {
@@ -50,7 +52,7 @@ export async function modelLabRoutes(app: FastifyInstance, deps: AppDeps) {
     const p = requireScope(req, Scopes.admin);
     const { scope } = z.object({ scope: ModelLabScope }).parse(req.params);
     const config = ModelLabConfig.parse(req.body);
-    if (config.model !== 'auto' && !config.model.startsWith('deployment/') && !knownModel(config.model)) {
+    if (config.model !== 'auto' && !config.model.startsWith('deployment/') && !(await knownModel(p.workspaceId, config.model))) {
       throw new HttpError('bad_request', `Unknown model "${config.model}"`);
     }
     if (config.tools) {
@@ -70,8 +72,8 @@ export async function modelLabRoutes(app: FastifyInstance, deps: AppDeps) {
   app.post('/v1/model-lab/deployments', async (req, reply) => {
     const p = requireScope(req, Scopes.admin);
     const body = UpsertDeploymentBody.parse(req.body);
-    if (!knownModel(body.model)) throw new HttpError('bad_request', `Unknown model "${body.model}"`);
-    const info = deps.gateway.listModels().find((m) => m.ref === body.model)!;
+    const info = (await workspaceModels(p.workspaceId)).find((m) => m.ref === body.model);
+    if (!info) throw new HttpError('bad_request', `Unknown model "${body.model}"`);
     if (body.parameters.reasoningBudget && !info.supportedParameters?.includes('reasoningBudget')) {
       throw new HttpError('bad_request', `${body.model} does not support a reasoning budget`);
     }
@@ -272,7 +274,8 @@ export async function modelLabRoutes(app: FastifyInstance, deps: AppDeps) {
     const p = requireScope(req, Scopes.runsWrite);
     const body = CreateEvaluationBody.parse(req.body);
     await datasetOf(p.workspaceId, body.datasetId);
-    const unknown = body.models.filter((m) => !knownModel(m));
+    const known = new Set((await workspaceModels(p.workspaceId)).map((m) => m.ref));
+    const unknown = body.models.filter((m) => !known.has(m));
     if (unknown.length) throw new HttpError('bad_request', `Unknown models: ${unknown.join(', ')}`);
     const examples = await modelLabRepo.listExamples(deps.pool, body.datasetId, MAX_EVAL_EXAMPLES + 1);
     if (examples.length === 0) throw new HttpError('bad_request', 'The dataset has no examples');

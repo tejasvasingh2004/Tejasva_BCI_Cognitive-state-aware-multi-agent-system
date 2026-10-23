@@ -15,6 +15,7 @@ import { runsRepo } from '@neuroflow/db';
 import { requireScope } from '../auth';
 import { type AppDeps, modelScope } from '../deps';
 import { HttpError } from '../errors';
+import { serveGatewayCompletion } from '../gateway-mode';
 import type { RunManager } from '../run-manager';
 import { openSse } from '../sse';
 
@@ -58,12 +59,44 @@ export async function openaiRoutes(app: FastifyInstance, deps: AppDeps, runs: Ru
     const principal = requireScope(req, Scopes.runsWrite);
     const body = OpenAIChatCompletionRequest.parse(req.body);
     const auto = AUTO_MODEL_ALIASES.includes(body.model);
-    if (!auto && !deps.gateway.listModels().some((m) => m.ref === body.model)) {
+    // The workspace's own view: models of providers it has keys for count, not only platform ones.
+    if (!auto && !deps.gateway.listModels(await modelScope(deps, principal.workspaceId)).some((m) => m.ref === body.model)) {
       throw new HttpError('not_found', `The model "${body.model}" does not exist. Use GET /v1/models or "neuroflow-auto".`);
     }
 
     const messages = body.messages.map(toChatMessage).filter((m): m is ChatMessage => m !== null);
     if (!messages.some((m) => m.role === 'user')) throw new HttpError('bad_request', 'At least one user message is required');
+
+    // Gateway mode: one model call served by this process (no queue, no agents or server tools).
+    const gatewayMode = deps.config.GATEWAY_FAST_PATH === 'enabled' && (body.neuroflow?.gateway === true || req.headers['x-neuroflow-mode'] === 'gateway');
+    if (gatewayMode) {
+      const rf = mapResponseFormat(body).responseFormat;
+      return serveGatewayCompletion(
+        req,
+        reply,
+        deps,
+        principal,
+        {
+          ...(auto ? {} : { model: body.model }),
+          displayModel: body.model,
+          messages,
+          ...(body.tools?.length
+            ? {
+                tools: body.tools.map((t) => ({ name: t.function.name, description: t.function.description ?? '', inputSchema: t.function.parameters ?? { type: 'object', properties: {} } })),
+                toolChoice: body.tool_choice === 'none' ? 'none' : body.tool_choice === 'required' || typeof body.tool_choice === 'object' ? 'required' : 'auto',
+              }
+            : {}),
+          ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
+          ...((body.max_completion_tokens ?? body.max_tokens) ? { maxOutputTokens: body.max_completion_tokens ?? body.max_tokens } : {}),
+          ...(body.reasoning_effort ? { reasoningBudget: mapEffort(body.reasoning_effort) } : {}),
+          ...(rf ? { responseFormat: 'json' as const } : {}),
+          stream: Boolean(body.stream),
+          ...(body.neuroflow?.cache_ttl_seconds ? { cacheTtlSeconds: body.neuroflow.cache_ttl_seconds } : {}),
+          options: { ...(body.metadata ? { metadata: body.metadata } : {}), ...(auto ? {} : { selectedModel: body.model }) },
+        },
+        () => runs.admitGatewayCall(principal),
+      );
+    }
 
     const strategy = RequestedAgentStrategy.safeParse(body.neuroflow?.agent_strategy ?? 'auto');
     const request = RunRequest.parse({

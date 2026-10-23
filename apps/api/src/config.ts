@@ -50,6 +50,8 @@ const Env = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Gateway mode on /v1/chat/completions (single model calls served by the API without the queue). */
+  GATEWAY_FAST_PATH: z.enum(['enabled', 'disabled']).default('enabled'),
   KEK_PROVIDER: z.enum(['local', 'aws-kms', 'vault']).default('local'),
   AWS_KMS_KEY_ID: z.string().optional(),
   AWS_REGION: z.string().optional(),

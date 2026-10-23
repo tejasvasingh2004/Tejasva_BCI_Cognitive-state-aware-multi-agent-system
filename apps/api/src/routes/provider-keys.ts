@@ -54,6 +54,7 @@ export async function providerKeyRoutes(app: FastifyInstance, deps: AppDeps) {
     }
     try {
       const key = await deps.providerKeys.create({ workspaceId: p.workspaceId, userId: p.userId, provider: body.provider, apiKey: body.apiKey, ...(body.label ? { label: body.label } : {}) });
+      deps.gateways.invalidate(p.workspaceId);
       void audit(deps, req, { action: 'provider_key.created', targetType: 'provider_key', targetId: key.id, metadata: { provider: key.provider, hint: key.hint } });
       return reply.code(201).send({ key });
     } catch (err) {
@@ -69,6 +70,7 @@ export async function providerKeyRoutes(app: FastifyInstance, deps: AppDeps) {
     if (!stored) throw notFound('Provider key');
     const result = await check(stored.provider, stored.apiKey);
     const key = await deps.providerKeys.setStatus(p.workspaceId, id, result.ok ? { ok: true } : { ok: false, message: result.message });
+    deps.gateways.invalidate(p.workspaceId);
     void audit(deps, req, { action: 'provider_key.verified', outcome: result.ok ? 'success' : 'failure', targetType: 'provider_key', targetId: id, metadata: { provider: stored.provider } });
     return { key };
   });
@@ -91,6 +93,7 @@ export async function providerKeyRoutes(app: FastifyInstance, deps: AppDeps) {
     const { id } = IdParams.parse(req.params);
     const key = await deps.providerKeys.delete(p.workspaceId, id);
     if (!key) throw notFound('Provider key');
+    deps.gateways.invalidate(p.workspaceId);
     void audit(deps, req, { action: 'provider_key.deleted', targetType: 'provider_key', targetId: id, metadata: { provider: key.provider, hint: key.hint } });
     return reply.code(204).send();
   });

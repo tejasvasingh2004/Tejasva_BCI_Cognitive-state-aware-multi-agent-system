@@ -1,4 +1,5 @@
-import { BudgetService, createRedis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, SpendMeter, UsageMeter, WebhookService, WorkspaceEventHub } from '@neuroflow/bus';
+import { BudgetService, createRedis, RedisRateLimiter, ResponseCache, RunControlPublisher, RunEventHub, RunQueue, SpendMeter, UsageMeter, WebhookService, WorkspaceEventHub } from '@neuroflow/bus';
+import { WorkspaceGateways } from './gateway-mode';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox } from '@neuroflow/code';
 import { BciHttpProvider } from '@neuroflow/cognitive';
 import { createPool, keyRingFromEnv, migrate, seedDev, ProviderKeyVault } from '@neuroflow/db';
@@ -19,7 +20,8 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
   const redis = createRedis(config.REDIS_URL);
   const subscriber = createRedis(config.REDIS_URL);
   const queue = new RunQueue(createRedis(config.REDIS_URL));
-  const gateway = createGatewayFromEnv(env);
+  // Gateway-mode calls run on the API: provider budgets are shared with the workers through Redis.
+  const gateway = createGatewayFromEnv(env, { limiter: new RedisRateLimiter(redis) });
   await gateway.refreshHealth();
   const healthTimer = setInterval(() => void gateway.refreshHealth(), 30_000);
   const memory = new PgMemoryService(pool);
@@ -46,6 +48,12 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     logger,
   });
 
+  const webhooks = new WebhookService(pool, secrets);
+  const budgets = new BudgetService(pool, new SpendMeter(redis, pool), {
+    onAlert: async (workspaceId, type, data) => void (await webhooks.publish(workspaceId, type, data)),
+  });
+  const providerKeys = new ProviderKeyVault(pool, keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET }));
+
   const deps: AppDeps = {
     config,
     logger,
@@ -62,11 +70,13 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     workspaceHub: new WorkspaceEventHub(workspaceSubscriber),
     limiter: new RedisRateLimiter(redis),
     usage: new UsageMeter(redis),
-    budgets: new BudgetService(pool, new SpendMeter(redis, pool)),
-    webhooks: new WebhookService(pool, secrets),
+    budgets,
+    webhooks,
+    gateways: new WorkspaceGateways(gateway, providerKeys, budgets, config.PLATFORM_MODEL_KEYS === 'enabled'),
+    responseCache: new ResponseCache(redis),
     plans: new PlanResolver(pool, config),
     errors,
-    providerKeys: new ProviderKeyVault(pool, keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET })),
+    providerKeys,
     ...(config.BCI_SERVICE_URL ? { bci: new BciHttpProvider(config.BCI_SERVICE_URL) } : {}),
   };
 

@@ -1,6 +1,7 @@
 import type { Principal } from '@neuroflow/contracts';
 import type { Pool, ProviderKeyVault } from '@neuroflow/db';
-import type { BudgetService, Redis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, UsageMeter, WebhookService } from '@neuroflow/bus';
+import type { BudgetService, Redis, RedisRateLimiter, ResponseCache, RunControlPublisher, RunEventHub, RunQueue, UsageMeter, WebhookService } from '@neuroflow/bus';
+import type { WorkspaceGateways } from './gateway-mode';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { MemoryService } from '@neuroflow/memory';
 import type { DefaultModelGateway } from '@neuroflow/models';
@@ -37,6 +38,10 @@ export type AppDeps = {
   budgets: BudgetService;
   /** Webhook endpoints, signing secret and outbox (workers deliver). */
   webhooks: WebhookService;
+  /** Gateway mode: per-workspace gateway views (workspace keys + budget guard). */
+  gateways: WorkspaceGateways;
+  /** Gateway mode: opt-in exact-match answer cache per workspace. */
+  responseCache: ResponseCache;
   plans: PlanResolver;
   /** Unexpected errors (5xx, crashes) → error tracking; a no-op unless SENTRY_DSN is set. */
   errors: ErrorReporter;

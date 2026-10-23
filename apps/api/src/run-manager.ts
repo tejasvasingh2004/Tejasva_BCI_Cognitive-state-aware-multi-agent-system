@@ -263,6 +263,23 @@ export class RunManager {
         retryAfterMs: 5_000,
       });
     }
+    await this.assertSpendable(principal, plan, limits, tokensToday);
+    if (backlog >= this.deps.config.MAX_QUEUE_BACKLOG) {
+      throw new HttpError('overloaded', 'NeuroFlow is at capacity. Please retry shortly.', undefined, true, { retryAfterMs: 10_000 });
+    }
+    return { queuePriority: limits.queuePriority };
+  }
+
+  /**
+   * Admission for a gateway-mode call (one model call streamed from the API, no queue): the daily
+   * token quota and the workspace's dollar budgets, checked concurrently to keep overhead low.
+   */
+  async admitGatewayCall(principal: Principal): Promise<void> {
+    const [{ plan, limits }, tokensToday] = await Promise.all([this.deps.plans.limits(principal.workspaceId), this.deps.usage.tokensToday(principal.workspaceId)]);
+    await this.assertSpendable(principal, plan, limits, tokensToday);
+  }
+
+  private async assertSpendable(principal: Principal, plan: string, limits: { dailyTokens: number | null }, tokensToday: number): Promise<void> {
     if (limits.dailyTokens !== null && tokensToday >= limits.dailyTokens) {
       const resetsAt = UsageMeter.resetsAt();
       throw new HttpError(
@@ -283,9 +300,5 @@ export class RunManager {
         { retryAfterMs: spend.resetsAt.getTime() - Date.now() },
       );
     }
-    if (backlog >= this.deps.config.MAX_QUEUE_BACKLOG) {
-      throw new HttpError('overloaded', 'NeuroFlow is at capacity. Please retry shortly.', undefined, true, { retryAfterMs: 10_000 });
-    }
-    return { queuePriority: limits.queuePriority };
   }
 }
