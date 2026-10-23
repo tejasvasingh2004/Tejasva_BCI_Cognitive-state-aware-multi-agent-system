@@ -17,6 +17,10 @@ type HostedProfile = {
   fineTuning: ProviderDescription['fineTuning'];
   /** Provider-specific request fields for one call (reasoning, token limits, sampling). */
   options(req: ProviderRequest): Record<string, unknown>;
+  /** Authenticated endpoint used to check a key (default `/models`). */
+  verifyPath?: string;
+  /** Extra request headers (e.g. attribution). Never credentials. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -76,7 +80,7 @@ export class HostedOpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   verifyCredential(apiKey: string, signal?: AbortSignal): Promise<CredentialCheck> {
-    return verifyOpenAICompatibleKey({ ...this.opts(), apiKey }, signal);
+    return verifyOpenAICompatibleKey({ ...this.opts(), apiKey }, signal, this.profile.verifyPath);
   }
 
   private baseUrl(): string {
@@ -88,6 +92,7 @@ export class HostedOpenAICompatibleAdapter implements ProviderAdapter {
       baseUrl: this.baseUrl(),
       apiKey: this.keys.length ? this.keys[keyIndex % this.keys.length] : undefined,
       fetchImpl: this.config.fetchImpl,
+      ...(this.profile.headers ? { headers: this.profile.headers } : {}),
     };
   }
 }
@@ -139,6 +144,60 @@ export function createGoogleAdapter(config: HostedAdapterConfig): HostedOpenAICo
         if (req.entry.reasoning === 'none') return {};
         const budget = req.reasoningBudget ?? 'off';
         return { reasoning_effort: budget === 'off' ? 'minimal' : budget };
+      },
+    },
+    config,
+  );
+}
+
+export const TOGETHER_BASE_URL = 'https://api.together.xyz/v1';
+export const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
+export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+
+/** Open-weight models with effort-based reasoning (GPT-OSS) take `reasoning_effort`; others get nothing. */
+const openModelOptions = (req: ProviderRequest): Record<string, unknown> =>
+  req.entry.reasoning === 'effort' ? { reasoning_effort: (req.reasoningBudget ?? 'off') === 'off' ? 'low' : req.reasoningBudget } : {};
+
+const NO_TUNING = (host: string): ProviderDescription['fineTuning'] => ({
+  status: 'requires_provider_access',
+  reason: `${host} offers fine-tuning in its own console; NeuroFlow does not start jobs or send repository data for training.`,
+});
+
+/** Together AI: hosted open-weight models (Llama, Qwen, DeepSeek, GPT-OSS, Kimi). */
+export function createTogetherAdapter(config: HostedAdapterConfig): HostedOpenAICompatibleAdapter {
+  return new HostedOpenAICompatibleAdapter(
+    { id: 'together', displayName: 'Together AI', baseUrl: TOGETHER_BASE_URL, kind: 'Together AI (OpenAI compatible)', fineTuning: NO_TUNING('Together AI'), options: openModelOptions },
+    config,
+  );
+}
+
+/** Fireworks AI: hosted open-weight models; model ids look like `accounts/fireworks/models/<name>`. */
+export function createFireworksAdapter(config: HostedAdapterConfig): HostedOpenAICompatibleAdapter {
+  return new HostedOpenAICompatibleAdapter(
+    { id: 'fireworks', displayName: 'Fireworks AI', baseUrl: FIREWORKS_BASE_URL, kind: 'Fireworks AI (OpenAI compatible)', fineTuning: NO_TUNING('Fireworks AI'), options: openModelOptions },
+    config,
+  );
+}
+
+/**
+ * OpenRouter: one key for many providers' models (`<provider>/<model>` ids). Its model list is
+ * public, so keys are checked with `GET /key`. Reasoning uses OpenRouter's unified `reasoning`
+ * field, with the reasoning text excluded from the response.
+ */
+export function createOpenRouterAdapter(config: HostedAdapterConfig): HostedOpenAICompatibleAdapter {
+  return new HostedOpenAICompatibleAdapter(
+    {
+      id: 'openrouter',
+      displayName: 'OpenRouter',
+      baseUrl: OPENROUTER_BASE_URL,
+      kind: 'OpenRouter (OpenAI compatible)',
+      fineTuning: { status: 'not_available', reason: 'OpenRouter routes to other providers and does not offer fine-tuning.' },
+      verifyPath: '/key',
+      headers: { 'X-OpenRouter-Title': 'NeuroFlow' },
+      options(req) {
+        if (req.entry.reasoning === 'none') return {};
+        const budget = req.reasoningBudget ?? 'off';
+        return { reasoning: { effort: budget === 'off' ? 'low' : budget, exclude: true } };
       },
     },
     config,

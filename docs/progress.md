@@ -247,7 +247,8 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [ ] KMS-backed key-encryption key (interface ready: `KeyEncryptionKey`)
 - [x] Adapters for Anthropic (official SDK, thinking blocks preserved across tool calls), OpenAI and
       Google Gemini (OpenAI-compatible endpoints), with workspace keys and platform keys
-- [ ] Adapters for OpenAI-compatible open-model hosts (Together, Fireworks, OpenRouter)
+- [x] Adapters for OpenAI-compatible open-model hosts (Together, Fireworks, OpenRouter), with
+      workspace keys and platform keys
 - [x] Dollar budgets: workspace daily and monthly limits with an alert threshold, monthly budget per
       provider key; enforced at run admission and before every model call; audit events at the
       threshold and the limit; Usage → Spending limits and per-key budgets in Settings

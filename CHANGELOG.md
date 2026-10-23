@@ -3,6 +3,12 @@
 Notable changes to NeuroFlow. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project does not publish versioned releases yet, so entries are grouped by date.
 
+## 2026-10-24
+
+### Added
+- Hosted open-weight models through Together AI, Fireworks AI and OpenRouter, with server keys
+  (`TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY`) or each workspace's own key.
+
 ## 2026-10-23
 
 ### Added

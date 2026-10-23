@@ -7,6 +7,8 @@ import {
   createGatewayFromEnv,
   createGoogleAdapter,
   createOpenAIAdapter,
+  createOpenRouterAdapter,
+  createTogetherAdapter,
   type ModelMessage,
 } from '../src';
 import { toAnthropicMessages } from '../src/adapters/anthropic';
@@ -237,6 +239,30 @@ describe('OpenAI and Google adapters', () => {
     expect(openai.requests[0]).toMatchObject({ model: 'gemini-3.8-flash', reasoning_effort: 'minimal', temperature: 0.3, max_tokens: 200 });
   });
 
+  it('open-model hosts: GPT-OSS gets reasoning_effort on Together; OpenRouter uses its unified reasoning field and checks keys', async () => {
+    const together = new DefaultModelGateway([createTogetherAdapter({ baseUrl: openai.url, apiKey: 'k', models: buildCatalog('openai/gpt-oss-120b,deepseek-ai/DeepSeek-V4.1-Flash') })], policy, {
+      sleep: async () => {},
+    });
+    await together.complete({ model: 'together/openai/gpt-oss-120b', messages: ask, reasoningBudget: 'high' });
+    expect(openai.requests[0]).toMatchObject({ model: 'openai/gpt-oss-120b', reasoning_effort: 'high' });
+    await together.complete({ model: 'together/deepseek-ai/DeepSeek-V4.1-Flash', messages: ask });
+    expect(openai.requests[1]).not.toHaveProperty('reasoning_effort');
+
+    const router = new DefaultModelGateway([createOpenRouterAdapter({ baseUrl: openai.url, apiKey: '', models: buildCatalog('openai/gpt-oss-120b') })], policy, {
+      sleep: async () => {},
+    });
+    openai.setValidKeys(['sk-or-good']);
+    try {
+      expect(await router.verifyCredential('openrouter', 'sk-or-good')).toEqual({ ok: true });
+      expect(await router.verifyCredential('openrouter', 'sk-or-bad')).toMatchObject({ ok: false, reason: 'rejected' });
+      await router.scoped({ openrouter: { keyId: 'k', apiKey: 'sk-or-good' } }).complete({ model: 'openrouter/openai/gpt-oss-120b', messages: ask });
+      expect(openai.requests[2]).toMatchObject({ reasoning: { effort: 'low', exclude: true } });
+      expect(openai.requests[2]).not.toHaveProperty('reasoning_effort');
+    } finally {
+      openai.setValidKeys(null);
+    }
+  });
+
   it('the env factory registers every hosted provider for workspace keys, platform-served only with a key', () => {
     const gw = createGatewayFromEnv({ ANTHROPIC_API_KEY: 'a', QWEN_MODELS: '' });
     const providers = gw.credentialProviders().map((p) => [p.id, p.platformKey]);
@@ -245,6 +271,9 @@ describe('OpenAI and Google adapters', () => {
         ['anthropic', true],
         ['openai', false],
         ['google', false],
+        ['together', false],
+        ['fireworks', false],
+        ['openrouter', false],
         ['groq', false],
       ]),
     );

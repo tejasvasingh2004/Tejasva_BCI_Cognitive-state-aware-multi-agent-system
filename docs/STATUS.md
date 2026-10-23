@@ -132,7 +132,9 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
 - **Anthropic, OpenAI and Google providers** — Claude through the official Anthropic SDK
   (`packages/models/src/adapters/anthropic.ts`); OpenAI and Gemini through their OpenAI-compatible
   endpoints (`adapters/hosted.ts`). All three accept workspace keys and are listed in Settings →
-  Model providers even when the server has no key of its own. Claude's thinking blocks are replayed
+  Model providers even when the server has no key of its own. Hosted open-weight models through
+  Together AI, Fireworks AI and OpenRouter use the same OpenAI-compatible adapter with a profile per
+  host (base URL, reasoning parameter, key check). Claude's thinking blocks are replayed
   unchanged inside a tool loop (opaque `providerState` on the assistant message) and never shown.
 - **Dollar budgets** — a workspace sets daily and monthly spending limits and an alert threshold
   (Usage → Spending limits, `/v1/workspace/budget`); each workspace provider key can have a monthly

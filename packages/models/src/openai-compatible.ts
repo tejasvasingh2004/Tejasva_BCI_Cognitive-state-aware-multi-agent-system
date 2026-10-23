@@ -203,10 +203,12 @@ export async function probeOpenAICompatible(
 export async function verifyOpenAICompatibleKey(
   opts: OpenAICompatibleOptions,
   signal?: AbortSignal,
+  /** An authenticated endpoint to ask; `/models` unless the provider lists models without a key. */
+  path = '/models',
 ): Promise<CredentialCheck> {
   try {
-    const res = await (opts.fetchImpl ?? fetch)(`${opts.baseUrl.replace(/\/$/, '')}/models`, {
-      headers: { authorization: `Bearer ${opts.apiKey ?? ''}` },
+    const res = await (opts.fetchImpl ?? fetch)(`${opts.baseUrl.replace(/\/$/, '')}${path}`, {
+      headers: { authorization: `Bearer ${opts.apiKey ?? ''}`, ...opts.headers },
       signal: signal ?? AbortSignal.timeout(10_000),
     });
     if (res.ok) return { ok: true };

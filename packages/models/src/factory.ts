@@ -1,6 +1,6 @@
 import { AnthropicAdapter } from './adapters/anthropic';
 import { GroqAdapter } from './adapters/groq';
-import { createGoogleAdapter, createOpenAIAdapter } from './adapters/hosted';
+import { createFireworksAdapter, createGoogleAdapter, createOpenAIAdapter, createOpenRouterAdapter, createTogetherAdapter } from './adapters/hosted';
 import { QwenAdapter, type QwenFlavor } from './adapters/qwen';
 import { buildCatalog, parsePricing } from './catalog';
 import { DefaultModelGateway, type GatewayPolicy, type ProviderLimits } from './gateway';
@@ -64,6 +64,25 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
       apiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || undefined,
       baseUrl: env.GOOGLE_BASE_URL || undefined,
       models: buildCatalog(env.GOOGLE_MODELS ?? 'gemini-3.8-flash'),
+      fetchImpl: opts.fetchImpl,
+    }),
+    // Hosted open-weight models.
+    createTogetherAdapter({
+      apiKey: env.TOGETHER_API_KEY || undefined,
+      baseUrl: env.TOGETHER_BASE_URL || undefined,
+      models: buildCatalog(env.TOGETHER_MODELS ?? 'openai/gpt-oss-120b,Qwen/Qwen3.8-Flash,deepseek-ai/DeepSeek-V4.1-Flash'),
+      fetchImpl: opts.fetchImpl,
+    }),
+    createFireworksAdapter({
+      apiKey: env.FIREWORKS_API_KEY || undefined,
+      baseUrl: env.FIREWORKS_BASE_URL || undefined,
+      models: buildCatalog(env.FIREWORKS_MODELS ?? 'accounts/fireworks/models/gpt-oss-120b'),
+      fetchImpl: opts.fetchImpl,
+    }),
+    createOpenRouterAdapter({
+      apiKey: env.OPENROUTER_API_KEY || undefined,
+      baseUrl: env.OPENROUTER_BASE_URL || undefined,
+      models: buildCatalog(env.OPENROUTER_MODELS ?? 'openai/gpt-oss-120b'),
       fetchImpl: opts.fetchImpl,
     }),
   );

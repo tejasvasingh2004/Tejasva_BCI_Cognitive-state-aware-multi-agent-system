@@ -38,6 +38,10 @@ const KNOWN: Record<string, KnownModel> = {
   'gpt-6-astra': km('GPT-6 Astra', 'strong', 1_050_000, true, 'effort', [10, 50]),
   'gpt-6.1-sol': km('GPT-6.1 Sol', 'balanced', 1_050_000, true, 'effort', [2, 10]),
   'gpt-6-luna': km('GPT-6 Luna', 'fast', 1_050_000, true, 'effort', [0.1, 0.5]),
+  // Hosted open-weight models (Together list prices; other hosts differ, override with MODEL_PRICING)
+  'Qwen/Qwen3.8-Flash': km('Qwen3.8 Flash', 'balanced', 1_000_000, true, 'toggle', [0.15, 0.47]),
+  'deepseek-ai/DeepSeek-V4.1-Flash': km('DeepSeek V4.1 Flash', 'balanced', 1_000_000, true, 'none', [0.3, 1.2]),
+  'accounts/fireworks/models/gpt-oss-120b': km('GPT-OSS 120B (Fireworks)', 'strong', 131_072, true, 'effort', [0.15, 0.6]),
   // Google Gemini (no list price recorded here; set MODEL_PRICING)
   'gemini-3.8-flash': km('Gemini 3.8 Flash', 'balanced', 1_048_576, true, 'effort'),
 };

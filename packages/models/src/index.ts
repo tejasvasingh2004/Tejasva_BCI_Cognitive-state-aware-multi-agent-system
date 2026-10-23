@@ -13,7 +13,13 @@ export {
   type HostedAdapterConfig,
   createOpenAIAdapter,
   createGoogleAdapter,
+  createTogetherAdapter,
+  createFireworksAdapter,
+  createOpenRouterAdapter,
   OPENAI_BASE_URL,
   GOOGLE_BASE_URL,
+  TOGETHER_BASE_URL,
+  FIREWORKS_BASE_URL,
+  OPENROUTER_BASE_URL,
 } from './adapters/hosted';
 export { stripThinking, ThinkFilter } from './think-filter';

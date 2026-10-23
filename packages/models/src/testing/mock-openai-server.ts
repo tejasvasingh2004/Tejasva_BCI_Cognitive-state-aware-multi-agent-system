@@ -48,7 +48,7 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
   };
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (req.method === 'GET' && req.url?.endsWith('/models')) {
+    if (req.method === 'GET' && (req.url?.endsWith('/models') || req.url?.endsWith('/key'))) {
       if (rejected(req, res)) return;
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ object: 'list', data: [] }));
