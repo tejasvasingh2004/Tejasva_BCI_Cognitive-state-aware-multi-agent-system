@@ -18,3 +18,4 @@ export * from './budgets';
 export * from './kms';
 export * from './webhooks';
 export * from './gateway-calls';
+export * from './routing-stats';

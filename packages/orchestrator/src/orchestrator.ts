@@ -47,6 +47,7 @@ export class Orchestrator {
         const cognitive = input.run.mode === 'cognitive' ? await this.resolveCognitive(input) : undefined;
         const lastUser = [...input.history].reverse().find((m) => m.role === 'user')?.content ?? '';
 
+        const learned = await this.deps.learnedRouting?.().catch(() => undefined);
         const plan = await withSpan('router.plan', { 'run.id': input.run.id }, async (routeSpan) => {
           const p = planExecution({
             mode: input.run.mode,
@@ -61,6 +62,7 @@ export class Orchestrator {
             }),
             availableAgents: catalog.ids(),
             ...(cognitive ? { cognitive } : {}),
+            ...(learned ? { learned } : {}),
           });
           routeSpan.setAttributes({
             'plan.strategy': p.agentStrategy,

@@ -1,3 +1,4 @@
+import type { LearnedRouting } from './learned-routing';
 import type {
   ChatMessage,
   ExecutionPlan,
@@ -62,6 +63,8 @@ export type OrchestratorDeps = {
   /** Human decisions outside tool calls (Plan Review). Without it, plans are never held. */
   approvals?: ApprovalGate;
   planReviewTimeoutMs?: number;
+  /** Measured outcomes for learned routing (refreshed by the host); rules apply without them. */
+  learnedRouting?: () => Promise<LearnedRouting | undefined>;
 };
 
 export type RunIdentity = {

@@ -21,6 +21,11 @@ const Env = z.object({
   RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   BCI_SERVICE_URL: z.string().optional(),
   TOOL_APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
+  /** Learned routing: choose models from measured quality, cost and latency per task class. */
+  ROUTER_LEARNING: z.enum(['enabled', 'disabled']).default('enabled'),
+  /** Share of eligible runs routed to an under-sampled model to keep learning (0 disables). */
+  ROUTER_EXPLORATION: z.coerce.number().min(0).max(0.5).default(0.05),
+  ROUTER_MIN_SAMPLES: z.coerce.number().int().positive().default(20),
   /** Code workspaces (checkouts + sandbox caches); must be the same directory as the API's. */
   CODE_DATA_DIR: z.string().optional(),
   /** Encryption key for stored credentials (base64, 32 bytes). Must match the API. */

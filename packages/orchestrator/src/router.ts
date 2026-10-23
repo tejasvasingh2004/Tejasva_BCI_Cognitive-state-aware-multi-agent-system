@@ -1,3 +1,4 @@
+import { learnedPrimary, type LearnedRouting } from './learned-routing';
 import type {
   AgentStrategy,
   CognitivePolicy,
@@ -84,6 +85,8 @@ export type RouterInput = {
   /** Agent ids that may be requested by name (built-in + workspace agents). */
   availableAgents?: string[];
   cognitive?: CognitivePolicy;
+  /** Measured model outcomes per task class (learned routing); rules apply without it. */
+  learned?: LearnedRouting;
 };
 
 const DEFAULT_MAX_DURATION_MS = 10 * 60_000;
@@ -165,7 +168,7 @@ export function planExecution(input: RouterInput): ExecutionPlan {
   if (input.request.selectedModel && !selected) {
     throw new RoutingError(`The selected model "${input.request.selectedModel}" is not available.`);
   }
-  const primary = selected ?? choosePrimary(available, input, tightLatency, rationale);
+  const primary = selected ?? choosePrimary(available, input, tightLatency, rationale, signals.taskClass);
 
   const allowedTools = input.request.tools
     ? input.availableTools.filter((t) => input.request.tools!.includes(t))
@@ -284,7 +287,7 @@ const TIER_ORDER = { fast: 0, balanced: 1, strong: 2 } as const;
  * preference favour the fastest tier, "quality" favours the strongest, a cost budget favours the
  * cheapest priced model; otherwise the configured default.
  */
-function choosePrimary(available: ModelInfo[], input: RouterInput, tightLatency: boolean, rationale: string[]): ModelInfo {
+function choosePrimary(available: ModelInfo[], input: RouterInput, tightLatency: boolean, rationale: string[], taskClass: TaskSignals['taskClass']): ModelInfo {
   const byTier = (dir: 1 | -1) => [...available].sort((a, b) => dir * (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]))[0]!;
   const preference = input.cognitive?.modelPreference;
   if (tightLatency || preference === 'fast') {
@@ -302,7 +305,9 @@ function choosePrimary(available: ModelInfo[], input: RouterInput, tightLatency:
     rationale.push(`Cognitive policy: strongest model ${m.ref}`);
     return m;
   }
-  return available.find((m) => m.ref === input.defaultModel) ?? available[0]!;
+  const fallback = available.find((m) => m.ref === input.defaultModel) ?? available[0]!;
+  // Explicit constraints above win; otherwise measured outcomes choose among available models.
+  return (input.learned ? learnedPrimary(available, taskClass, fallback, input.learned, rationale) : undefined) ?? fallback;
 }
 
 function autoStrategy(s: TaskSignals, toolsUsable: boolean, rationale: string[]): AgentStrategy {

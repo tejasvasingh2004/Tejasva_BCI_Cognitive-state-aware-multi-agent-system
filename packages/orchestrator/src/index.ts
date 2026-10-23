@@ -1,6 +1,7 @@
 export * from './types';
 export * from './errors';
 export * from './router';
+export * from './learned-routing';
 export * from './context';
 export * from './execution';
 export * from './evaluation';

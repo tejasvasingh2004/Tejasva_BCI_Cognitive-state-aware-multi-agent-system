@@ -1,10 +1,10 @@
 import type { Pool } from '@neuroflow/db';
 import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, WebhookService, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
+import { agentsRepo, cognitiveRepo, executionRepo, routingStatsRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { ModelError, type ModelGateway } from '@neuroflow/models';
-import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
+import { agentFromSpec, Orchestrator, type LearnedRouting, type RunStore } from '@neuroflow/orchestrator';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox, type Sandbox } from '@neuroflow/code';
 import {
   builtinTools,
@@ -39,6 +39,8 @@ export type RuntimeOptions = {
   platformKeys?: boolean;
   /** Key-encryption keys for workspace provider keys (KMS); defaults to the SECRETS_KEY-derived KEK. */
   keyRing?: KeyRing;
+  /** Learned routing settings; omitted = rules only. */
+  learnedRouting?: { exploration: number; minSamples: number; refreshMs?: number };
   bciServiceUrl?: string;
   approvalTimeoutMs?: number;
   /** Source of optional integrations (web search provider keys). */
@@ -115,6 +117,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     loadAgents: async (workspaceId) => (await agentsRepo.listForWorkspace(pool, workspaceId)).map(agentFromSpec),
     approvals: { wait: (runId, id, timeout, signal) => control.waitForApproval(runId, id, timeout, signal) },
     planReviewTimeoutMs: Math.max(opts.approvalTimeoutMs ?? 0, 15 * 60_000),
+    ...(opts.learnedRouting ? { learnedRouting: learnedRoutingSource(pool, opts.learnedRouting) } : {}),
   });
   // Workspace provider keys: decrypted per run, only here, and handed straight to the gateway.
   const providerKeys = new ProviderKeyVault(
@@ -136,4 +139,23 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     });
   };
   return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code, budgets, webhooks };
+}
+
+/** Measured outcomes for the router, read from Postgres at most every few minutes per worker. */
+function learnedRoutingSource(pool: Pool, cfg: { exploration: number; minSamples: number; refreshMs?: number }): () => Promise<LearnedRouting | undefined> {
+  let cached: { at: number; value: LearnedRouting } | undefined;
+  let loading: Promise<LearnedRouting> | undefined;
+  return async () => {
+    if (cached && Date.now() - cached.at < (cfg.refreshMs ?? 5 * 60_000)) return cached.value;
+    loading ??= routingStatsRepo
+      .load(pool)
+      .then((byTask) => {
+        const value: LearnedRouting = { byTask, exploration: cfg.exploration, minSamples: cfg.minSamples };
+        cached = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => (loading = undefined));
+    // A failed refresh keeps routing on the last snapshot (or on rules).
+    return loading.catch(() => cached?.value);
+  };
 }
