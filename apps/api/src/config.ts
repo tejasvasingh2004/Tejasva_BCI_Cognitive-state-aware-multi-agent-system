@@ -45,6 +45,11 @@ const Env = z.object({
   /** `disabled`: models are served only with workspaces' own provider keys (BYOK). */
   PLATFORM_MODEL_KEYS: z.enum(['enabled', 'disabled']).default('enabled'),
   /** Key-encryption key for workspace provider keys: local (SECRETS_KEY), aws-kms or vault. Same on API and worker. */
+  /** Webhooks may target http and private/loopback addresses: local development and tests only. */
+  WEBHOOK_ALLOW_PRIVATE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   KEK_PROVIDER: z.enum(['local', 'aws-kms', 'vault']).default('local'),
   AWS_KMS_KEY_ID: z.string().optional(),
   AWS_REGION: z.string().optional(),

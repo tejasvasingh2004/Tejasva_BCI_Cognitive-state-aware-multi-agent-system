@@ -6,7 +6,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createRedis, RedisRateLimiter } from '@neuroflow/bus';
+import { createServer } from 'node:http';
+import { createRedis, RedisRateLimiter, WebhookDeliverer } from '@neuroflow/bus';
 import { createFixtureRepo, startMockGitHub } from '@neuroflow/code/testing';
 import { createTestDatabase } from '@neuroflow/db/testing';
 import { createGatewayFromEnv } from '@neuroflow/models';
@@ -16,6 +17,7 @@ import { buildApp, createDeps, loadConfig } from '@neuroflow/api';
 import { createWorkerRuntime, startQueueWorkers } from '@neuroflow/worker';
 
 const PORT = Number(process.env.E2E_API_PORT ?? 8090);
+const HOOK_PORT = Number(process.env.E2E_HOOK_PORT ?? 8099);
 const REDIS_URL = process.env.E2E_REDIS_URL ?? 'redis://127.0.0.1:6380/2';
 
 const flush = createRedis(REDIS_URL);
@@ -96,6 +98,7 @@ const env = {
   CODE_DATA_DIR: codeDir,
   GITHUB_API_URL: github.url,
   SECRETS_KEY: Buffer.alloc(32, 7).toString('base64'),
+  WEBHOOK_ALLOW_PRIVATE: 'true',
 } as NodeJS.ProcessEnv;
 
 const logger = createLogger('e2e', { level: 'warn' });
@@ -123,12 +126,22 @@ const worker = startQueueWorkers({
   shutdownSignal: shutdown.signal,
   maxRunningPerWorkspace: 50,
 });
+// Webhook receiver for the E2E flows (answers 204) and the delivery loop the worker runs.
+const hookReceiver = createServer((req, res) => {
+  req.resume();
+  req.on('end', () => res.writeHead(204).end());
+});
+await new Promise<void>((r) => hookReceiver.listen(HOOK_PORT, '127.0.0.1', r));
+const deliverer = new WebhookDeliverer(db.pool, runtime.webhooks, { allowPrivate: true, intervalMs: 200 });
+deliverer.start();
 console.log(`e2e stack ready on http://127.0.0.1:${PORT}`);
 
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  await deliverer.stop();
+  hookReceiver.close();
   await worker.close(true).catch(() => {});
   await app.close().catch(() => {});
   await close();

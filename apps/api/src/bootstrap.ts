@@ -1,4 +1,4 @@
-import { BudgetService, createRedis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, SpendMeter, UsageMeter, WorkspaceEventHub } from '@neuroflow/bus';
+import { BudgetService, createRedis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, SpendMeter, UsageMeter, WebhookService, WorkspaceEventHub } from '@neuroflow/bus';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox } from '@neuroflow/code';
 import { BciHttpProvider } from '@neuroflow/cognitive';
 import { createPool, keyRingFromEnv, migrate, seedDev, ProviderKeyVault } from '@neuroflow/db';
@@ -63,6 +63,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     limiter: new RedisRateLimiter(redis),
     usage: new UsageMeter(redis),
     budgets: new BudgetService(pool, new SpendMeter(redis, pool)),
+    webhooks: new WebhookService(pool, secrets),
     plans: new PlanResolver(pool, config),
     errors,
     providerKeys: new ProviderKeyVault(pool, keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET })),

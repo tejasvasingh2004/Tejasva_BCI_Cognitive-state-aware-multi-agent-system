@@ -18,6 +18,8 @@ export type RunEmitterOptions = {
   /** Response deltas are coalesced for this long before being persisted/published. */
   deltaFlushMs?: number;
   onError?: (err: unknown) => void;
+  /** Called after each event is persisted and published (e.g. webhooks for run outcomes). */
+  onPersisted?: (event: RunEvent) => Promise<void> | void;
 };
 
 /**
@@ -69,6 +71,7 @@ export class RunEventEmitter implements RunEventSink {
       try {
         await runEventsRepo.append(this.opts.db, [event]);
         await this.opts.redis.publish(keys.events(event.runId), JSON.stringify(event));
+        await this.opts.onPersisted?.(event);
       } catch (err) {
         this.opts.onError?.(err);
       }

@@ -1,5 +1,5 @@
 import type { AuditAction, PlanDecisionBody, Principal, RunRequest } from '@neuroflow/contracts';
-import { RunEventEmitter, runPriority, spendLimitMessage, UsageMeter } from '@neuroflow/bus';
+import { RunEventEmitter, runPriority, spendLimitMessage, UsageMeter, webhookUrlProblem } from '@neuroflow/bus';
 import {
   auditRepo,
   codeApprovalsRepo,
@@ -33,6 +33,11 @@ export class RunManager {
     opts: { source: RunSource; idempotencyKey?: string },
   ): Promise<CreateRunResult> {
     return withSpan('run.create', { 'workspace.id': principal.workspaceId, 'run.source': opts.source }, async (span) => {
+      if (request.webhookUrl) {
+        // Async runs: the callback URL gets the same destination checks as webhook endpoints.
+        const problem = webhookUrlProblem(request.webhookUrl, { allowPrivate: this.deps.config.WEBHOOK_ALLOW_PRIVATE });
+        if (problem) throw new HttpError('bad_request', `webhookUrl: ${problem}`);
+      }
       const admission = await this.admit(principal);
       request = await this.applyModelLab(principal, request);
 
@@ -104,6 +109,7 @@ export class RunManager {
           redis: this.deps.redis,
           runId,
           startSeq: await runEventsRepo.maxSeq(this.deps.pool, runId),
+          onPersisted: (event) => this.deps.webhooks.fromRunEvent(principal.workspaceId, event),
         });
         emitter.emit('run.cancelled', { reason: 'Cancelled before execution started' });
         await emitter.flush();

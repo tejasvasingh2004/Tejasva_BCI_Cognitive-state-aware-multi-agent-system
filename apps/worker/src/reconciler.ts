@@ -1,5 +1,5 @@
 import type { Pool } from '@neuroflow/db';
-import { RunEventEmitter, runPriority, type Redis, type RunQueue } from '@neuroflow/bus';
+import { RunEventEmitter, runPriority, type Redis, type RunQueue, type WebhookService } from '@neuroflow/bus';
 import { auditRepo, runEventsRepo, runsRepo } from '@neuroflow/db';
 import type { MemoryService } from '@neuroflow/memory';
 import type { Logger } from '@neuroflow/observability';
@@ -14,6 +14,7 @@ export async function reconcileRuns(deps: {
   queue: RunQueue;
   logger: Logger;
   staleAfterMs?: number;
+  webhooks?: WebhookService;
 }): Promise<{ requeued: number; failed: number }> {
   const stale = await runsRepo.findStale(deps.pool, deps.staleAfterMs ?? 15 * 60_000);
   let requeued = 0;
@@ -34,6 +35,7 @@ export async function reconcileRuns(deps: {
         redis: deps.redis,
         runId: run.id,
         startSeq: await runEventsRepo.maxSeq(deps.pool, run.id),
+        ...(deps.webhooks ? { onPersisted: (event) => deps.webhooks!.fromRunEvent(run.workspaceId, event) } : {}),
       });
       if (cancelled) emitter.emit('run.cancelled', { reason: 'Cancelled' });
       else emitter.emit('run.failed', { error });

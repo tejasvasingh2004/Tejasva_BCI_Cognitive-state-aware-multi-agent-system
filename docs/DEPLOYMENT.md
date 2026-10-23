@@ -44,6 +44,7 @@ On Railway, connect the repository; `nixpacks.toml` builds with pnpm 9 on Node 2
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY` | optional platform keys; without them these providers serve only workspaces that add their own key (`*_MODELS` to change the list) |
 | `TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY` | optional platform keys for hosted open-weight models; workspaces can add their own instead |
 | `KEK_PROVIDER` | `local` (default, derived from `SECRETS_KEY`), `aws-kms` (`AWS_KMS_KEY_ID`, `AWS_REGION`) or `vault` (`VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_TRANSIT_KEY`); same on the worker. Then `pnpm keys:rewrap` |
+| `WEBHOOK_ALLOW_PRIVATE` | leave `false` in production (webhooks only to public https URLs); same on the worker, which delivers them |
 | `PLATFORM_MODEL_KEYS` | `disabled` on a public deployment: models run only with workspaces' own keys; same value on the worker |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | optional; users can connect with a token instead |
 

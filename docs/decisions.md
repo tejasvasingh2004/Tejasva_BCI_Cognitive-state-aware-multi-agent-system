@@ -285,6 +285,27 @@ token and a test repository.
   fits the same `KeyEncryptionKey` interface (not implemented).
 - **Not yet:** marking a key invalid automatically when a run gets an authentication error.
 
+## Webhooks and async runs
+
+- **Standard Webhooks, not a custom scheme.** `webhook-id` / `webhook-timestamp` /
+  `webhook-signature` with HMAC-SHA256 over `id.timestamp.body` and a `whsec_` secret: receivers can
+  use any Standard Webhooks library, and the id doubles as an idempotency key across retries.
+- **One signing secret per workspace.** It signs registered endpoints and per-run callback URLs
+  alike, so an async run needs no extra setup. It is sealed with `SECRETS_KEY` (workers must sign
+  with it), readable by admins (audited) and rotated with a 24-hour overlap during which both
+  secrets sign. The worker reads it per delivery, so a rotation applies at once.
+- **A Postgres outbox, not a Redis queue.** Events become `webhook_deliveries` rows after the run
+  event itself is persisted. Every worker claims due rows with `FOR UPDATE SKIP LOCKED` under a
+  lease, so deliveries survive Redis loss and worker crashes, retries are a timestamp, and resend
+  is an `UPDATE`. Order across events is not guaranteed and is documented.
+- **SSRF defence in depth.** Saving an endpoint or a run's `webhookUrl` requires a public https URL
+  without credentials; at delivery the connection pool resolves DNS itself and refuses private,
+  loopback, link-local, CGNAT and metadata addresses, so DNS rebinding cannot reach internal
+  services. Redirects are not followed; `410 Gone` switches an endpoint off.
+- **Async runs reuse the run API.** Runs were already asynchronous (`POST /v1/runs` returns before
+  work starts); `webhookUrl` adds the push half. Approvals work the same way: the
+  `run.approval_requested` event carries what `POST /v1/runs/:id/approvals` needs.
+
 ## Dollar budgets
 
 - **Spend is the recorded cost of model calls.** Each `model_calls` row already carries its estimated

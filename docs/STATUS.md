@@ -19,7 +19,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
-| Database | 10 migrations (`infra/migrations/0001` … `0010`) |
+| Database | 11 migrations (`infra/migrations/0001` … `0011`) |
 | Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
 | CI | GitHub Actions: typecheck · lint · unit · integration · E2E · app and image builds (`.github/workflows/ci.yml`) |
 | Deploy | `apps/site` and `apps/web` on Vercel (`vercel.json` in each), API on Railway (`nixpacks.toml`) |
@@ -144,7 +144,13 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   to other models, never to the platform key). Crossing the alert threshold or a limit writes one
   audit event per period. Spend comes from recorded model-call costs (`infra/migrations/0010_budgets.sql`,
   `packages/bus/src/budgets.ts`).
-- Next in Phase 1: SDKs, webhooks, async runs.
+- **Webhooks and async runs** — signed (Standard Webhooks) deliveries of `run.completed`,
+  `run.failed`, `run.cancelled`, `run.approval_requested` and budget alerts to registered endpoints
+  (Settings → Webhooks, `/v1/webhooks`) and to a run's own `webhookUrl`. A Postgres outbox delivered
+  by every worker (`SKIP LOCKED`), retries for about two days, delivery log with resend, secret
+  rotation with a 24-hour overlap, SSRF protection at save time and at connect time
+  (`packages/bus/src/webhooks.ts`, `infra/migrations/0011_webhooks.sql`, [WEBHOOKS.md](WEBHOOKS.md)).
+- Next in Phase 1: SDKs.
 
 ## 5. Scalability and reliability foundation
 

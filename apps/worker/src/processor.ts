@@ -66,6 +66,7 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
     runId: job.runId,
     startSeq: await runEventsRepo.maxSeq(pool, job.runId),
     onError: (err) => log.error({ err }, 'failed to persist/publish run event'),
+    onPersisted: (event) => runtime.webhooks.fromRunEvent(job.workspaceId, event),
   });
 
   const run = await runsRepo.markStarted(pool, job.runId);

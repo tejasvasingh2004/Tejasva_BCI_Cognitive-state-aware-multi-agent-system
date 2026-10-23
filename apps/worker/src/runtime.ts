@@ -1,5 +1,5 @@
 import type { Pool } from '@neuroflow/db';
-import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, type Redis } from '@neuroflow/bus';
+import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, WebhookService, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
 import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
@@ -26,6 +26,8 @@ export type WorkerRuntime = {
   code: CodeWorkspaceService;
   /** Dollar budgets: checked before every model call, charged after it. */
   budgets: BudgetService;
+  /** Webhook outbox: run outcomes, approval requests and budget alerts. */
+  webhooks: WebhookService;
 };
 
 export type RuntimeOptions = {
@@ -54,7 +56,10 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
 
   const memory = new PgMemoryService(pool);
   const usage = new UsageMeter(opts.redis);
-  const budgets = new BudgetService(pool, new SpendMeter(opts.redis, pool));
+  const webhooks = new WebhookService(pool, SecretBox.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'));
+  const budgets = new BudgetService(pool, new SpendMeter(opts.redis, pool), {
+    onAlert: async (workspaceId, type, data) => void (await webhooks.publish(workspaceId, type, data)),
+  });
   const code = new CodeWorkspaceService({
     pool,
     redis: opts.redis,
@@ -130,5 +135,5 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
       },
     });
   };
-  return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code, budgets };
+  return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code, budgets, webhooks };
 }

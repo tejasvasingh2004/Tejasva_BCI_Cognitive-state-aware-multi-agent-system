@@ -253,7 +253,9 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Dollar budgets: workspace daily and monthly limits with an alert threshold, monthly budget per
       provider key; enforced at run admission and before every model call; audit events at the
       threshold and the limit; Usage → Spending limits and per-key budgets in Settings
-- [ ] SDKs (TypeScript, Python), webhooks, async runs
+- [x] Webhooks and async runs: Standard Webhooks signatures, run outcomes, approval requests and
+      budget alerts; per-run `webhookUrl`; Postgres outbox with retries; Settings → Webhooks
+- [ ] SDKs (TypeScript, Python)
 
 ## Deployment
 

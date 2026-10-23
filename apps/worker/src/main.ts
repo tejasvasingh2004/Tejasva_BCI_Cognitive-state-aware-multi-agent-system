@@ -3,7 +3,7 @@ import { createErrorReporter, initTelemetry, reportProcessErrors, shutdownTeleme
 // Telemetry must start before instrumented libraries (pg, ioredis, http) are imported.
 await initTelemetry('neuroflow-worker');
 
-const { createRedis, RunQueue, RedisRateLimiter, startWorkerHeartbeat } = await import('@neuroflow/bus');
+const { createRedis, RunQueue, RedisRateLimiter, startWorkerHeartbeat, WebhookDeliverer } = await import('@neuroflow/bus');
 const { createPool, keyRingFromEnv, migrate } = await import('@neuroflow/db');
 const { createGatewayFromEnv } = await import('@neuroflow/models');
 const { loadConfig } = await import('./config');
@@ -69,9 +69,15 @@ const workers = startQueueWorkers({
 });
 // Liveness for the API's /status: disappears within ~30 s if this process dies or hangs.
 const heartbeat = startWorkerHeartbeat(redis, { queues: workers.queues });
+// Webhook deliveries (Postgres outbox; every worker can deliver, rows are claimed with SKIP LOCKED).
+const deliverer = new WebhookDeliverer(pool, runtime.webhooks, {
+  allowPrivate: config.WEBHOOK_ALLOW_PRIVATE,
+  onError: (err) => logger.warn({ err }, 'webhook delivery pass failed'),
+});
+deliverer.start();
 
 const reconcileTimer = setInterval(() => {
-  void reconcileRuns({ pool, redis, queue, logger }).catch((err) => logger.error({ err }, 'reconcile failed'));
+  void reconcileRuns({ pool, redis, queue, logger, webhooks: runtime.webhooks }).catch((err) => logger.error({ err }, 'reconcile failed'));
   void purgeExpiredMemories({ pool, memory: runtime.memory, logger }).catch((err) => logger.error({ err }, 'memory purge failed'));
 }, config.RECONCILE_INTERVAL_MS);
 
@@ -94,6 +100,7 @@ async function stop(signal: string) {
   await graceful.catch(() => {});
   clearTimeout(timer);
   await heartbeat.stop();
+  await deliverer.stop();
   await errors.flush();
   await Promise.allSettled([queue.close(), pool.end()]);
   for (const r of [redis, controlSubscriber, ...bullConnections]) r.disconnect();

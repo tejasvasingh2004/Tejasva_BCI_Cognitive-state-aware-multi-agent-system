@@ -34,6 +34,7 @@ Of particular interest:
   approval, or server secrets;
 - GitHub tokens or API keys reaching the browser, the model, logs or events;
 - bypassing workspace authorization, tool authorization or approval policies;
+- making webhook deliveries reach internal addresses (SSRF) or forging webhook signatures;
 - pushing to protected branches or merging pull requests;
 - authentication, session or API key weaknesses;
 - injection through tool arguments, file paths or repository content.
@@ -49,6 +50,8 @@ Of particular interest:
 - Error tracking (optional, `SENTRY_DSN`) sends only the error type, message and stack trace with
   credentials redacted, plus route, stage and ids; never request bodies, prompts, model output or
   headers. `GET /status` exposes aggregate counts only.
+- Webhooks are signed (Standard Webhooks, HMAC-SHA256) and sent only to public https addresses,
+  checked when saved and again after DNS resolution at connect time; redirects are not followed.
 - Every tool call is schema-validated, authorized and, when consequential, approved by the user.
 - Agent commands run in throwaway Docker containers: no network by default, read-only system,
   dropped capabilities, CPU / memory / process / time limits, no inherited environment.

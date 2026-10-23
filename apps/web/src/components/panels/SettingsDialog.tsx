@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plug, Plus, ScrollText, ShieldCheck, Sun, Trash2 } from 'lucide-react';
+import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plug, Plus, ScrollText, ShieldCheck, Sun, Trash2, Webhook } from 'lucide-react';
 import { formatUsd, type AgentSpec, type ProviderKeyInfo } from '@neuroflow/contracts';
 import { api, ApiRequestError } from '@/lib/api';
 import { cn, relativeTime } from '@/lib/utils';
@@ -8,8 +8,9 @@ import { keys, useAgents, useApiKeys, useAudit, useSession, useSettings, useTool
 import { useUi } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { WebhooksTab } from './WebhooksTab';
 
-type Tab = 'general' | 'workspace' | 'agents' | 'providers' | 'keys' | 'audit';
+type Tab = 'general' | 'workspace' | 'agents' | 'providers' | 'webhooks' | 'keys' | 'audit';
 
 const input =
   'w-full rounded-2xl border border-line bg-surface/80 px-3.5 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-accent/50';
@@ -26,6 +27,7 @@ export function SettingsDialog() {
     { id: 'workspace', label: 'Workspace', icon: Building2 },
     { id: 'agents', label: 'Agents', icon: Bot },
     { id: 'providers', label: 'Model providers', icon: Plug },
+    { id: 'webhooks', label: 'Webhooks', icon: Webhook },
     { id: 'keys', label: 'API keys', icon: KeyRound },
     { id: 'audit', label: 'Audit log', icon: ScrollText, admin: true },
   ];
@@ -55,6 +57,7 @@ export function SettingsDialog() {
           {tab === 'workspace' && <WorkspaceTab />}
           {tab === 'agents' && <AgentsTab />}
           {tab === 'providers' && <ProviderKeysTab />}
+          {tab === 'webhooks' && <WebhooksTab />}
           {tab === 'keys' && <ApiKeysTab />}
           {tab === 'audit' && isAdmin && <AuditTab />}
         </div>

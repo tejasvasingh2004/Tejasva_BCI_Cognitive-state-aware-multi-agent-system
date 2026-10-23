@@ -6,6 +6,9 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-24
 
 ### Added
+- Webhooks (Settings → Webhooks, `/v1/webhooks`): signed run outcomes, approval requests and budget
+  alerts, with retries, a delivery log and secret rotation. Async runs: `webhookUrl` on a run
+  posts its result when it is ready. See [docs/WEBHOOKS.md](docs/WEBHOOKS.md).
 - Workspace provider keys can be protected by AWS KMS or HashiCorp Vault Transit
   (`KEK_PROVIDER`); existing keys move over without downtime (`pnpm keys:rewrap`).
 - Hosted open-weight models through Together AI, Fireworks AI and OpenRouter, with server keys

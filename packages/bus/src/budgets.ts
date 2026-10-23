@@ -92,7 +92,12 @@ export class BudgetService {
   constructor(
     private readonly pool: Pool,
     private readonly meter: SpendMeter,
-    private readonly opts: { cacheMs?: number; now?: () => Date } = {},
+    private readonly opts: {
+      cacheMs?: number;
+      now?: () => Date;
+      /** Also notified of threshold and limit crossings (webhooks). */
+      onAlert?: (workspaceId: string, type: 'budget.threshold_reached' | 'budget.exceeded', data: Record<string, unknown>) => Promise<void>;
+    } = {},
   ) {}
 
   private now() {
@@ -190,6 +195,7 @@ export class BudgetService {
       const targetType = target.scope === 'key_month' ? 'provider_key' : 'workspace';
       if (spendUsd >= limitUsd && (await this.meter.once(target, 'exceeded', at))) {
         await auditRepo.record(this.pool, { action: 'budget.exceeded', workspaceId: input.workspaceId, actorVia: 'system', targetType, targetId, metadata });
+        await this.opts.onAlert?.(input.workspaceId, 'budget.exceeded', metadata);
       } else if (spendUsd >= (limitUsd * budget.alertPercent) / 100 && spendUsd < limitUsd && (await this.meter.once(target, 'alert', at))) {
         await auditRepo.record(this.pool, {
           action: 'budget.threshold_reached',
@@ -199,6 +205,7 @@ export class BudgetService {
           targetId,
           metadata: { ...metadata, alertPercent: budget.alertPercent },
         });
+        await this.opts.onAlert?.(input.workspaceId, 'budget.threshold_reached', { ...metadata, alertPercent: budget.alertPercent });
       }
     }
   }

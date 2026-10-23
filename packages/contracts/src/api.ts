@@ -201,6 +201,11 @@ export const AuditAction = z.enum([
   'budget.updated',
   'budget.threshold_reached',
   'budget.exceeded',
+  'webhook.created',
+  'webhook.updated',
+  'webhook.deleted',
+  'webhook.secret_revealed',
+  'webhook.secret_rotated',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 

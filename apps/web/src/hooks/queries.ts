@@ -19,6 +19,8 @@ export const keys = {
   apiKeys: ['api-keys'] as const,
   providerKeys: ['provider-keys'] as const,
   budget: ['budget'] as const,
+  webhooks: ['webhooks'] as const,
+  webhookDeliveries: ['webhook-deliveries'] as const,
   audit: ['audit'] as const,
 };
 

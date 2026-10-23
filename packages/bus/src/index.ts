@@ -6,3 +6,4 @@ export * from './workspace-events';
 export * from './rate-limit';
 export * from './heartbeat';
 export * from './budgets';
+export * from './webhooks';

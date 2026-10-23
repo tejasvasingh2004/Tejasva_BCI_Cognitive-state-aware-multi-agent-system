@@ -81,6 +81,11 @@ export const RunRequest = z.object({
   /** Repository / code workspace context (Product Phase 2 code runs). */
   workspaceContext: WorkspaceContext.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Async runs: when the run finishes (or waits for an approval) NeuroFlow posts a signed
+   * `run.*` webhook here, in addition to the workspace's webhook endpoints.
+   */
+  webhookUrl: z.string().trim().url().max(2048).optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;
 export type RunRequestInput = z.input<typeof RunRequest>;
