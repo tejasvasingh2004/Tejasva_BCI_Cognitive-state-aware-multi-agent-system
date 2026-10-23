@@ -94,6 +94,13 @@ export function createGatewayFromEnv(env: Env = process.env, opts: GatewayFromEn
       .map((s) => s.trim())
       .filter(Boolean),
     equivalentFailover: env.MODEL_EQUIVALENT_FAILOVER !== 'disabled',
+    adaptiveConcurrency:
+      env.MODEL_ADAPTIVE_CONCURRENCY === 'disabled'
+        ? false
+        : {
+            ...(positive(env.MODEL_ADAPTIVE_INITIAL) ? { initial: positive(env.MODEL_ADAPTIVE_INITIAL)! } : {}),
+            ...(positive(env.MODEL_ADAPTIVE_MAX) ? { max: positive(env.MODEL_ADAPTIVE_MAX)! } : {}),
+          },
     ...num(env.MODEL_MAX_RETRIES, (v) => ({ maxRetries: v })),
     ...num(env.MODEL_TIMEOUT_MS, (v) => ({ attemptTimeoutMs: v })),
     ...num(env.MODEL_FIRST_TOKEN_TIMEOUT_MS, (v) => ({ firstTokenTimeoutMs: v })),

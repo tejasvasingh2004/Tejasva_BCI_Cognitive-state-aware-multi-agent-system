@@ -9,7 +9,7 @@ import type { AddressInfo, Socket } from 'node:net';
 export type MockChunk = { content?: string; reasoning?: string; toolCalls?: Array<{ id: string; name: string; arguments: string }> };
 
 export type MockReply =
-  | { kind: 'stream'; chunks: MockChunk[]; chunkDelayMs?: number; finishReason?: string; usage?: boolean; hangAfter?: number; cachedTokens?: number }
+  | { kind: 'stream'; chunks: MockChunk[]; chunkDelayMs?: number; finishReason?: string; usage?: boolean; hangAfter?: number; cachedTokens?: number; headers?: Record<string, string> }
   | { kind: 'error'; status: number; message?: string; retryAfter?: string }
   | { kind: 'hang' };
 
@@ -75,7 +75,7 @@ export async function startMockOpenAIServer(script: MockScript = defaultScript, 
     }
     if (reply.kind === 'hang') return; // never respond
 
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...reply.headers });
     let closed = false;
     res.on('close', () => (closed = true));
     const id = `chatcmpl-mock-${requests.length}`;

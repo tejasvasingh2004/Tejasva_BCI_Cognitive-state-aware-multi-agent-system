@@ -99,6 +99,8 @@ export type ProviderEvent =
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'usage'; usage: Usage }
   | { type: 'state'; state: ProviderState }
+  /** The provider's own rate-limit headers for the key used (remaining budget and reset times). */
+  | { type: 'ratelimit'; remainingRequests?: number; remainingTokens?: number; resetRequestsMs?: number; resetTokensMs?: number }
   | { type: 'finish'; reason: FinishReason };
 
 export type ReasoningStyle =

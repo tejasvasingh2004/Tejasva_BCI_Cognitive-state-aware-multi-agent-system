@@ -7,6 +7,7 @@ import {
   type ToolCall,
   type Usage,
 } from '@neuroflow/contracts';
+import { AdaptiveLimit, type AdaptiveLimitOptions, type AdaptiveLimitSnapshot } from './adaptive-limit';
 import { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER, PROVIDER_HEALTH_FAILURES, type CircuitBreakerOptions } from './circuit-breaker';
 import { ModelError, isAbortError } from './errors';
 import { estimateRequestTokens, InMemoryRateLimiter, type BucketLimits, type RateLimiter } from './rate-limit';
@@ -29,6 +30,8 @@ export type GatewayPolicy = {
   defaultFallbacks: string[];
   /** Fail over to the same model on another provider before falling back to other models. */
   equivalentFailover: boolean;
+  /** Latency-adaptive concurrency limit per provider in this process; false = fixed limits only. */
+  adaptiveConcurrency: AdaptiveLimitOptions | false;
   defaultModel?: string;
   /** Per-model pricing overrides keyed by model ref (USD per 1M tokens). */
   pricing: Map<string, ModelPricing>;
@@ -64,6 +67,7 @@ export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   maxRateLimitWaitMs: 60_000,
   defaultFallbacks: [],
   equivalentFailover: true,
+  adaptiveConcurrency: {},
   pricing: new Map(),
   providerConcurrency: {},
   providerLimits: {},
@@ -111,6 +115,23 @@ export class DefaultModelGateway implements ModelGateway {
     this.sleep = opts.sleep ?? defaultSleep;
     this.now = opts.now ?? Date.now;
     this.limiter = opts.limiter ?? new InMemoryRateLimiter(this.now);
+  }
+
+  private readonly adaptive = new Map<string, AdaptiveLimit>();
+
+  private adaptiveFor(provider: string): AdaptiveLimit | undefined {
+    if (this.policy.adaptiveConcurrency === false) return undefined;
+    let l = this.adaptive.get(provider);
+    if (!l) {
+      l = new AdaptiveLimit(this.policy.adaptiveConcurrency);
+      this.adaptive.set(provider, l);
+    }
+    return l;
+  }
+
+  /** Current adaptive concurrency limits per provider (for health views). */
+  adaptiveLimits(): Record<string, AdaptiveLimitSnapshot> {
+    return Object.fromEntries([...this.adaptive].map(([id, l]) => [id, l.snapshot()]));
   }
 
   private breakerFor(provider: string): CircuitBreaker {
@@ -346,6 +367,25 @@ export class DefaultModelGateway implements ModelGateway {
           break;
         }
 
+        // Adaptive concurrency: beyond the provider's current limit, wait for a slot.
+        const adaptive = this.adaptiveFor(adapter.id);
+        let releaseSlot: ((sample: { rttMs?: number; overloaded?: boolean }) => void) | undefined;
+        if (adaptive) {
+          const snap = adaptive.snapshot();
+          if (snap.inflight >= snap.limit) {
+            yield { type: 'throttled', ref, provider: adapter.id, waitMs: 0, reason: `Waiting for a ${adapter.displayName} slot (adaptive limit ${snap.limit})` };
+          }
+          try {
+            releaseSlot = await adaptive.acquire(request.signal, this.policy.maxRateLimitWaitMs);
+          } catch (err) {
+            await admission.release().catch(() => {});
+            const error = toModelError(err, request.signal);
+            if (error.code === 'cancelled') throw error;
+            lastError = error;
+            break;
+          }
+        }
+
         totalAttempts++;
         yield { type: 'attempt', ref, provider: adapter.id, model, attempt };
 
@@ -354,6 +394,7 @@ export class DefaultModelGateway implements ModelGateway {
           const result = yield* this.runAttempt(adapter, entry, model, request, admission, () => {
             producedOutput = true;
           });
+          releaseSlot?.({ ...(result.firstTokenMs !== undefined ? { rttMs: result.firstTokenMs } : {}) });
           breaker.onSuccess();
           // Correct the reservation with what the provider actually counted.
           const actual = result.usage?.totalTokens;
@@ -376,6 +417,7 @@ export class DefaultModelGateway implements ModelGateway {
           return;
         } catch (err) {
           const error = toModelError(err, request.signal);
+          releaseSlot?.({ overloaded: error.code === 'rate_limited' || error.code === 'unavailable' || error.code === 'timeout' });
           if (PROVIDER_HEALTH_FAILURES.has(error.code)) breaker.onFailure();
           else breaker.onNeutral();
           if (error.code === 'cancelled') throw error;
@@ -497,7 +539,7 @@ export class DefaultModelGateway implements ModelGateway {
     entry: CatalogEntry,
     model: string,
     request: ModelRequest,
-    admission: Pick<Admission, 'keyIndex' | 'apiKey'>,
+    admission: Pick<Admission, 'keyIndex' | 'apiKey' | 'scope' | 'tokens'>,
     onOutput: () => void,
   ): AsyncGenerator<ModelEvent, Omit<ModelResponse, 'provider' | 'model' | 'ref' | 'latencyMs' | 'attempts'>> {
     const controller = new AbortController();
@@ -547,6 +589,16 @@ export class DefaultModelGateway implements ModelGateway {
             onOutput();
             yield { type: 'tool_call', call: ev.call };
             break;
+          case 'ratelimit': {
+            // The provider says this key is (nearly) out of budget: every worker sharing the key
+            // waits for the provider's reset instead of collecting 429s.
+            const needed = Math.max(admission.tokens, 1_000);
+            if (ev.remainingRequests === 0 && ev.resetRequestsMs) void this.limiter.block(admission.scope, ev.resetRequestsMs).catch(() => {});
+            else if (ev.remainingTokens !== undefined && ev.remainingTokens < needed && ev.resetTokensMs) {
+              void this.limiter.block(admission.scope, ev.resetTokensMs).catch(() => {});
+            }
+            break;
+          }
           case 'usage':
             usage = ev.usage;
             break;

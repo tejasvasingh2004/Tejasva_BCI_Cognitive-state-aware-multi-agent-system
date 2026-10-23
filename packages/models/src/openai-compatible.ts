@@ -2,6 +2,7 @@ import type { ChatMessage, ToolCall } from '@neuroflow/contracts';
 import { ModelError, httpStatusToError, isAbortError } from './errors';
 import { readSseData } from './sse';
 import { ThinkFilter } from './think-filter';
+import { parseResetDuration } from './adaptive-limit';
 import type { FinishReason, ProviderEvent, ProviderRequest, CredentialCheck } from './types';
 
 /**
@@ -103,6 +104,9 @@ export async function* streamOpenAICompatible(
     throw httpStatusToError(res.status, text, res.headers.get('retry-after'));
   }
 
+  const limits = rateLimitHeaders(res.headers);
+  if (limits) yield limits;
+
   const think = new ThinkFilter();
   const toolParts = new Map<number, { id: string; name: string; args: string }>();
   let finish: FinishReason | undefined;
@@ -171,6 +175,23 @@ export async function* streamOpenAICompatible(
   for (const call of calls) yield { type: 'tool_call', call };
 
   yield { type: 'finish', reason: calls.length > 0 ? 'tool_calls' : (finish ?? 'unknown') };
+}
+
+/** OpenAI-style `x-ratelimit-*` headers (OpenAI, Groq, Together, …), when the provider sends them. */
+export function rateLimitHeaders(h: Headers): Extract<ProviderEvent, { type: 'ratelimit' }> | undefined {
+  const num = (name: string) => {
+    const v = h.get(name);
+    return v === null || v === '' || !Number.isFinite(Number(v)) ? undefined : Number(v);
+  };
+  const ev = {
+    type: 'ratelimit' as const,
+    remainingRequests: num('x-ratelimit-remaining-requests'),
+    remainingTokens: num('x-ratelimit-remaining-tokens'),
+    resetRequestsMs: parseResetDuration(h.get('x-ratelimit-reset-requests')),
+    resetTokensMs: parseResetDuration(h.get('x-ratelimit-reset-tokens')),
+  };
+  if (ev.remainingRequests === undefined && ev.remainingTokens === undefined) return undefined;
+  return Object.fromEntries(Object.entries(ev).filter(([, v]) => v !== undefined)) as typeof ev;
 }
 
 function normalizeFinish(reason: string): FinishReason {

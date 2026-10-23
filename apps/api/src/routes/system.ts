@@ -66,7 +66,7 @@ export async function systemRoutes(app: FastifyInstance, deps: AppDeps, authLimi
     return reply
       .code(status === 'ok' ? 200 : 503)
       .header('cache-control', 'no-store')
-      .send({ status, time: new Date().toISOString(), problems, checks: { database: db ? 'ok' : 'error', redis: redis ? 'ok' : 'error', workers, queues, models: modelsAvailable ? 'ok' : 'none_available' } });
+      .send({ status, time: new Date().toISOString(), problems, checks: { database: db ? 'ok' : 'error', redis: redis ? 'ok' : 'error', workers, queues, models: modelsAvailable ? 'ok' : 'none_available', modelConcurrency: deps.gateway.adaptiveLimits() } });
   });
 
   /** Public: tells the web app which sign-in experience to show. */
