@@ -43,7 +43,8 @@ Of particular interest:
 
 - Credentials are encrypted at rest (AES-256-GCM) and never sent to the browser or the model.
 - Workspace provider keys (bring your own key) use envelope encryption: a data key per workspace,
-  wrapped by a key-encryption key: AWS KMS or HashiCorp Vault Transit (`KEK_PROVIDER`), or one
+  wrapped by a key-encryption key: AWS KMS, Google Cloud KMS or HashiCorp Vault Transit
+  (`KEK_PROVIDER`), or one
   derived from `SECRETS_KEY`; each key is bound to its workspace, provider and id. Keys are checked with the
   provider before they are stored, shown afterwards only as their last four characters, decrypted
   only in workers at run time, and isolated in their own rate-limit scope.

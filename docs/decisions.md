@@ -281,8 +281,10 @@ token and a test repository.
   free and self-hostable; the workspace context is sealed with the data key and checked on unwrap,
   so it works with any Transit key. A key ring holds the primary KEK plus the local one: data keys
   wrapped before a migration still open and are re-wrapped with the primary on first use, or all
-  at once with `pnpm keys:rewrap`. Provider keys themselves are never re-encrypted. Google Cloud KMS
-  fits the same `KeyEncryptionKey` interface (not implemented).
+  at once with `pnpm keys:rewrap`. Provider keys themselves are never re-encrypted.
+  `KEK_PROVIDER=gcp-kms` uses Cloud KMS over REST (no gRPC SDK): `encrypt` / `decrypt` with the
+  workspace context as additional authenticated data; tokens from a service-account key (signed
+  RS256 JWT) or the metadata server, cached until shortly before expiry.
 - **Rejected keys are retired automatically.** When a provider answers 401 to a workspace key during
   a run or gateway call, the key is marked invalid (once, with a `provider_key.invalidated` audit
   event) and later runs stop using it until someone checks it again. 403 does not invalidate: it is

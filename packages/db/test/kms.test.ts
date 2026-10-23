@@ -1,10 +1,11 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createVerify, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   authRepo,
   AwsKmsKeyEncryptionKey,
+  GcpKmsKeyEncryptionKey,
   keyRingFromEnv,
   KeyRing,
   LocalKeyEncryptionKey,
@@ -162,5 +163,76 @@ describe('KMS key-encryption keys', () => {
       // Once everything is re-wrapped the old KEK is no longer needed.
       expect((await new ProviderKeyVault(db.pool, vaultKek).credentials(b.workspaceId)).groq?.apiKey).toBe('gsk_workspace_b_key_0002');
     });
+  });
+});
+
+describe('Google Cloud KMS key-encryption key', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  const KEY = 'projects/p1/locations/global/keyRings/nf/cryptoKeys/kek';
+  const stats = { tokens: 0, metadata: 0 };
+  const store = new Map<string, { plaintext: string; aad: string }>();
+  let base = '';
+  const server = createServer(async (req, res) => {
+    const raw = await body(req);
+    if (req.url === '/token') {
+      const assertion = new URLSearchParams(raw).get('assertion') ?? '';
+      const [h, c, sig] = assertion.split('.');
+      const valid = createVerify('RSA-SHA256').update(`${h}.${c}`).verify(publicKey, Buffer.from(sig ?? '', 'base64url'));
+      const claims = JSON.parse(Buffer.from(c ?? '', 'base64url').toString()) as { iss: string; scope: string; aud: string };
+      if (!valid || claims.iss !== 'kms@p1.iam.gserviceaccount.com' || claims.scope !== 'https://www.googleapis.com/auth/cloudkms' || claims.aud !== `${base}/token`) {
+        return void res.writeHead(401).end('{}');
+      }
+      stats.tokens++;
+      return void res.end(JSON.stringify({ access_token: 'ya29.sa-token', expires_in: 3600 }));
+    }
+    if (req.url === '/metadata/token') {
+      if (req.headers['metadata-flavor'] !== 'Google') return void res.writeHead(403).end();
+      stats.metadata++;
+      return void res.end(JSON.stringify({ access_token: 'ya29.md-token', expires_in: 3600 }));
+    }
+    if (!['Bearer ya29.sa-token', 'Bearer ya29.md-token'].includes(String(req.headers.authorization))) return void res.writeHead(401).end('{}');
+    const json = JSON.parse(raw || '{}') as { plaintext?: string; ciphertext?: string; additionalAuthenticatedData?: string };
+    if (req.url === `/v1/${KEY}:encrypt`) {
+      const id = Buffer.from(randomUUID()).toString('base64');
+      store.set(id, { plaintext: json.plaintext!, aad: json.additionalAuthenticatedData ?? '' });
+      return void res.end(JSON.stringify({ name: `${KEY}/cryptoKeyVersions/1`, ciphertext: id }));
+    }
+    if (req.url === `/v1/${KEY}:decrypt`) {
+      const entry = store.get(json.ciphertext ?? '');
+      if (!entry || entry.aad !== (json.additionalAuthenticatedData ?? '')) return void res.writeHead(400).end('{"error":{"message":"Decryption failed"}}');
+      return void res.end(JSON.stringify({ plaintext: entry.plaintext }));
+    }
+    res.writeHead(404).end();
+  });
+
+  beforeAll(async () => {
+    base = await listen(server);
+  });
+  afterAll(() => server.close());
+
+  it('wraps with a service-account token, binds the context as authenticated data, and reuses the token', async () => {
+    const env = {
+      KEK_PROVIDER: 'gcp-kms',
+      GCP_KMS_KEY_NAME: KEY,
+      GCP_KMS_ENDPOINT: base,
+      GCP_KMS_CREDENTIALS_JSON: JSON.stringify({ type: 'service_account', client_email: 'kms@p1.iam.gserviceaccount.com', private_key: privateKey, token_uri: `${base}/token` }),
+    };
+    const ring = keyRingFromEnv(env, { secretsKey: randomBytes(32).toString('base64'), fallbackSecret: 'x'.repeat(32) });
+    expect(ring.primary.id).toBe(`gcp-kms:${KEY}`);
+    const dek = randomBytes(32);
+    const wrapped = await ring.primary.wrap(dek, 'nf-dek:ws-1');
+    expect(wrapped).toMatch(/^gcpkms1\./);
+    expect((await ring.primary.unwrap(wrapped, 'nf-dek:ws-1')).equals(dek)).toBe(true);
+    await expect(ring.primary.unwrap(wrapped, 'nf-dek:ws-2')).rejects.toThrow('Cloud KMS decrypt failed with HTTP 400');
+    expect(stats.tokens).toBe(1);
+  });
+
+  it('uses the metadata server when no service-account key is configured, and validates settings', async () => {
+    const kek = new GcpKmsKeyEncryptionKey({ keyName: KEY, endpoint: base, metadataUrl: `${base}/metadata/token` });
+    const dek = randomBytes(32);
+    expect((await kek.unwrap(await kek.wrap(dek, 'c'), 'c')).equals(dek)).toBe(true);
+    expect(stats.metadata).toBe(1);
+    expect(() => new GcpKmsKeyEncryptionKey({ keyName: 'projects/p1/keys/kek' })).toThrow(/GCP_KMS_KEY_NAME must look like/);
+    expect(() => keyRingFromEnv({ KEK_PROVIDER: 'gcp-kms' }, { secretsKey: undefined, fallbackSecret: 'x'.repeat(32) })).toThrow(/GCP_KMS_KEY_NAME/);
   });
 });

@@ -43,7 +43,7 @@ On Railway, connect the repository; `nixpacks.toml` builds with pnpm 9 on Node 2
 | `GROQ_API_KEY`, `GROQ_MODELS` | provider key and models (optional when every workspace brings its own key) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY` | optional platform keys; without them these providers serve only workspaces that add their own key (`*_MODELS` to change the list) |
 | `TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY` | optional platform keys for hosted open-weight models; workspaces can add their own instead |
-| `KEK_PROVIDER` | `local` (default, derived from `SECRETS_KEY`), `aws-kms` (`AWS_KMS_KEY_ID`, `AWS_REGION`) or `vault` (`VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_TRANSIT_KEY`); same on the worker. Then `pnpm keys:rewrap` |
+| `KEK_PROVIDER` | `local` (default, derived from `SECRETS_KEY`), `aws-kms` (`AWS_KMS_KEY_ID`, `AWS_REGION`) `vault` (`VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_TRANSIT_KEY`) or `gcp-kms` (`GCP_KMS_KEY_NAME` + `GOOGLE_APPLICATION_CREDENTIALS` or the metadata server); same on the worker. Then `pnpm keys:rewrap` |
 | `WEBHOOK_ALLOW_PRIVATE` | leave `false` in production (webhooks only to public https URLs); same on the worker, which delivers them |
 | `GATEWAY_FAST_PATH`, `MODEL_EQUIVALENT_FAILOVER`, `MODEL_ADAPTIVE_CONCURRENCY`, `MODEL_HEDGE_AFTER_MS` | latency and self-healing controls, all on by default except hedging ([GATEWAY.md](GATEWAY.md)) |
 | `PLATFORM_MODEL_KEYS` | `disabled` on a public deployment: models run only with workspaces' own keys; same value on the worker |

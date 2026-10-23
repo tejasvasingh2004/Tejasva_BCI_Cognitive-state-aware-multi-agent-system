@@ -121,7 +121,7 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   remove. A key is verified with the provider before it is stored and shown afterwards only as its
   last four characters.
 - **Envelope encryption** — a random data key per workspace, wrapped by a key-encryption key
-  (AWS KMS or Vault Transit via `KEK_PROVIDER`, or derived from `SECRETS_KEY`); provider keys sealed with
+  (AWS KMS, Google Cloud KMS or Vault Transit via `KEK_PROVIDER`, or derived from `SECRETS_KEY`); provider keys sealed with
   AES-256-GCM, bound to workspace, provider and id (`infra/migrations/0009_provider_keys.sql`,
   `packages/db/src/provider-keys.ts`).
 - **Runs use the workspace's key** — the worker gives each run (and its conversation summary and

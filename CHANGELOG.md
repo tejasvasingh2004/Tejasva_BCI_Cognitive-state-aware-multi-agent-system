@@ -17,6 +17,9 @@ the project does not publish versioned releases yet, so entries are grouped by d
   provider rate-limit headers respected, optional hedged first token, and runs that resume from
   their last completed step after a worker crash.
 - Sandbox isolation with gVisor or Kata microVMs (`SANDBOX_RUNTIME`).
+- Google Cloud KMS as a key-encryption key for workspace provider keys (`KEK_PROVIDER=gcp-kms`).
+- A workspace key the provider rejects (401) during a run is marked invalid automatically.
+- Anthropic's rate-limit headers are respected like OpenAI-style ones.
 
 ### Fixed
 - Models served only by a workspace's own key were rejected as unknown by `/v1/chat/completions`,

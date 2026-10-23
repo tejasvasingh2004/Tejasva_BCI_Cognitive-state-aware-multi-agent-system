@@ -244,7 +244,8 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] Bring your own key: workspace provider keys, envelope-encrypted, verified before storage,
       hint-only display, used by runs through a tenant-scoped gateway with isolated rate limits;
       `PLATFORM_MODEL_KEYS=disabled` for BYOK-only deployments; Settings → Model providers
-- [x] KMS-backed key-encryption key: AWS KMS (encryption context per workspace) and Vault Transit;
+- [x] KMS-backed key-encryption key: AWS KMS (encryption context per workspace), Google Cloud KMS
+      (additional authenticated data) and Vault Transit;
       key ring keeps earlier KEKs readable, re-wraps on use and with `pnpm keys:rewrap`
 - [x] Adapters for Anthropic (official SDK, thinking blocks preserved across tool calls), OpenAI and
       Google Gemini (OpenAI-compatible endpoints), with workspace keys and platform keys

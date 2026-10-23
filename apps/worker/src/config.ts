@@ -37,13 +37,18 @@ const Env = z.object({
   GITHUB_API_URL: z.string().optional(),
   /** `disabled`: models are served only with workspaces' own provider keys (BYOK). */
   PLATFORM_MODEL_KEYS: z.enum(['enabled', 'disabled']).default('enabled'),
-  /** Key-encryption key for workspace provider keys: local (SECRETS_KEY), aws-kms or vault. Same on API and worker. */
+  /** Key-encryption key for workspace provider keys: local (SECRETS_KEY), aws-kms, vault or gcp-kms. Same on API and worker. */
   /** Webhooks may target http and private/loopback addresses: local development and tests only. */
   WEBHOOK_ALLOW_PRIVATE: z
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-  KEK_PROVIDER: z.enum(['local', 'aws-kms', 'vault']).default('local'),
+  KEK_PROVIDER: z.enum(['local', 'aws-kms', 'vault', 'gcp-kms']).default('local'),
+  GCP_KMS_KEY_NAME: z.string().optional(),
+  GCP_KMS_ENDPOINT: z.string().optional(),
+  GCP_KMS_CREDENTIALS_JSON: z.string().optional(),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+
   AWS_KMS_KEY_ID: z.string().optional(),
   AWS_REGION: z.string().optional(),
   AWS_KMS_ENDPOINT: z.string().optional(),
