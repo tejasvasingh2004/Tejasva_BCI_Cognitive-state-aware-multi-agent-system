@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   addUsage,
   type ChatMessage,
@@ -125,7 +125,28 @@ export type RunContext = {
   code?: CodeRunState;
   /** Client-defined tool calls returned to the API client (direct strategy only). */
   clientToolCalls?: ToolCall[];
+  /** Durable steps: checkpoints loaded on a resumed attempt (empty on the first). */
+  steps: Map<string, unknown>;
+  /** How many times each step hash was requested in this attempt (identical prompts get distinct keys). */
+  stepOccurrences: Map<string, number>;
+  /** A later attempt of an interrupted run. */
+  resumed: boolean;
 };
+
+/**
+ * Content-addressed key of a model call: role, messages, tools and output format, plus how many
+ * identical calls came before it. The same execution path produces the same keys on every attempt,
+ * also under parallel strategies.
+ */
+export function stepKeyFor(ctx: Pick<RunContext, 'stepOccurrences'>, opts: { role: string; messages: unknown; tools?: Array<{ name: string }>; responseFormat?: string }): string {
+  const hash = createHash('sha256')
+    .update(JSON.stringify([opts.role, opts.messages, (opts.tools ?? []).map((t) => t.name), opts.responseFormat ?? 'text']))
+    .digest('hex')
+    .slice(0, 32);
+  const n = (ctx.stepOccurrences.get(hash) ?? 0) + 1;
+  ctx.stepOccurrences.set(hash, n);
+  return `model:${hash}#${n}`;
+}
 
 export type CodeRunState = {
   filesModified: number;
@@ -214,6 +235,29 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
   const started = Date.now();
   let current = model;
   let announced = false;
+  const stepKey = stepKeyFor(ctx, { role: opts.role, messages: opts.messages, ...(opts.tools ? { tools: opts.tools } : {}), ...(opts.responseFormat ? { responseFormat: opts.responseFormat } : {}) });
+
+  // Resumed run: a call that completed in an earlier attempt is replayed from its checkpoint.
+  const saved = ctx.steps.get(stepKey) as ModelResponse | undefined;
+  if (saved) {
+    ctx.emit('model.started', { callId, role: opts.role, provider: saved.provider, model: saved.ref, ...(opts.agentExecutionId ? { agentExecutionId: opts.agentExecutionId } : {}) });
+    if (opts.streamToUser && saved.text) ctx.response.write(saved.text);
+    ctx.usage.total = addUsage(ctx.usage.total, saved.usage);
+    ctx.budget.addCost(saved.usage);
+    ctx.emit('model.completed', {
+      callId,
+      provider: saved.provider,
+      model: saved.ref,
+      status: 'completed',
+      latencyMs: 0,
+      attempts: 0,
+      finishReason: saved.finishReason,
+      ...(saved.usage ? { usage: saved.usage } : {}),
+      resumed: true,
+    });
+    if (opts.streamToUser) ctx.lastFinishReason = saved.finishReason;
+    return saved;
+  }
 
   return withSpan('model.call', { 'model.role': opts.role, 'model.requested': model }, async (span) => {
     try {
@@ -306,6 +350,8 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
         finishReason: response.finishReason,
         ...(response.keyId ? { providerKeyId: response.keyId } : {}),
       });
+      // Checkpoint: a resumed attempt replays this instead of calling the model again.
+      if (ctx.deps.store.saveStep) await ctx.deps.store.saveStep(ctx.run.id, stepKey, 'model', response).catch(() => {});
       if (opts.streamToUser) ctx.lastFinishReason = response.finishReason;
       return response;
     } catch (err) {
@@ -457,6 +503,7 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
             allowedTools: allowed,
             agentExecutionId,
             ...(ctx.request.workspaceContext ? { workspaceContext: ctx.request.workspaceContext } : {}),
+            ...(ctx.resumed ? { resumed: true } : {}),
           });
         // Independent read-only calls of one model turn run concurrently; anything with side effects
         // or an approval runs alone, in the order the model asked. Results keep the model's order.

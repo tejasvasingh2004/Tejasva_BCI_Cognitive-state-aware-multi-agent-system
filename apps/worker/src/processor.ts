@@ -82,8 +82,9 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
   const queueLatencyMs = Math.max(0, Date.now() - job.enqueuedAt);
   runtimeMetrics.queueLatency.record(queueLatencyMs);
   if (run.attempt > 1) {
-    // Recovered after a worker crash/shutdown: the previous partial answer is discarded.
-    emitter.emit('response.reset', { reason: 'Execution restarted after a worker interruption' });
+    // Recovered after a worker crash/shutdown: the run resumes from its checkpoints; the answer is
+    // streamed again from the start (replayed steps first), so clients reset what they showed.
+    emitter.emit('response.reset', { reason: 'Execution resumed after a worker interruption' });
   }
   emitter.emit('run.started', { attempt: run.attempt, queueLatencyMs });
   log.info({ attempt: run.attempt, queueLatencyMs }, 'run started');
@@ -128,7 +129,9 @@ async function processInner(job: RunJobData, deps: ProcessorDeps): Promise<void>
         userId: run.userId,
         conversationId: run.conversationId,
         mode: run.mode,
+        attempt: run.attempt,
       },
+      ...(run.attempt > 1 && run.executionPlan ? { plan: run.executionPlan } : {}),
       request: run.request,
       history,
       scopes: run.scopes,

@@ -87,6 +87,8 @@ export const RunEventData = {
     finishReason: z.string().optional(),
     attempts: z.number().int(),
     error: z.string().optional(),
+    /** Replayed from a checkpoint of an earlier attempt (no provider call, not billed again). */
+    resumed: z.boolean().optional(),
   }),
   'tool.started': z.object({
     toolCallId: z.string(),

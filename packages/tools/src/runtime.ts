@@ -97,8 +97,9 @@ export class ToolRuntime {
       return this.finalize(ctx, fail('denied', 'unauthorized', `Not authorized to use tool "${def.name}"`), def);
     }
 
-    // 4. Recovery safety: side-effecting calls that already succeeded are not repeated.
-    if (def.sideEffects && this.opts.recorder) {
+    // 4. Recovery safety: side-effecting calls that already succeeded are not repeated; on a resumed
+    // run no completed call is (so the replayed conversation is the one the checkpoints recorded).
+    if ((def.sideEffects || ctx.resumed) && this.opts.recorder) {
       const previous = await this.opts.recorder.findCompleted(ctx.runId, call.id);
       if (previous) return previous;
     }

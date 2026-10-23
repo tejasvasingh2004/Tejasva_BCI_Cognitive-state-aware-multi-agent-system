@@ -1,7 +1,7 @@
 import type { Pool } from '@neuroflow/db';
 import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, WebhookService, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { agentsRepo, cognitiveRepo, executionRepo, routingStatsRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
+import { agentsRepo, cognitiveRepo, executionRepo, routingStatsRepo, runStepsRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { ModelError, type ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type LearnedRouting, type RunStore } from '@neuroflow/orchestrator';
@@ -101,6 +101,8 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
       }
     },
     recordEvaluation: (i) => executionRepo.recordEvaluation(pool, i),
+    saveStep: (runId, key, kind, result) => runStepsRepo.save(pool, runId, key, kind, result),
+    loadSteps: (runId) => runStepsRepo.load(pool, runId),
   };
 
   // A manual self-report (or a recent stored sample) wins; otherwise sample the BCI service live.

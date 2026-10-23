@@ -47,8 +47,9 @@ export class Orchestrator {
         const cognitive = input.run.mode === 'cognitive' ? await this.resolveCognitive(input) : undefined;
         const lastUser = [...input.history].reverse().find((m) => m.role === 'user')?.content ?? '';
 
-        const learned = await this.deps.learnedRouting?.().catch(() => undefined);
-        const plan = await withSpan('router.plan', { 'run.id': input.run.id }, async (routeSpan) => {
+        const resumed = (input.run.attempt ?? 1) > 1;
+        const learned = resumed && input.plan ? undefined : await this.deps.learnedRouting?.().catch(() => undefined);
+        const plan = resumed && input.plan ? input.plan : await withSpan('router.plan', { 'run.id': input.run.id }, async (routeSpan) => {
           const p = planExecution({
             mode: input.run.mode,
             request: input.request,
@@ -118,6 +119,9 @@ export class Orchestrator {
             ...(input.context?.code ? { code: input.context.code } : {}),
           },
           ...(codeState ? { code: codeState } : {}),
+          steps: resumed && this.deps.store.loadSteps ? await this.deps.store.loadSteps(input.run.id).catch(() => new Map()) : new Map(),
+          stepOccurrences: new Map(),
+          resumed,
         };
         ctxRef = ctx;
         const strategyResult = await STRATEGIES[plan.agentStrategy](ctx, lastUser);

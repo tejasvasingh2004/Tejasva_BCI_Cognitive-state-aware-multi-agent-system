@@ -41,6 +41,9 @@ export interface RunStore {
     /** The workspace provider key that served the call (BYOK). */
     providerKeyId?: string;
   }): Promise<void>;
+  /** Durable steps: checkpoint a completed step and load a run's checkpoints (optional). */
+  saveStep?(runId: string, key: string, kind: 'model', result: unknown): Promise<void>;
+  loadSteps?(runId: string): Promise<Map<string, unknown>>;
   recordEvaluation(input: {
     runId: string;
     kind: string;
@@ -73,10 +76,14 @@ export type RunIdentity = {
   userId: string;
   conversationId: string | null;
   mode: RunMode;
+  /** Execution attempt (1 = first). Later attempts resume from checkpoints. */
+  attempt?: number;
 };
 
 export type ExecuteRunInput = {
   run: RunIdentity;
+  /** A resumed run keeps the plan of its first attempt (no re-routing). */
+  plan?: ExecutionPlan;
   request: Omit<RunRequest, 'messages'>;
   /** Full conversation, oldest first, ending with the new user message(s). */
   history: ChatMessage[];

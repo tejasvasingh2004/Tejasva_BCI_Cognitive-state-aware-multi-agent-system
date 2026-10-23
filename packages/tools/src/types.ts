@@ -15,6 +15,8 @@ export type ToolContext = {
   workspaceContext?: WorkspaceContext;
   /** The model's tool call id (set by the runtime for prepare/execute). */
   toolCallId?: string;
+  /** A resumed run: tool calls that already completed return their recorded result. */
+  resumed?: boolean;
 };
 
 /**
