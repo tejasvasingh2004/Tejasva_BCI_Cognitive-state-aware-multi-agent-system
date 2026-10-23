@@ -433,14 +433,17 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
         scratch.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls, ...(res.providerState ? { providerState: res.providerState } : {}) });
         const remaining = ctx.plan.toolPolicy.maxToolCalls - toolCallsUsed;
         if (res.toolCalls.length > remaining) ctx.toolLimitHit = true;
+        const admitted: ToolCall[] = [];
         for (const call of res.toolCalls.slice(0, remaining)) {
           if (!ctx.budget.tryConsumeToolCall()) {
             ctx.toolLimitHit = true;
             break;
           }
-          toolCallsUsed++;
-          ctx.stage = `tool:${call.name}`;
-          const result = await ctx.deps.tools.execute(call, {
+          admitted.push(call);
+        }
+        toolCallsUsed += admitted.length;
+        const runTool = (call: ToolCall) =>
+          ctx.deps.tools.execute(call, {
             runId: ctx.run.id,
             workspaceId: ctx.run.workspaceId,
             userId: ctx.run.userId,
@@ -451,18 +454,26 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
             agentExecutionId,
             ...(ctx.request.workspaceContext ? { workspaceContext: ctx.request.workspaceContext } : {}),
           });
-          if (result.status === 'cancelled') {
-            throwIfCancelled(ctx.signal);
-            throw new RunCancelledError();
+        // Independent read-only calls of one model turn run concurrently; anything with side effects
+        // or an approval runs alone, in the order the model asked. Results keep the model's order.
+        for (const batch of toolBatches(admitted, (name) => ctx.deps.tools.registry.get(name))) {
+          ctx.stage = `tool:${batch.map((c) => c.name).join(',')}`;
+          const results = await mapLimit(batch, PARALLEL_TOOL_LIMIT, runTool);
+          for (const [i, result] of results.entries()) {
+            const call = batch[i]!;
+            if (result.status === 'cancelled') {
+              throwIfCancelled(ctx.signal);
+              throw new RunCancelledError();
+            }
+            if (result.status !== 'success') ctx.toolFailures++;
+            ctx.trajectory.push({
+              tool: call.name,
+              status: result.status,
+              argsKey: call.name + ':' + call.arguments.replace(/\s+/g, ''),
+              ...(result.error ? { errorCode: result.error.code } : {}),
+            });
+            scratch.push({ role: 'tool', content: toolResultContent(result), toolCallId: call.id, name: call.name });
           }
-          if (result.status !== 'success') ctx.toolFailures++;
-          ctx.trajectory.push({
-            tool: call.name,
-            status: result.status,
-            argsKey: call.name + ':' + call.arguments.replace(/s+/g, ''),
-            ...(result.error ? { errorCode: result.error.code } : {}),
-          });
-          scratch.push({ role: 'tool', content: toolResultContent(result), toolCallId: call.id, name: call.name });
         }
         skipUnansweredCalls(res.toolCalls, scratch);
         ctx.stage = `agent:${opts.agent.id}`;
@@ -492,6 +503,46 @@ export async function runAgent(ctx: RunContext, opts: AgentRunOptions): Promise<
       throw err;
     }
   });
+}
+
+/** Read-only tool calls of one model turn that may run at the same time. */
+export const PARALLEL_TOOL_LIMIT = 4;
+
+/**
+ * Splits one model turn's tool calls into batches executed in order: consecutive calls to tools
+ * without side effects or approvals share a batch (run concurrently); every other call is a batch
+ * of its own. Unknown tools run alone (the runtime rejects them).
+ */
+export function toolBatches(calls: ToolCall[], lookup: (name: string) => { sideEffects: boolean; requiresApproval: boolean; prepare?: unknown } | undefined): ToolCall[][] {
+  const batches: ToolCall[][] = [];
+  let group: ToolCall[] = [];
+  for (const call of calls) {
+    const def = lookup(call.name);
+    const concurrent = Boolean(def && !def.sideEffects && !def.requiresApproval && !def.prepare);
+    if (concurrent) {
+      group.push(call);
+      continue;
+    }
+    if (group.length) batches.push(group);
+    group = [];
+    batches.push([call]);
+  }
+  if (group.length) batches.push(group);
+  return batches;
+}
+
+/** Maps with at most `limit` promises in flight, preserving input order in the result. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 /** Every tool call the model made must have a tool message, even if skipped by limits. */
