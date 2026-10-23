@@ -22,6 +22,8 @@ const Env = z.object({
   BCI_SERVICE_URL: z.string().optional(),
   TOOL_APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
   /** Learned routing: choose models from measured quality, cost and latency per task class. */
+  /** Sandbox isolation runtime: runsc (gVisor), kata-fc / kata-qemu (microVMs); unset = Docker default. */
+  SANDBOX_RUNTIME: z.string().optional(),
   ROUTER_LEARNING: z.enum(['enabled', 'disabled']).default('enabled'),
   /** Share of eligible runs routed to an under-sampled model to keep learning (0 disables). */
   ROUTER_EXPLORATION: z.coerce.number().min(0).max(0.5).default(0.05),

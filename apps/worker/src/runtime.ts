@@ -45,7 +45,7 @@ export type RuntimeOptions = {
   approvalTimeoutMs?: number;
   /** Source of optional integrations (web search provider keys). */
   env?: NodeJS.ProcessEnv;
-  code?: { dataDir?: string; secretsKey?: string; sessionSecret?: string; githubApiUrl?: string; sandbox?: Sandbox };
+  code?: { dataDir?: string; secretsKey?: string; sessionSecret?: string; githubApiUrl?: string; sandbox?: Sandbox; sandboxRuntime?: string };
   /** Receives unexpected tool errors (details stay in operator logs, never in model context). */
   onToolError?: (err: unknown, info: { tool: string; phase: 'prepare' | 'execute'; runId: string; toolCallId: string }) => void;
 };
@@ -67,7 +67,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
     redis: opts.redis,
     dataDir: opts.code?.dataDir ?? defaultCodeDataDir(),
     secrets: SecretBox.fromEnv(opts.code?.secretsKey, opts.code?.sessionSecret ?? 'dev-only-session-secret-change-me-please-0123456789'),
-    sandbox: opts.code?.sandbox ?? new DockerSandbox(),
+    sandbox: opts.code?.sandbox ?? new DockerSandbox({ ...(opts.code?.sandboxRuntime ? { runtime: opts.code.sandboxRuntime } : {}) }),
     githubApiUrl: opts.code?.githubApiUrl,
   });
   const registry = new ToolRegistry().registerAll([...builtinTools, ...createMemoryTools(memory), ...createCodeTools(code.toolServices())]);

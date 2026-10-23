@@ -6,6 +6,9 @@
 #
 # First run creates /etc/neuroflow/worker.env from a template and stops so you can fill it in
 # (DATABASE_URL, REDIS_URL, GROQ_API_KEY, SECRETS_KEY, SESSION_SECRET). Run it again afterwards.
+#
+# INSTALL_GVISOR=1 also installs gVisor (runsc) and registers it with Docker, so agent commands run
+# behind a user-space kernel instead of directly on the host kernel; then set SANDBOX_RUNTIME=runsc.
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system.git}"
@@ -31,6 +34,19 @@ fi
 sudo systemctl enable --now docker
 if ! id -nG "$RUN_USER" | grep -qw docker; then
   sudo usermod -aG docker "$RUN_USER"
+fi
+
+if [ "${INSTALL_GVISOR:-0}" = "1" ] && ! command -v runsc >/dev/null 2>&1; then
+  log "Installing gVisor (runsc) for sandbox isolation"
+  sudo apt-get install -y gnupg
+  curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" \
+    | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+  sudo apt-get update -y
+  sudo apt-get install -y runsc
+  sudo runsc install
+  sudo systemctl restart docker
+  sudo docker run --rm --runtime=runsc hello-world >/dev/null && echo "gVisor works: set SANDBOX_RUNTIME=runsc in $ENV_FILE"
 fi
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
@@ -66,6 +82,8 @@ PLATFORM_MODEL_KEYS=enabled
 CODE_DATA_DIR=${DATA_DIR}
 WORKER_QUEUES=runs,workspace,evals
 LOG_LEVEL=info
+# Sandbox isolation: runsc (gVisor, after INSTALL_GVISOR=1) or kata-fc (Kata microVMs, needs KVM)
+SANDBOX_RUNTIME=
 # Optional: error tracking (same DSN as the API)
 SENTRY_DSN=
 EOF

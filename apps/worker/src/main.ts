@@ -8,6 +8,7 @@ const { createPool, keyRingFromEnv, migrate } = await import('@neuroflow/db');
 const { createGatewayFromEnv } = await import('@neuroflow/models');
 const { loadConfig } = await import('./config');
 const { createWorkerRuntime } = await import('./runtime');
+const { DockerSandbox } = await import('@neuroflow/code');
 const { purgeExpiredMemories, reconcileRuns } = await import('./reconciler');
 const { startQueueWorkers } = await import('./workers');
 
@@ -46,7 +47,13 @@ const runtime = await createWorkerRuntime({
   keyRing: keyRingFromEnv(config, { secretsKey: config.SECRETS_KEY, fallbackSecret: config.SESSION_SECRET }),
   ...(config.ROUTER_LEARNING === 'enabled' ? { learnedRouting: { exploration: config.ROUTER_EXPLORATION, minSamples: config.ROUTER_MIN_SAMPLES } } : {}),
   approvalTimeoutMs: config.TOOL_APPROVAL_TIMEOUT_MS,
-  code: { dataDir: config.CODE_DATA_DIR, secretsKey: config.SECRETS_KEY, sessionSecret: config.SESSION_SECRET, githubApiUrl: config.GITHUB_API_URL },
+  code: {
+    dataDir: config.CODE_DATA_DIR,
+    secretsKey: config.SECRETS_KEY,
+    sessionSecret: config.SESSION_SECRET,
+    githubApiUrl: config.GITHUB_API_URL,
+    ...(config.SANDBOX_RUNTIME ? { sandboxRuntime: config.SANDBOX_RUNTIME } : {}),
+  },
   onToolError: (err, info) => logger.warn({ err, ...info }, 'tool failed unexpectedly'),
 });
 
@@ -83,6 +90,10 @@ const reconcileTimer = setInterval(() => {
 }, config.RECONCILE_INTERVAL_MS);
 
 logger.info({ queues: workers.queues, concurrency: config.WORKER_CONCURRENCY }, 'worker started');
+// Which isolation agent commands get (container, gVisor user-space kernel or microVM), and whether it works.
+void new DockerSandbox({ ...(config.SANDBOX_RUNTIME ? { runtime: config.SANDBOX_RUNTIME } : {}) })
+  .isolation()
+  .then((iso) => (iso.available ? logger.info(iso, 'sandbox ready') : logger.warn(iso, 'sandbox unavailable')));
 
 let stopping = false;
 async function stop(signal: string) {
