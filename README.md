@@ -46,6 +46,7 @@ manual setting or an EEG workload classifier (research origin of the project).
 | **Built to scale** | Stateless API, fair per-tenant queues, plan-based rate limits and quotas, OpenTelemetry tracing |
 | **Operable** | `GET /status` health summary with worker heartbeats, uptime alerts, error tracking with credentials redacted |
 | **OpenAI-compatible API** | `POST /v1/chat/completions` maps onto the same runtime |
+| **Developer platform** | Bring your own provider keys (KMS-protected), dollar budgets, signed webhooks and async runs, TypeScript and Python SDKs |
 
 <table>
   <tr>
@@ -113,7 +114,9 @@ packages/
   cognitive/    Cognitive Mode policy
   bus/          Queues, events, rate limiting
   db/           PostgreSQL access, migrations runner, admin CLI
+  sdk/          TypeScript SDK (@neuroflow/sdk)
   observability/ OpenTelemetry and logging
+sdks/python/    Python SDK (neuroflow)
 infra/          SQL migrations, Dockerfiles, nginx
 backend/        Python EEG cognitive-state sidecar (optional)
 workload_classifier/  EEG preprocessing, features and classifier training
@@ -146,6 +149,26 @@ pnpm test:e2e    # Playwright end-to-end flows
 ```
 
 CI runs all of them on every push and pull request.
+
+## Using the API
+
+```ts
+import { NeuroFlow } from '@neuroflow/sdk';
+
+const nf = new NeuroFlow({ apiKey: process.env.NEUROFLOW_API_KEY, baseUrl: 'https://api.example.com' });
+for await (const text of nf.runs.stream({ messages: [{ role: 'user', content: 'Plan a launch' }] })) process.stdout.write(text);
+```
+
+```python
+from neuroflow import NeuroFlow
+
+run = NeuroFlow(base_url="https://api.example.com").runs.run({"messages": [{"role": "user", "content": "Plan a launch"}]})
+print(run["output"])
+```
+
+SDKs: [TypeScript](packages/sdk/README.md) · [Python](sdks/python/README.md). Webhooks and async
+runs: [docs/WEBHOOKS.md](docs/WEBHOOKS.md). Any OpenAI client also works against
+`/v1/chat/completions`.
 
 ## Deployment
 
@@ -183,6 +206,7 @@ balancer and drives them with k6. Same load (100 reads/s + 10 runs/s for 60 s):
 | [docs/progress.md](docs/progress.md) | Requirement-by-requirement progress |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Remaining infrastructure and scaling work |
 | [docs/SETUP.md](docs/SETUP.md) · [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Local setup and hosting |
+| [docs/WEBHOOKS.md](docs/WEBHOOKS.md) · [TypeScript SDK](packages/sdk/README.md) · [Python SDK](sdks/python/README.md) | Building on the API |
 | [CHANGELOG.md](CHANGELOG.md) | Notable changes |
 
 ## Contributing

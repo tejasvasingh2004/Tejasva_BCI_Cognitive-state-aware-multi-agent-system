@@ -6,6 +6,8 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-24
 
 ### Added
+- TypeScript (`@neuroflow/sdk`) and Python (`neuroflow`) SDKs: runs, streamed events and answers,
+  approvals, retries, idempotency and webhook verification.
 - Webhooks (Settings → Webhooks, `/v1/webhooks`): signed run outcomes, approval requests and budget
   alerts, with retries, a delivery log and secret rotation. Async runs: `webhookUrl` on a run
   posts its result when it is ready. See [docs/WEBHOOKS.md](docs/WEBHOOKS.md).

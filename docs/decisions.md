@@ -285,6 +285,22 @@ token and a test repository.
   fits the same `KeyEncryptionKey` interface (not implemented).
 - **Not yet:** marking a key invalid automatically when a run gets an authentication error.
 
+## SDKs
+
+- **No runtime dependencies.** The TypeScript SDK uses `fetch`, Web Streams and Web Crypto, so the
+  same build runs in Node 18+, Bun, Deno, edge runtimes and browsers. The Python SDK uses only the
+  standard library (`urllib`), so installing it never conflicts with an application's HTTP stack.
+- **Types are declared, then checked.** The TypeScript SDK cannot depend on the private contracts
+  package, so its types are hand-written; a compile-time test assigns the server's `Run` and
+  `RunEvent` to the SDK's and the SDK's request to the server's, so drift fails the build.
+- **Safe retries.** Only rate limits, `5xx`, timeouts and network errors are retried, with
+  exponential backoff and `Retry-After`. `runs.create` always sends an `Idempotency-Key`
+  (generated per call), so a retry after a lost response returns the same run rather than
+  starting a second one. Approvals are not retried automatically.
+- **Streams resume.** Event streams reconnect with `Last-Event-ID` and drop repeated sequence
+  numbers, so a flaky connection neither loses nor duplicates events; the stream ends at the
+  terminal event.
+
 ## Webhooks and async runs
 
 - **Standard Webhooks, not a custom scheme.** `webhook-id` / `webhook-timestamp` /

@@ -30,6 +30,7 @@ corrected.
 | --- | --- |
 | [SETUP.md](SETUP.md) | Local development, plans and limits, tests |
 | [WEBHOOKS.md](WEBHOOKS.md) | Webhooks and async runs: events, payloads, signature verification |
+| [../packages/sdk/README.md](../packages/sdk/README.md) · [../sdks/python/README.md](../sdks/python/README.md) | TypeScript and Python SDKs |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Hosting the site, web app, API, worker and sandbox |
 
 ## Product phases

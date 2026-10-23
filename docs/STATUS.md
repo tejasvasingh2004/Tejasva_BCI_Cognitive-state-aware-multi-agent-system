@@ -17,7 +17,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Stack | React 19 · Vite 7 · Tailwind 4 · TanStack Query · Zustand · Monaco — Node 22 · Fastify 5 · Zod 4 · BullMQ — PostgreSQL · Redis · Docker · OpenTelemetry |
 | Models | Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` in preview, …), local Qwen through Ollama, and Anthropic (Claude), OpenAI and Google Gemini with platform or workspace keys, all behind the Model Gateway; the model's own identity is stated in its instructions |
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
-| Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
+| Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability`, `sdk` (+ Python SDK in `sdks/python`) |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
 | Database | 11 migrations (`infra/migrations/0001` … `0011`) |
 | Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
@@ -150,7 +150,12 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   by every worker (`SKIP LOCKED`), retries for about two days, delivery log with resend, secret
   rotation with a 24-hour overlap, SSRF protection at save time and at connect time
   (`packages/bus/src/webhooks.ts`, `infra/migrations/0011_webhooks.sql`, [WEBHOOKS.md](WEBHOOKS.md)).
-- Next in Phase 1: SDKs.
+- **SDKs** — TypeScript (`packages/sdk`, `@neuroflow/sdk`, no dependencies, Node/Bun/Deno/browsers) and
+  Python (`sdks/python`, `neuroflow`, standard library only): runs, resumable event streams, answer
+  streaming, approvals, retries with `Retry-After`, automatic idempotency keys, typed errors and
+  webhook verification. Tested against mocks and against the real API and worker.
+- Phase 1 of the orchestrator roadmap is complete. Next (Phase 2 of the roadmap): latency and
+  scale — response caching, learned routing, hedged requests, checkpoint/resume.
 
 ## 5. Scalability and reliability foundation
 

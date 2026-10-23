@@ -255,7 +255,8 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
       threshold and the limit; Usage → Spending limits and per-key budgets in Settings
 - [x] Webhooks and async runs: Standard Webhooks signatures, run outcomes, approval requests and
       budget alerts; per-run `webhookUrl`; Postgres outbox with retries; Settings → Webhooks
-- [ ] SDKs (TypeScript, Python)
+- [x] SDKs: TypeScript (`@neuroflow/sdk`) and Python (`neuroflow`) with typed runs, resumable
+      event streams, approvals, retries, idempotency keys and webhook verification
 
 ## Deployment
 

@@ -111,6 +111,9 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
     devDependencies:
+      '@neuroflow/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@neuroflow/worker':
         specifier: workspace:*
         version: link:../worker
@@ -486,6 +489,12 @@ importers:
       '@neuroflow/code':
         specifier: workspace:*
         version: link:../code
+
+  packages/sdk:
+    devDependencies:
+      '@neuroflow/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/tools:
     dependencies:

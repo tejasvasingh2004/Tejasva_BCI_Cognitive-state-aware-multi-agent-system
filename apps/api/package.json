@@ -46,6 +46,7 @@
     "@neuroflow/worker": "workspace:*",
     "@types/ws": "^8.18.0",
     "tsup": "^8.5.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@neuroflow/sdk": "workspace:*"
   }
 }

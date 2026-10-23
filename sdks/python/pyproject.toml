@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neuroflow"
+version = "0.1.0"
+description = "Python client for the NeuroFlow API: runs, streamed events, approvals, retries and webhook verification."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+  "Topic :: Software Development :: Libraries",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuroflow"]
