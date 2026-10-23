@@ -301,6 +301,51 @@ token and a test repository.
   numbers, so a flaky connection neither loses nor duplicates events; the stream ends at the
   terminal event.
 
+## Fast and cheap (orchestrator roadmap Phase 2)
+
+- **Gateway mode runs on the API, deliberately.** A single model call does not need the queue, a
+  worker or the orchestrator, and those hops dominate time to first token. The API therefore
+  decrypts the workspace's provider keys for gateway calls (cached 30 s per process); it already
+  held the KEK to verify keys. Everything around the call is unchanged: admission (token quota,
+  dollar budgets), the per-call budget guard, provider budgets shared through Redis, retries,
+  fallbacks. Records are written after the response, so they add nothing before the first token.
+  Gate: overhead measured server-side (arrival → provider request), p95 < 50 ms.
+- **Response cache: exact match only.** Semantic caching can return an answer to a different
+  question; exact match cannot. It is opt-in per request, keyed by workspace + model + messages +
+  parameters, and limited to single-turn, tool-free requests. Semantic caching is not implemented.
+- **Prompt layout serves provider caches.** Providers cache the longest unchanged prefix, so the
+  system prompt is a stable core plus a volatile tail, and an agent loop only appends. For Claude
+  an explicit breakpoint sits on the core and automatic caching follows the growing transcript in
+  tool loops (not in single-shot calls, which would only pay the cache write).
+- **Learned routing optimises cost at equal quality** (RouteLLM's objective), from outcomes NeuroFlow
+  already records: the last evaluation of each direct or single-agent run, failures as 0, cost and
+  duration. A model needs 20 samples per task class to be trusted; explicit choices and latency,
+  cost or cognitive constraints always win. Exploration (5 %) only tries models within one tier.
+- **Parallel tools only where order cannot matter.** Consecutive calls to tools without side
+  effects, approvals or a prepare step share a batch; anything else runs alone, in order.
+
+## Self-healing (orchestrator roadmap Phase 3)
+
+- **Failover keeps the model before it changes the model.** Catalog entries carry a family; the
+  chain inserts equivalents on providers the caller can use right after each model.
+- **Concurrency adapts to latency, not to a configured number.** Gradient2-style: time to first
+  token is the latency signal (total time depends on output length); the limit grows by about
+  √limit while short-term latency stays within 2× the baseline, shrinks proportionally beyond it,
+  and backs off ×0.75 on 429 / 5xx / timeouts. Calls over the limit wait, then fail over. Limits
+  are per process; shared provider budgets stay in Redis.
+- **Hedging is opt-in.** The cancelled request may still cost prompt tokens, so it is a per-run,
+  per-call or per-deployment choice. Only before the first token; pre-output events are buffered so
+  only the winner's events reach the run.
+- **Durable steps are content-addressed.** A checkpoint key is a hash of role, messages, tools and
+  output format plus an occurrence counter, so the same execution path yields the same keys on
+  every attempt — including parallel strategies, whose call order varies. A resumed attempt keeps
+  its stored plan (so learned-routing exploration cannot change the path) and reuses every
+  recorded tool result. Replayed calls are not billed again. Limit: a step whose inputs differ on
+  resume (e.g. across midnight, the date in the prompt) runs again.
+- **The sandbox fails closed.** With `SANDBOX_RUNTIME` set, a daemon without that runtime means no
+  commands run, never a silent fallback to runc. gVisor works on the Oracle Ampere VM; Kata
+  (Firecracker) needs nested virtualisation or bare metal.
+
 ## Webhooks and async runs
 
 - **Standard Webhooks, not a custom scheme.** `webhook-id` / `webhook-timestamp` /

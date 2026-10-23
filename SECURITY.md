@@ -54,7 +54,10 @@ Of particular interest:
   checked when saved and again after DNS resolution at connect time; redirects are not followed.
 - Every tool call is schema-validated, authorized and, when consequential, approved by the user.
 - Agent commands run in throwaway Docker containers: no network by default, read-only system,
-  dropped capabilities, CPU / memory / process / time limits, no inherited environment.
+  dropped capabilities, CPU / memory / process / time limits, no inherited environment. With
+  `SANDBOX_RUNTIME=runsc` (gVisor) or a Kata runtime they also run behind a user-space kernel or in
+  a microVM; a missing runtime means no commands run.
+- The response cache (opt-in) is keyed by workspace and only stores single-turn, tool-free answers.
 - The Code Agent commits only on `neuroflow/agent/*` branches, opens draft pull requests and never
   merges.
 

@@ -258,6 +258,22 @@ BullMQ queue, worker, orchestrator, Model Gateway, Tool Runtime, events and pers
 - [x] SDKs: TypeScript (`@neuroflow/sdk`) and Python (`neuroflow`) with typed runs, resumable
       event streams, approvals, retries, idempotency keys and webhook verification
 
+## Orchestrator roadmap — Phase 2: fast and cheap
+
+- [x] Gateway fast path: single model calls streamed from the API (overhead p95 < 50 ms gate passed)
+- [x] Cache-friendly prompts: stable prefix, Claude cache breakpoints, cached tokens billed and shown
+- [x] Parallel tool calls for independent read-only calls of one model turn
+- [x] Response cache: opt-in, exact match, per workspace, single-turn and tool-free
+- [x] Learned routing from measured quality, cost and latency per task class, with exploration
+
+## Orchestrator roadmap — Phase 3: self-healing
+
+- [x] Adaptive concurrency limits per provider (latency-driven) and provider rate-limit headers
+- [x] Hedged first token (opt-in per run, per gateway call or per deployment)
+- [x] Provider failover across model equivalence classes before downgrading
+- [x] Durable steps: checkpointed model calls, resume on another worker (killed-worker gate passed)
+- [x] MicroVM / user-space-kernel sandbox runtimes (gVisor, Kata), failing closed
+
 ## Deployment
 
 - [x] Vercel configs for `apps/site` (static, clean URLs) and `apps/web` (SPA rewrites)

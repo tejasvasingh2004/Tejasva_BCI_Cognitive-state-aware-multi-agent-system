@@ -19,7 +19,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability`, `sdk` (+ Python SDK in `sdks/python`) |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
-| Database | 11 migrations (`infra/migrations/0001` … `0011`) |
+| Database | 13 migrations (`infra/migrations/0001` … `0013`) |
 | Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
 | CI | GitHub Actions: typecheck · lint · unit · integration · E2E · app and image builds (`.github/workflows/ci.yml`) |
 | Deploy | `apps/site` and `apps/web` on Vercel (`vercel.json` in each), API on Railway (`nixpacks.toml`) |
@@ -154,8 +154,39 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   Python (`sdks/python`, `neuroflow`, standard library only): runs, resumable event streams, answer
   streaming, approvals, retries with `Retry-After`, automatic idempotency keys, typed errors and
   webhook verification. Tested against mocks and against the real API and worker.
-- Phase 1 of the orchestrator roadmap is complete. Next (Phase 2 of the roadmap): latency and
-  scale — response caching, learned routing, hedged requests, checkpoint/resume.
+- Phase 1 of the orchestrator roadmap is complete.
+
+## 4c. Fast and cheap (Phase 2 of the orchestrator roadmap)
+
+- **Gateway mode** — `/v1/chat/completions` with `neuroflow.gateway` streams one model call from
+  the API process (no queue), with the same auth, quotas, budgets, workspace keys, retries and usage
+  records (`apps/api/src/gateway-mode.ts`). **Gate passed:** overhead before the provider request
+  p50 3 ms / p95 5–6 ms over 200 calls (target < 50 ms); time to first token 18 ms vs 127 ms on the
+  queued path (mock model) — `apps/api/test/integration/gateway-mode.test.ts`.
+- **Response cache** — opt-in exact-match cache per workspace, single-turn and tool-free only.
+- **Cache-friendly prompts** — stable system core first, volatile tail after; Claude cache
+  breakpoints; cached prompt tokens recorded (migration 0012), billed at cache-read prices and
+  shown on the Usage page.
+- **Parallel tool calls** — independent read-only calls of one model turn run concurrently.
+- **Learned routing** — the router picks the cheapest model within 0.05 of the best measured
+  quality per task class (14 days of evaluations, cost and latency), with a small exploration share.
+
+## 4d. Self-healing (Phase 3 of the orchestrator roadmap)
+
+- **Provider failover** — model families (GPT-OSS 120B on Groq, Together, Fireworks, OpenRouter …):
+  the same model on another provider is tried before a different model.
+- **Adaptive limits** — Gradient2-style concurrency limit per provider and process, driven by time
+  to first token; providers' `x-ratelimit-*` headers hold an exhausted key until its reset.
+- **Hedged first token** — opt-in: a late first token starts the next model in parallel; the first
+  to answer wins.
+- **Durable steps** — model calls are checkpointed (migration 0013); an interrupted run resumes on
+  another worker from its last completed step with its original plan. **Gate passed:** worker
+  killed mid-answer, the run resumes, completed model and tool calls are not repeated or billed
+  twice — `apps/api/test/integration/durable-steps.test.ts`.
+- **MicroVM sandbox** — `SANDBOX_RUNTIME=runsc` (gVisor) or `kata-fc` (Kata microVMs) for every agent
+  command, failing closed when the runtime is missing; `INSTALL_GVISOR=1` in the VM setup script.
+- Next (Phase 4 of the roadmap): MCP client and server, Chrome extension, GitHub App, Slack app,
+  VS Code extension.
 
 ## 5. Scalability and reliability foundation
 

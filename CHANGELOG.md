@@ -6,6 +6,21 @@ the project does not publish versioned releases yet, so entries are grouped by d
 ## 2026-10-24
 
 ### Added
+- Gateway mode (`neuroflow.gateway` on `/v1/chat/completions`): single model calls streamed from the
+  API without the queue; overhead under 6 ms at p95. Opt-in response cache for single-turn calls.
+  See [docs/GATEWAY.md](docs/GATEWAY.md).
+- Cache-friendly prompts: providers reuse the stable part of NeuroFlow's prompts; cached input tokens
+  are billed at cache prices and shown on the Usage page.
+- Independent tool calls run in parallel; learned routing picks the cheapest model that keeps the
+  measured quality.
+- Self-healing: failover to the same model on another provider, adaptive concurrency limits,
+  provider rate-limit headers respected, optional hedged first token, and runs that resume from
+  their last completed step after a worker crash.
+- Sandbox isolation with gVisor or Kata microVMs (`SANDBOX_RUNTIME`).
+
+### Fixed
+- Models served only by a workspace's own key were rejected as unknown by `/v1/chat/completions`,
+  Model Lab and Workspace Settings.
 - TypeScript (`@neuroflow/sdk`) and Python (`neuroflow`) SDKs: runs, streamed events and answers,
   approvals, retries, idempotency and webhook verification.
 - Webhooks (Settings → Webhooks, `/v1/webhooks`): signed run outcomes, approval requests and budget

@@ -45,6 +45,7 @@ On Railway, connect the repository; `nixpacks.toml` builds with pnpm 9 on Node 2
 | `TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY` | optional platform keys for hosted open-weight models; workspaces can add their own instead |
 | `KEK_PROVIDER` | `local` (default, derived from `SECRETS_KEY`), `aws-kms` (`AWS_KMS_KEY_ID`, `AWS_REGION`) or `vault` (`VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_TRANSIT_KEY`); same on the worker. Then `pnpm keys:rewrap` |
 | `WEBHOOK_ALLOW_PRIVATE` | leave `false` in production (webhooks only to public https URLs); same on the worker, which delivers them |
+| `GATEWAY_FAST_PATH`, `MODEL_EQUIVALENT_FAILOVER`, `MODEL_ADAPTIVE_CONCURRENCY`, `MODEL_HEDGE_AFTER_MS` | latency and self-healing controls, all on by default except hedging ([GATEWAY.md](GATEWAY.md)) |
 | `PLATFORM_MODEL_KEYS` | `disabled` on a public deployment: models run only with workspaces' own keys; same value on the worker |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | optional; users can connect with a token instead |
 
@@ -77,6 +78,9 @@ curl -fsSL https://raw.githubusercontent.com/tejasvasingh2004/Tejasva_BCI_Cognit
 sudo nano /etc/neuroflow/worker.env      # fill in DATABASE_URL, REDIS_URL, GROQ_API_KEY, SECRETS_KEY, SESSION_SECRET
 curl -fsSL https://raw.githubusercontent.com/tejasvasingh2004/Tejasva_BCI_Cognitive-state-aware-multi-agent-system/master/infra/scripts/setup-worker-vm.sh | bash
 ```
+
+Add `INSTALL_GVISOR=1` before `bash` to also install gVisor, then set `SANDBOX_RUNTIME=runsc` in the env
+file: agent commands then run behind a user-space kernel instead of directly on the host kernel.
 
 The first run installs Docker and Node 22, pre-pulls the sandbox images and creates the env file;
 the second builds the worker and starts it as the `neuroflow-worker` systemd service. Re-run it to

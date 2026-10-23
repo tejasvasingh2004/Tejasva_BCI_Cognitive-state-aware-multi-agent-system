@@ -46,6 +46,7 @@ manual setting or an EEG workload classifier (research origin of the project).
 | **Built to scale** | Stateless API, fair per-tenant queues, plan-based rate limits and quotas, OpenTelemetry tracing |
 | **Operable** | `GET /status` health summary with worker heartbeats, uptime alerts, error tracking with credentials redacted |
 | **OpenAI-compatible API** | `POST /v1/chat/completions` maps onto the same runtime |
+| **Fast and self-healing** | Gateway mode (p95 overhead under 6 ms), response and prompt caching, parallel tools, learned routing, same-model failover, adaptive limits, hedged requests, runs that resume after a crash |
 | **Developer platform** | Bring your own provider keys (KMS-protected), dollar budgets, signed webhooks and async runs, TypeScript and Python SDKs |
 
 <table>
@@ -168,7 +169,8 @@ print(run["output"])
 
 SDKs: [TypeScript](packages/sdk/README.md) · [Python](sdks/python/README.md). Webhooks and async
 runs: [docs/WEBHOOKS.md](docs/WEBHOOKS.md). Any OpenAI client also works against
-`/v1/chat/completions`.
+`/v1/chat/completions`; add `neuroflow.gateway` for single low-latency calls
+([docs/GATEWAY.md](docs/GATEWAY.md)).
 
 ## Deployment
 
