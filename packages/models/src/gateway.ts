@@ -11,7 +11,7 @@ import { AdaptiveLimit, type AdaptiveLimitOptions, type AdaptiveLimitSnapshot } 
 import { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER, PROVIDER_HEALTH_FAILURES, type CircuitBreakerOptions } from './circuit-breaker';
 import { ModelError, isAbortError } from './errors';
 import { estimateRequestTokens, InMemoryRateLimiter, type BucketLimits, type RateLimiter } from './rate-limit';
-import type { CatalogEntry, CredentialCheck, FinishReason, ModelEvent, ModelGateway, ModelRequest, ModelResponse, ProviderAdapter, ProviderCredential, ProviderState, ModelCallGuard } from './types';
+import type { CatalogEntry, CredentialCheck, FinishReason, ModelEvent, ModelGateway, ModelRequest, ModelResponse, ProviderAdapter, ProviderCredential, ProviderState, ScopeOptions } from './types';
 
 export type GatewayPolicy = {
   /** Retries per model for retryable errors that happen before any output is produced. */
@@ -247,9 +247,9 @@ export class DefaultModelGateway implements ModelGateway {
    * A view of this gateway for one tenant: every call carries the tenant's keys, and listing and
    * defaults reflect what those keys (and, when allowed, platform keys) can serve.
    */
-  scoped(credentials: Record<string, ProviderCredential>, opts: { platformKeys?: boolean; guard?: ModelCallGuard } = {}): ModelGateway {
+  scoped(credentials: Record<string, ProviderCredential>, opts: ScopeOptions = {}): ModelGateway {
     const platformKeys = opts.platformKeys ?? true;
-    const guard = opts.guard ? { guard: opts.guard } : {};
+    const guard = { ...(opts.guard ? { guard: opts.guard } : {}), ...(opts.onCredentialRejected ? { onCredentialRejected: opts.onCredentialRejected } : {}) };
     const scope: CredentialScope = { credentialProviders: Object.keys(credentials), platformKeys };
     return {
       listModels: () => this.listModels(scope),
@@ -531,6 +531,10 @@ export class DefaultModelGateway implements ModelGateway {
         } catch (err) {
           const error = toModelError(err, request.signal);
           releaseSlot?.({ overloaded: error.code === 'rate_limited' || error.code === 'unavailable' || error.code === 'timeout' });
+          // A tenant's own key the provider no longer accepts: let the host mark it invalid.
+          if (error.code === 'auth' && error.status === 401 && credential && request.onCredentialRejected) {
+            void Promise.resolve(request.onCredentialRejected({ provider: adapter.id, keyId: credential.keyId })).catch(() => {});
+          }
           if (PROVIDER_HEALTH_FAILURES.has(error.code)) breaker.onFailure();
           else breaker.onNeutral();
           if (error.code === 'cancelled') throw error;
@@ -684,7 +688,7 @@ export class DefaultModelGateway implements ModelGateway {
     let providerState: ProviderState | undefined;
 
     try {
-      const { model: _ref, fallbacks: _f, signal: _s, timeoutMs: _t, credentials: _c, platformKeys: _p, guard: _g, ...rest } = request;
+      const { model: _ref, fallbacks: _f, signal: _s, timeoutMs: _t, credentials: _c, platformKeys: _p, guard: _g, onCredentialRejected: _r, ...rest } = request;
       const keys = admission.apiKey ? { keyIndex: 0, apiKey: admission.apiKey } : { keyIndex: admission.keyIndex };
       for await (const ev of adapter.stream({ ...rest, model, entry, ...keys }, controller.signal)) {
         if (controller.signal.aborted) throw controller.signal.reason;

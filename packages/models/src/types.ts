@@ -37,6 +37,13 @@ export type ModelMessage = ChatMessage & { providerState?: ProviderState };
  */
 export type ModelCallGuard = (target: { provider: string; ref: string; keyId?: string }) => Promise<ModelError | undefined>;
 
+/** Options of a tenant-scoped gateway view. */
+export type ScopeOptions = {
+  platformKeys?: boolean;
+  guard?: ModelCallGuard;
+  onCredentialRejected?: (info: { provider: string; keyId: string }) => void | Promise<void>;
+};
+
 export type ModelRequest = {
   /** `<provider>/<model>` reference. */
   model: string;
@@ -45,6 +52,11 @@ export type ModelRequest = {
   /** Whether platform (server) keys may serve providers the tenant has no key for. Default true. */
   platformKeys?: boolean;
   guard?: ModelCallGuard;
+  /**
+   * Called when a provider answers 401 to a tenant's own key (the key is revoked or wrong), so the
+   * host can mark it invalid. Not called for 403 (often a per-model permission) or platform keys.
+   */
+  onCredentialRejected?: (info: { provider: string; keyId: string }) => void | Promise<void>;
   /**
    * Hedged first token: when no output has arrived after `afterMs`, the same request also goes to
    * the next model of the chain; the first to produce output wins and the other is cancelled.
@@ -180,7 +192,7 @@ export interface ModelGateway {
   listModels(): ModelInfo[];
   defaultModel(): string | undefined;
   /** A view whose calls use a tenant's own provider keys (BYOK); gateways without it ignore tenant keys. */
-  scoped?(credentials: Record<string, ProviderCredential>, opts?: { platformKeys?: boolean; guard?: ModelCallGuard }): ModelGateway;
+  scoped?(credentials: Record<string, ProviderCredential>, opts?: ScopeOptions): ModelGateway;
   complete(request: ModelRequest): Promise<ModelResponse>;
   stream(request: ModelRequest): AsyncIterable<ModelEvent>;
 }

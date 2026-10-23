@@ -1,7 +1,7 @@
 import type { Pool } from '@neuroflow/db';
 import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, WebhookService, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
-import { agentsRepo, cognitiveRepo, executionRepo, routingStatsRepo, runStepsRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
+import { agentsRepo, auditRepo, cognitiveRepo, executionRepo, routingStatsRepo, runStepsRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault, type KeyRing } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
 import { ModelError, type ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type LearnedRouting, type RunStore } from '@neuroflow/orchestrator';
@@ -138,6 +138,8 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
         const block = await budgets.callBlock(workspaceId, keyId);
         return block ? new ModelError('spend_limit', spendLimitMessage(block), { retryable: false }) : undefined;
       },
+      // A revoked or wrong workspace key stops being used by later runs until someone checks it again.
+      onCredentialRejected: ({ provider, keyId }) => invalidateRejectedKey(pool, providerKeys, workspaceId, provider, keyId),
     });
   };
   return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code, budgets, webhooks };
@@ -160,4 +162,20 @@ function learnedRoutingSource(pool: Pool, cfg: { exploration: number; minSamples
     // A failed refresh keeps routing on the last snapshot (or on rules).
     return loading.catch(() => cached?.value);
   };
+}
+
+export const REJECTED_KEY_REASON = 'The provider rejected this key during a run (HTTP 401). Check or replace it.';
+
+/** Marks a workspace key the provider rejected as invalid, once, with an audit event. */
+export async function invalidateRejectedKey(pool: Pool, keys: ProviderKeyVault, workspaceId: string, provider: string, keyId: string): Promise<void> {
+  if (!(await keys.invalidate(workspaceId, keyId, REJECTED_KEY_REASON))) return;
+  await auditRepo.record(pool, {
+    action: 'provider_key.invalidated',
+    outcome: 'failure',
+    workspaceId,
+    actorVia: 'system',
+    targetType: 'provider_key',
+    targetId: keyId,
+    metadata: { provider, reason: 'rejected_by_provider' },
+  });
 }

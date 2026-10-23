@@ -129,6 +129,8 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   rate-limit scope, so one tenant's 429 never blocks another tenant or the platform pool. Model lists
   show whose key serves each model.
 - **`PLATFORM_MODEL_KEYS=disabled`** — a public deployment serves models only with tenants' keys.
+- **Revoked keys retire themselves** — a 401 from the provider on a workspace key during a run marks
+  it invalid (audited); later runs stop using it.
 - **Anthropic, OpenAI and Google providers** — Claude through the official Anthropic SDK
   (`packages/models/src/adapters/anthropic.ts`); OpenAI and Gemini through their OpenAI-compatible
   endpoints (`adapters/hosted.ts`). All three accept workspace keys and are listed in Settings →

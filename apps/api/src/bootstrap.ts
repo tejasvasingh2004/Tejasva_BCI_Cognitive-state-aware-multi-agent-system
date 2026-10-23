@@ -72,7 +72,7 @@ export async function createDeps(config: ApiConfig, logger: Logger, env: NodeJS.
     usage: new UsageMeter(redis),
     budgets,
     webhooks,
-    gateways: new WorkspaceGateways(gateway, providerKeys, budgets, config.PLATFORM_MODEL_KEYS === 'enabled'),
+    gateways: new WorkspaceGateways(gateway, providerKeys, budgets, config.PLATFORM_MODEL_KEYS === 'enabled', pool),
     responseCache: new ResponseCache(redis),
     plans: new PlanResolver(pool, config),
     errors,

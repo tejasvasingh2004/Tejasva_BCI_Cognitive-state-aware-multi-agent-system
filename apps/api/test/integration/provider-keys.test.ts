@@ -90,6 +90,35 @@ describe.skipIf(!reachable)('workspace provider keys (BYOK)', () => {
     expect(audit).not.toContain(TENANT_GROQ_KEY);
   });
 
+  it('a key the provider rejects during a run is marked invalid automatically, and later runs stop using it', async () => {
+    const REVOKED = 'gsk_tenant_revoked_key_00000000rvkd';
+    h.groq.setValidKeys([PLATFORM_GROQ_KEY, REVOKED]);
+    const created = await (await tenant('/v1/provider-keys', { method: 'POST', json: { provider: 'groq', apiKey: REVOKED } })).json();
+    expect(created.key.status).toBe('active');
+
+    // The key is revoked at the provider after it was stored.
+    h.groq.setValidKeys([PLATFORM_GROQ_KEY]);
+    h.groq.keys.length = 0;
+    // The mock records only accepted requests; the invalidation below shows the key was sent.
+    await groqRun(tenant);
+
+    let key: { status: string; lastError: string | null } | undefined;
+    for (let i = 0; i < 40 && key?.status !== 'invalid'; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      key = (await (await tenant('/v1/provider-keys')).json()).keys.find((k: { id: string }) => k.id === created.key.id);
+    }
+    expect(key).toMatchObject({ status: 'invalid', lastError: expect.stringMatching(/rejected this key during a run/) });
+    expect(JSON.stringify(key)).not.toContain(REVOKED);
+    const audit = await (await tenant('/v1/audit?action=provider_key.invalidated')).json();
+    expect(audit.events[0]).toMatchObject({ action: 'provider_key.invalidated', targetId: created.key.id, metadata: { provider: 'groq' } });
+
+    // The next run no longer sends the revoked key (platform keys serve the provider here).
+    h.groq.keys.length = 0;
+    expect(await groqRun(tenant)).toBe('run.completed');
+    expect(h.groq.keys).not.toContain(REVOKED);
+    await tenant(`/v1/provider-keys/${created.key.id}`, { method: 'DELETE' });
+  });
+
   it('members without admin rights cannot manage keys', async () => {
     const ids = await authRepo.ensureUserWithWorkspace(h.db.pool, { email: 'member@example.test', displayName: 'M', workspaceName: 'M' });
     const MEMBER = 'nf_byok_member_key_0000000000000000';

@@ -229,6 +229,18 @@ export class ProviderKeyVault {
     return rows[0] ? toInfo(rows[0]) : null;
   }
 
+  /**
+   * Marks an active key invalid because the provider rejected it during a run. Returns false when
+   * the key was already invalid (or gone), so the caller records the change once.
+   */
+  async invalidate(workspaceId: string, id: string, reason: string): Promise<boolean> {
+    const { rowCount } = await this.db.query(
+      "UPDATE provider_keys SET status = 'invalid', last_error = $3 WHERE workspace_id = $1 AND id = $2 AND status = 'active'",
+      [workspaceId, id, reason.slice(0, 300)],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   /** Renames a key or sets its monthly budget (null removes it). */
   async update(workspaceId: string, id: string, patch: { label?: string; monthlyBudgetUsd?: number | null }): Promise<ProviderKeyInfo | null> {
     const { rows } = await this.db.query(

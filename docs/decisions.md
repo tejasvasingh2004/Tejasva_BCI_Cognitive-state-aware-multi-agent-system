@@ -283,7 +283,11 @@ token and a test repository.
   wrapped before a migration still open and are re-wrapped with the primary on first use, or all
   at once with `pnpm keys:rewrap`. Provider keys themselves are never re-encrypted. Google Cloud KMS
   fits the same `KeyEncryptionKey` interface (not implemented).
-- **Not yet:** marking a key invalid automatically when a run gets an authentication error.
+- **Rejected keys are retired automatically.** When a provider answers 401 to a workspace key during
+  a run or gateway call, the key is marked invalid (once, with a `provider_key.invalidated` audit
+  event) and later runs stop using it until someone checks it again. 403 does not invalidate: it is
+  often a per-model permission, not a dead key. The stored reason is NeuroFlow's own text, never
+  the provider's message, which can echo part of the key.
 
 ## SDKs
 

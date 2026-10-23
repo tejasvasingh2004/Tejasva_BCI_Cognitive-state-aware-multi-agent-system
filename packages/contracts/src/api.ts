@@ -198,6 +198,7 @@ export const AuditAction = z.enum([
   'provider_key.verified',
   'provider_key.deleted',
   'provider_key.updated',
+  'provider_key.invalidated',
   'budget.updated',
   'budget.threshold_reached',
   'budget.exceeded',

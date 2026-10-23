@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ChatMessage, Principal, ReasoningBudget, ToolCall, Usage } from '@neuroflow/contracts';
 import { ResponseCache, spendLimitMessage, type BudgetService } from '@neuroflow/bus';
-import { recordGatewayCall, type ProviderKeyVault } from '@neuroflow/db';
+import { auditRepo, recordGatewayCall, type Pool, type ProviderKeyVault } from '@neuroflow/db';
 import { ModelError, type DefaultModelGateway, type ModelGateway, type ModelRequest, type ToolSpec } from '@neuroflow/models';
 import { runtimeMetrics } from '@neuroflow/observability';
 import type { AppDeps } from './deps';
@@ -23,6 +23,7 @@ export class WorkspaceGateways {
     private readonly keys: ProviderKeyVault,
     private readonly budgets: BudgetService,
     private readonly platformKeys: boolean,
+    private readonly pool?: Pool,
   ) {}
 
   async forWorkspace(workspaceId: string): Promise<ModelGateway> {
@@ -34,6 +35,21 @@ export class WorkspaceGateways {
       guard: async ({ keyId }) => {
         const block = await this.budgets.callBlock(workspaceId, keyId);
         return block ? new ModelError('spend_limit', spendLimitMessage(block), { retryable: false }) : undefined;
+      },
+      onCredentialRejected: async ({ provider, keyId }) => {
+        this.invalidate(workspaceId);
+        if (!(await this.keys.invalidate(workspaceId, keyId, 'The provider rejected this key during a run (HTTP 401). Check or replace it.'))) return;
+        if (this.pool) {
+          await auditRepo.record(this.pool, {
+            action: 'provider_key.invalidated',
+            outcome: 'failure',
+            workspaceId,
+            actorVia: 'system',
+            targetType: 'provider_key',
+            targetId: keyId,
+            metadata: { provider, reason: 'rejected_by_provider' },
+          });
+        }
       },
     });
     this.cache.set(workspaceId, { at: Date.now(), gateway });

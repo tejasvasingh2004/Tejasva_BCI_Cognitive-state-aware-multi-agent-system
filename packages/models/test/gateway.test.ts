@@ -464,6 +464,26 @@ describe('workspace keys (BYOK)', () => {
     expect(gw.credentialProviders()).toEqual([{ id: 'groq', displayName: 'Groq', platformKey: false }]);
   });
 
+  it('reports a workspace key the provider rejects with 401, but not platform keys or 403s', async () => {
+    const rejected: Array<{ provider: string; keyId: string }> = [];
+    const gw = tenantGroq('platform-key');
+    const scoped = gw.scoped({ groq: { keyId: 'k-bad', apiKey: 'revoked' } }, { onCredentialRejected: (i) => void rejected.push(i) });
+    groq.setValidKeys(['platform-key']);
+    await expect(scoped.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toMatchObject({ code: 'auth' });
+    expect(rejected).toEqual([{ provider: 'groq', keyId: 'k-bad' }]);
+
+    // A platform key failing is an operator problem, not a workspace key to invalidate.
+    groq.setValidKeys(['someone-else']);
+    const platformOnly = gw.scoped({}, { onCredentialRejected: (i) => void rejected.push(i) });
+    await expect(platformOnly.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toMatchObject({ code: 'auth' });
+    groq.setValidKeys(null);
+    // 403 is often a per-model permission: the key stays.
+    groq.setScript(() => ({ kind: 'error', status: 403, message: 'model not enabled for this project' }));
+    await expect(scoped.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).rejects.toMatchObject({ code: 'auth' });
+    expect(rejected).toHaveLength(1);
+    groq.setScript(defaultScriptRef);
+  });
+
   it('reports which workspace key served a call', async () => {
     const gw = tenantGroq('platform-key');
     const res = await gw.scoped({ groq: { keyId: 'k-7', apiKey: 'tenant-key' } }).complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
