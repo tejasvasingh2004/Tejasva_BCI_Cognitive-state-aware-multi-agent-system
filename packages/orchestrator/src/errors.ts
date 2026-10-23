@@ -43,6 +43,8 @@ export function toRunError(err: unknown, stage?: string): { code: string; messag
   if (err instanceof EmptyResponseError) {
     return { code: 'empty_response', message: 'The model returned an empty answer. Try again or choose a more capable model.', ...base };
   }
+  // Spending-limit messages are composed by NeuroFlow (limit and reset time), not by a provider.
+  if (err instanceof ModelError && err.code === 'spend_limit') return { code: 'spend_limit', message: err.message, ...base };
   if (err instanceof ModelError) {
     const messages: Record<string, string> = {
       timeout: 'The model took too long to respond.',

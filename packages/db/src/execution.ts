@@ -43,12 +43,18 @@ export const executionRepo = {
       fallbackFrom?: string;
       finishReason?: string;
       error?: string;
+      /** Tenant the call is charged to (defaults to the run's workspace). */
+      workspaceId?: string;
+      /** The workspace provider key that served the call (BYOK), if any. */
+      providerKeyId?: string;
     },
   ): Promise<void> {
     await db.query(
       `INSERT INTO model_calls (run_id, agent_execution_id, role, provider, model, status, latency_ms, first_token_ms,
-                                prompt_tokens, completion_tokens, attempts, fallback_from, finish_reason, error, cost_usd)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+                                prompt_tokens, completion_tokens, attempts, fallback_from, finish_reason, error, cost_usd,
+                                workspace_id, provider_key_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+               COALESCE($16::uuid, (SELECT workspace_id FROM runs WHERE id = $1)), $17)`,
       [
         input.runId,
         input.agentExecutionId ?? null,
@@ -65,6 +71,8 @@ export const executionRepo = {
         input.finishReason ?? null,
         input.error ?? null,
         input.usage?.costUsd ?? null,
+        input.workspaceId ?? null,
+        input.providerKeyId ?? null,
       ],
     );
   },

@@ -463,4 +463,45 @@ describe('workspace keys (BYOK)', () => {
     expect(await gw.verifyCredential('qwen', 'x')).toMatchObject({ ok: false });
     expect(gw.credentialProviders()).toEqual([{ id: 'groq', displayName: 'Groq', platformKey: false }]);
   });
+
+  it('reports which workspace key served a call', async () => {
+    const gw = tenantGroq('platform-key');
+    const res = await gw.scoped({ groq: { keyId: 'k-7', apiKey: 'tenant-key' } }).complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask });
+    expect(res.keyId).toBe('k-7');
+    expect((await gw.complete({ model: 'groq/llama-3.3-70b-versatile', messages: ask })).keyId).toBeUndefined();
+  });
+});
+
+describe('call guard (spending limits)', () => {
+  beforeEach(() => {
+    groq.keys.length = 0;
+  });
+
+  it('a refused model is skipped and the chain falls back, without spending a request on it', async () => {
+    const seen: Array<{ provider: string; keyId?: string }> = [];
+    const scoped = gateway().scoped(
+      { groq: { keyId: 'over-budget', apiKey: 'tenant-key' } },
+      {
+        guard: async (t) => {
+          seen.push({ provider: t.provider, ...(t.keyId ? { keyId: t.keyId } : {}) });
+          return t.keyId === 'over-budget' ? new ModelError('spend_limit', 'key budget reached', { retryable: false }) : undefined;
+        },
+      },
+    );
+    const events = await collect(scoped.stream({ model: 'groq/llama-3.3-70b-versatile', fallbacks: ['qwen/qwen3:8b'], messages: user }));
+    const done = events.find((e) => e.type === 'done');
+    expect(done?.type === 'done' && done.response.ref).toBe('qwen/qwen3:8b');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'fallback', reason: 'key budget reached' }));
+    expect(seen).toEqual([{ provider: 'groq', keyId: 'over-budget' }, { provider: 'qwen' }]);
+    expect(groq.requests).toHaveLength(0);
+  });
+
+  it('when every model is refused the call fails with the guard error', async () => {
+    const scoped = gateway().scoped({}, { guard: async () => new ModelError('spend_limit', 'monthly limit reached', { retryable: false }) });
+    await expect(scoped.complete({ model: 'qwen/qwen3:8b', fallbacks: ['groq/llama-3.3-70b-versatile'], messages: user })).rejects.toMatchObject({
+      code: 'spend_limit',
+      message: 'monthly limit reached',
+    });
+    expect(qwen.requests).toHaveLength(0);
+  });
 });

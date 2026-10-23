@@ -78,9 +78,11 @@ const toInfo = (r: Record<string, unknown>): ProviderKeyInfo => ({
   createdAt: iso(r.created_at as Date)!,
   lastUsedAt: iso(r.last_used_at as Date | null) ?? null,
   lastVerifiedAt: iso(r.last_verified_at as Date | null) ?? null,
+  monthlyBudgetUsd: r.monthly_budget_usd === null || r.monthly_budget_usd === undefined ? null : Number(r.monthly_budget_usd),
+  spendThisMonthUsd: 0,
 });
 
-const PUBLIC_COLUMNS = 'id, provider, label, hint, status, last_error, created_at, last_used_at, last_verified_at';
+const PUBLIC_COLUMNS = 'id, provider, label, hint, status, last_error, created_at, last_used_at, last_verified_at, monthly_budget_usd';
 
 /**
  * Workspace provider keys (BYOK) with envelope encryption:
@@ -170,6 +172,18 @@ export class ProviderKeyVault {
       `UPDATE provider_keys SET status = $3, last_error = $4, last_verified_at = now()
         WHERE workspace_id = $1 AND id = $2 RETURNING ${PUBLIC_COLUMNS}`,
       [workspaceId, id, result.ok ? 'active' : 'invalid', result.ok ? null : result.message.slice(0, 300)],
+    );
+    return rows[0] ? toInfo(rows[0]) : null;
+  }
+
+  /** Renames a key or sets its monthly budget (null removes it). */
+  async update(workspaceId: string, id: string, patch: { label?: string; monthlyBudgetUsd?: number | null }): Promise<ProviderKeyInfo | null> {
+    const { rows } = await this.db.query(
+      `UPDATE provider_keys
+          SET label = COALESCE($3, label),
+              monthly_budget_usd = CASE WHEN $4::boolean THEN $5::numeric ELSE monthly_budget_usd END
+        WHERE workspace_id = $1 AND id = $2 RETURNING ${PUBLIC_COLUMNS}`,
+      [workspaceId, id, patch.label ?? null, patch.monthlyBudgetUsd !== undefined, patch.monthlyBudgetUsd ?? null],
     );
     return rows[0] ? toInfo(rows[0]) : null;
   }

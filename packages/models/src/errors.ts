@@ -7,7 +7,9 @@ export type ModelErrorCode =
   | 'cancelled'
   | 'model_not_found'
   | 'provider_error'
-  | 'interrupted';
+  | 'interrupted'
+  /** A spending limit (workspace or provider key) is reached; never retried. */
+  | 'spend_limit';
 
 const RETRYABLE: ReadonlySet<ModelErrorCode> = new Set(['timeout', 'rate_limited', 'unavailable', 'provider_error']);
 

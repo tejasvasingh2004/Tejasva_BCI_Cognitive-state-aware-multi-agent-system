@@ -18,6 +18,7 @@ export const keys = {
   settings: ['settings'] as const,
   apiKeys: ['api-keys'] as const,
   providerKeys: ['provider-keys'] as const,
+  budget: ['budget'] as const,
   audit: ['audit'] as const,
 };
 

@@ -1,9 +1,9 @@
 import type { Pool } from '@neuroflow/db';
-import { RunControlListener, UsageMeter, type Redis } from '@neuroflow/bus';
+import { BudgetService, RunControlListener, SpendMeter, spendLimitMessage, UsageMeter, type Redis } from '@neuroflow/bus';
 import { BciHttpProvider, ChainedProvider, StoredStateProvider, type CognitiveStateProvider } from '@neuroflow/cognitive';
 import { agentsRepo, cognitiveRepo, executionRepo, runsRepo, LocalKeyEncryptionKey, ProviderKeyVault } from '@neuroflow/db';
 import { createMemoryTools, PgMemoryService } from '@neuroflow/memory';
-import type { ModelGateway } from '@neuroflow/models';
+import { ModelError, type ModelGateway } from '@neuroflow/models';
 import { agentFromSpec, Orchestrator, type RunStore } from '@neuroflow/orchestrator';
 import { CodeWorkspaceService, createCodeTools, defaultCodeDataDir, DockerSandbox, SecretBox, type Sandbox } from '@neuroflow/code';
 import {
@@ -24,6 +24,8 @@ export type WorkerRuntime = {
   memory: PgMemoryService;
   /** Code workspaces: checkouts, sandbox, git/GitHub operations (Product Phase 2). */
   code: CodeWorkspaceService;
+  /** Dollar budgets: checked before every model call, charged after it. */
+  budgets: BudgetService;
 };
 
 export type RuntimeOptions = {
@@ -50,6 +52,7 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
 
   const memory = new PgMemoryService(pool);
   const usage = new UsageMeter(opts.redis);
+  const budgets = new BudgetService(pool, new SpendMeter(opts.redis, pool));
   const code = new CodeWorkspaceService({
     pool,
     redis: opts.redis,
@@ -83,6 +86,10 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
       await executionRepo.recordModelCall(pool, i);
       // Daily token metering per workspace (plan quotas now, billing later).
       if (i.workspaceId && i.usage?.totalTokens) await usage.addTokens(i.workspaceId, i.usage.totalTokens).catch(() => {});
+      // Dollar spend against the workspace's and the key's budgets (after the row is stored).
+      if (i.workspaceId && i.usage?.costUsd) {
+        await budgets.record({ workspaceId: i.workspaceId, costUsd: i.usage.costUsd, ...(i.providerKeyId ? { keyId: i.providerKeyId } : {}) }).catch(() => {});
+      }
     },
     recordEvaluation: (i) => executionRepo.recordEvaluation(pool, i),
   };
@@ -111,7 +118,15 @@ export async function createWorkerRuntime(opts: RuntimeOptions): Promise<WorkerR
   const gatewayFor = async (workspaceId: string): Promise<ModelGateway> => {
     if (!opts.gateway.scoped) return opts.gateway;
     const credentials = await providerKeys.credentials(workspaceId);
-    return opts.gateway.scoped(credentials, { platformKeys });
+    // Every model call first checks the workspace's spending limits and the serving key's budget; a
+    // key over budget skips its provider (the chain falls back) and never falls back to a platform key.
+    return opts.gateway.scoped(credentials, {
+      platformKeys,
+      guard: async ({ keyId }) => {
+        const block = await budgets.callBlock(workspaceId, keyId);
+        return block ? new ModelError('spend_limit', spendLimitMessage(block), { retryable: false }) : undefined;
+      },
+    });
   };
-  return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code };
+  return { orchestrator, control, gateway: opts.gateway, gatewayFor, memory, code, budgets };
 }

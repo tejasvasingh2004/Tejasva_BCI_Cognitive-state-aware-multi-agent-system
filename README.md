@@ -35,7 +35,7 @@ manual setting or an EEG workload classifier (research origin of the project).
 | | |
 | --- | --- |
 | **Adaptive runtime** | Six execution strategies (direct → supervisor / evaluator-optimizer); the router picks the smallest reliable one and chooses agents and models independently |
-| **Model Gateway** | Provider-independent streaming, reasoning budgets, timeouts, retries, fallbacks, shared rate budgets and a circuit breaker per provider — Groq, Qwen, Anthropic, OpenAI and Google |
+| **Model Gateway** | Provider-independent streaming, reasoning budgets, timeouts, retries, fallbacks, shared rate budgets and a circuit breaker per provider — Groq, Qwen, Anthropic, OpenAI and Google; workspace and per-key dollar budgets |
 | **Safe tool runtime** | Every tool call is schema-validated, authorized and, when consequential, approved by the user; 27 Code Agent tools for repositories, editing, execution, Git and GitHub |
 | **Plan Review** | Approve, edit or revise the agent's plan before it touches the repository |
 | **Reviewable changes** | Suggest / Review / Auto / Restricted modes; patches are validated before they are shown; deletes and large changes always ask |

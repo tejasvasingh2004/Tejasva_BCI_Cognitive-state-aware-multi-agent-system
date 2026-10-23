@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CreateProviderKeyBody, Scopes, type ProviderKeysResponse } from '@neuroflow/contracts';
+import { CreateProviderKeyBody, Scopes, UpdateProviderKeyBody, type ProviderKeyInfo, type ProviderKeysResponse } from '@neuroflow/contracts';
 import { DuplicateProviderKeyError } from '@neuroflow/db';
 import { audit } from '../audit';
 import { requireScope } from '../auth';
@@ -27,11 +27,15 @@ export async function providerKeyRoutes(app: FastifyInstance, deps: AppDeps) {
     return result;
   };
 
+  /** Adds this month's spend to each key (from the counters workers charge). */
+  const withSpend = (keys: ProviderKeyInfo[]) =>
+    Promise.all(keys.map(async (k) => ({ ...k, spendThisMonthUsd: Math.round((await deps.budgets.spend({ scope: 'key_month', keyId: k.id })) * 1e4) / 1e4 })));
+
   app.get('/v1/provider-keys', async (req) => {
     const p = requireScope(req, Scopes.runsRead);
     return {
       providers: deps.gateway.credentialProviders(),
-      keys: await deps.providerKeys.list(p.workspaceId),
+      keys: await withSpend(await deps.providerKeys.list(p.workspaceId)),
       platformKeysEnabled,
       canEdit: p.scopes.includes(Scopes.admin),
     } satisfies ProviderKeysResponse;
@@ -67,6 +71,19 @@ export async function providerKeyRoutes(app: FastifyInstance, deps: AppDeps) {
     const key = await deps.providerKeys.setStatus(p.workspaceId, id, result.ok ? { ok: true } : { ok: false, message: result.message });
     void audit(deps, req, { action: 'provider_key.verified', outcome: result.ok ? 'success' : 'failure', targetType: 'provider_key', targetId: id, metadata: { provider: stored.provider } });
     return { key };
+  });
+
+  // Rename a key or set its monthly budget. A key over budget is skipped for its provider (the run
+  // falls back to other models) rather than replaced by a platform key.
+  app.patch('/v1/provider-keys/:id', async (req) => {
+    const p = requireScope(req, Scopes.admin);
+    const { id } = IdParams.parse(req.params);
+    const body = UpdateProviderKeyBody.parse(req.body);
+    const key = await deps.providerKeys.update(p.workspaceId, id, body);
+    if (!key) throw notFound('Provider key');
+    deps.budgets.invalidate(p.workspaceId);
+    void audit(deps, req, { action: 'provider_key.updated', targetType: 'provider_key', targetId: id, metadata: { provider: key.provider, ...body } });
+    return { key: (await withSpend([key]))[0] };
   });
 
   app.delete('/v1/provider-keys/:id', async (req, reply) => {

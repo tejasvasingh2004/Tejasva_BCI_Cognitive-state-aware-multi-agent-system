@@ -3,6 +3,15 @@
 Notable changes to NeuroFlow. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project does not publish versioned releases yet, so entries are grouped by date.
 
+## 2026-10-23
+
+### Added
+- Spending limits: daily and monthly dollar limits per workspace with an alert threshold (Usage →
+  Spending limits, `/v1/workspace/budget`), and a monthly budget per workspace provider key.
+  New runs are refused at a workspace limit and running tasks stop before their next model call; a
+  key over budget is skipped and the run falls back to other models. Crossing a threshold or a limit
+  is recorded in the audit log.
+
 ## 2026-10-22
 
 ### Added

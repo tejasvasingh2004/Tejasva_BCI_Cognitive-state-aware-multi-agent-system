@@ -300,6 +300,7 @@ export async function callModel(ctx: RunContext, opts: ModelCallOptions): Promis
         attempts: response.attempts,
         fallbackFrom: response.fallbackFrom,
         finishReason: response.finishReason,
+        ...(response.keyId ? { providerKeyId: response.keyId } : {}),
       });
       if (opts.streamToUser) ctx.lastFinishReason = response.finishReason;
       return response;

@@ -33,6 +33,13 @@ test('Model providers: add a workspace key, see it in use, check it, remove it',
   await row.getByTestId('provider-key-verify').click();
   await expect(row).toContainText('not used yet');
 
+  // A monthly budget for the key, shown against this month's spend through it.
+  await expect(row.getByTestId('provider-key-spend')).toHaveText('$0.00 this month');
+  await row.getByTestId('provider-key-budget').click();
+  await row.getByTestId('provider-key-budget-input').fill('25');
+  await row.getByTestId('provider-key-budget-save').click();
+  await expect(row.getByTestId('provider-key-spend')).toHaveText('$0.00 / $25.00 this month');
+
   await row.getByTestId('provider-key-delete').click();
   await expect(groq.getByTestId('provider-key-row')).toHaveCount(0);
   await expect(settings.getByTestId('provider-source-groq')).toHaveText("Using NeuroFlow's key");

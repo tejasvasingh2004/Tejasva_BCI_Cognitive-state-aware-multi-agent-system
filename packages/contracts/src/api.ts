@@ -197,6 +197,10 @@ export const AuditAction = z.enum([
   'provider_key.created',
   'provider_key.verified',
   'provider_key.deleted',
+  'provider_key.updated',
+  'budget.updated',
+  'budget.threshold_reached',
+  'budget.exceeded',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 

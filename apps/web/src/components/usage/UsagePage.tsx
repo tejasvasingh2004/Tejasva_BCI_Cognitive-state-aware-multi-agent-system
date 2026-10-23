@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, BarChart3, Code2, Gauge, Infinity as InfinityIcon, MessageSquare, Plug, Table2 } from 'lucide-react';
-import { USAGE_WINDOWS, type UsageHistory, type UsageSource, type WorkspaceUsage } from '@neuroflow/contracts';
-import { api } from '@/lib/api';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, BarChart3, Code2, Gauge, Infinity as InfinityIcon, MessageSquare, Plug, Table2, Wallet } from 'lucide-react';
+import { USAGE_WINDOWS, type UsageHistory, type UsageSource, type WorkspaceBudget, type WorkspaceUsage } from '@neuroflow/contracts';
+import { api, ApiRequestError } from '@/lib/api';
+import { keys } from '@/hooks/queries';
 import { cn, formatDuration } from '@/lib/utils';
 import { navigateTo, useDocumentTitle } from '@/hooks/route';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ export function UsagePage() {
   const [days, setDays] = useState<Window>(30);
   const current = useQuery({ queryKey: ['usage'], queryFn: api.usage, refetchInterval: 30_000 });
   const history = useQuery({ queryKey: ['usage-history', days], queryFn: () => api.usageHistory(days), placeholderData: keepPreviousData });
+  const budget = useQuery({ queryKey: keys.budget, queryFn: api.budget, refetchInterval: 30_000 });
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
@@ -70,6 +72,7 @@ export function UsagePage() {
           </div>
 
           {current.data && <TodayCard usage={current.data} />}
+          {budget.data && <BudgetCard budget={budget.data} />}
 
           {history.isLoading ? (
             <div className="flex h-60 items-center justify-center">
@@ -104,6 +107,133 @@ function Card({ title, icon: Icon, action, children, className }: { title: strin
       </div>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+/** Spend against the workspace's daily and monthly dollar limits; admins edit the limits here. */
+function BudgetCard({ budget }: { budget: WorkspaceBudget }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [monthly, setMonthly] = useState(budget.monthlyLimitUsd?.toString() ?? '');
+  const [daily, setDaily] = useState(budget.dailyLimitUsd?.toString() ?? '');
+  const [alert, setAlert] = useState(String(budget.alertPercent));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parse = (v: string) => (v.trim() === '' ? null : Math.round(Number(v) * 100) / 100);
+  const values = { monthlyLimitUsd: parse(monthly), dailyLimitUsd: parse(daily), alertPercent: Math.round(Number(alert)) };
+  const valid =
+    [values.monthlyLimitUsd, values.dailyLimitUsd].every((v) => v === null || (Number.isFinite(v) && v > 0)) &&
+    values.alertPercent >= 1 &&
+    values.alertPercent <= 100;
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      qc.setQueryData(keys.budget, await api.updateBudget(values));
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Could not save the limits');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const when = (iso: string) => new Date(iso).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <Card
+      title="Spending limits"
+      icon={Wallet}
+      action={
+        budget.canEdit && !editing ? (
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)} data-testid="budget-edit">
+            Edit limits
+          </Button>
+        ) : undefined
+      }
+    >
+      {editing ? (
+        <div className="flex flex-col gap-3" data-testid="budget-form">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <BudgetField label="Monthly limit (USD)" value={monthly} onChange={setMonthly} placeholder="No limit" testId="budget-monthly" />
+            <BudgetField label="Daily limit (USD)" value={daily} onChange={setDaily} placeholder="No limit" testId="budget-daily" />
+            <BudgetField label="Alert at (% of a limit)" value={alert} onChange={setAlert} placeholder="80" testId="budget-alert" />
+          </div>
+          <p className="text-xs text-muted">
+            Runs are refused once a limit is reached, and running tasks stop before their next model call. Crossing the alert threshold is recorded in the
+            audit log.
+          </p>
+          {error && (
+            <p className="text-xs text-rose-500" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" disabled={!valid || saving} onClick={() => void save()} data-testid="budget-save">
+              {saving ? 'Saving…' : 'Save limits'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          <SpendMeter label="Today" spend={budget.spend.todayUsd} limit={budget.dailyLimitUsd} alertPercent={budget.alertPercent} resets={when(budget.resets.day)} testId="budget-today" />
+          <SpendMeter label="This month" spend={budget.spend.monthUsd} limit={budget.monthlyLimitUsd} alertPercent={budget.alertPercent} resets={when(budget.resets.month)} testId="budget-month" />
+        </div>
+      )}
+      {budget.spend.unpricedCallsThisMonth > 0 && (
+        <p className="mt-4 flex items-center gap-1.5 text-xs text-muted">
+          <AlertTriangle className="size-3.5 text-amber-500" />
+          {whole.format(budget.spend.unpricedCallsThisMonth)} model calls this month used models without a known price and are not counted.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function BudgetField({ label, value, onChange, placeholder, testId }: { label: string; value: string; onChange: (v: string) => void; placeholder: string; testId: string }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium text-ink-soft">
+      {label}
+      <input
+        className="h-9 rounded-xl border border-line bg-surface px-3 text-sm font-normal text-ink"
+        inputMode="decimal"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testId}
+      />
+    </label>
+  );
+}
+
+function SpendMeter({ label, spend, limit, alertPercent, resets, testId }: { label: string; spend: number; limit: number | null; alertPercent: number; resets: string; testId: string }) {
+  const share = limit ? Math.min(1, spend / limit) : 0;
+  const level = limit && spend >= limit ? 'critical' : share * 100 >= alertPercent ? 'warning' : 'ok';
+  return (
+    <div data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs font-medium text-ink-soft">{label}</span>
+        <span className="text-xs text-muted">resets {resets}</span>
+      </div>
+      <div className="mt-1 text-3xl font-semibold tracking-tight text-ink">
+        {fmtUsd(spend)}
+        <span className="ml-1.5 text-sm font-normal text-muted">{limit ? `of ${fmtUsd(limit)}` : 'no limit'}</span>
+      </div>
+      {limit ? (
+        <>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-violet-soft" role="meter" aria-label={`${label} spend`} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={spend}>
+            <div
+              className={cn('h-full rounded-full transition-[width] duration-500', level === 'critical' ? 'bg-rose-500' : level === 'warning' ? 'bg-amber-500' : 'bg-accent')}
+              style={{ width: `${Math.max(share * 100, spend > 0 ? 2 : 0)}%` }}
+            />
+          </div>
+          {level === 'critical' && <p className="mt-2 text-xs text-rose-500">Limit reached: new runs are refused until it resets.</p>}
+        </>
+      ) : null}
+    </div>
   );
 }
 

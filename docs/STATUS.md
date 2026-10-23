@@ -1,7 +1,7 @@
 # NeuroFlow — Current State of the Repository
 
 Living record of what is built, how it fits together, how it is verified and what is left.
-Updated 2026-10-22 · branch `master` (includes the merged `v2` work). Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md).
+Updated 2026-10-23 · branch `master` (includes the merged `v2` work). Hosting guide: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Keep this file current: when a feature lands, add it here in the same commit. Requirements live in
 [`prd.md`](prd.md); detailed checklists in [`progress.md`](progress.md); design rationale in
@@ -19,7 +19,7 @@ Keep this file current: when a feature lands, add it here in the same commit. Re
 | Apps | `apps/api` (Fastify), `apps/worker` (BullMQ), `apps/web` (product UI), `apps/site` (marketing site) |
 | Packages | `contracts`, `orchestrator`, `models`, `tools`, `memory`, `cognitive`, `code`, `bus`, `db`, `observability` |
 | API | 106 routes, including `POST /v1/chat/completions` (OpenAI-compatible) |
-| Database | 9 migrations (`infra/migrations/0001` … `0009`) |
+| Database | 10 migrations (`infra/migrations/0001` … `0010`) |
 | Tests | ~220 unit tests across 13 packages, 48 integration tests (real Postgres, Redis, BullMQ, Git, Docker), 16 Playwright E2E flows |
 | CI | GitHub Actions: typecheck · lint · unit · integration · E2E · app and image builds (`.github/workflows/ci.yml`) |
 | Deploy | `apps/site` and `apps/web` on Vercel (`vercel.json` in each), API on Railway (`nixpacks.toml`) |
@@ -134,7 +134,15 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   endpoints (`adapters/hosted.ts`). All three accept workspace keys and are listed in Settings →
   Model providers even when the server has no key of its own. Claude's thinking blocks are replayed
   unchanged inside a tool loop (opaque `providerState` on the assistant message) and never shown.
-- Next in Phase 1: dollar budgets per key, SDKs, webhooks, async runs.
+- **Dollar budgets** — a workspace sets daily and monthly spending limits and an alert threshold
+  (Usage → Spending limits, `/v1/workspace/budget`); each workspace provider key can have a monthly
+  budget (Settings → Model providers, `PATCH /v1/provider-keys/:id`). Runs are refused at admission
+  once a workspace limit is reached, and workers check before every model call: a reached workspace
+  limit stops the run with a clear message, a key over budget skips its provider (the run falls back
+  to other models, never to the platform key). Crossing the alert threshold or a limit writes one
+  audit event per period. Spend comes from recorded model-call costs (`infra/migrations/0010_budgets.sql`,
+  `packages/bus/src/budgets.ts`).
+- Next in Phase 1: SDKs, webhooks, async runs.
 
 ## 5. Scalability and reliability foundation
 

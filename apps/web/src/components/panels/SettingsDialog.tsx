@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Bot, Building2, Check, Copy, KeyRound, LogOut, Monitor, Moon, Plug, Plus, ScrollText, ShieldCheck, Sun, Trash2 } from 'lucide-react';
-import type { AgentSpec } from '@neuroflow/contracts';
+import { formatUsd, type AgentSpec, type ProviderKeyInfo } from '@neuroflow/contracts';
 import { api, ApiRequestError } from '@/lib/api';
 import { cn, relativeTime } from '@/lib/utils';
 import { keys, useAgents, useApiKeys, useAudit, useSession, useSettings, useTools } from '@/hooks/queries';
@@ -445,8 +445,9 @@ function ProviderKeysTab() {
                         <span className={cn('truncate', k.status === 'active' ? 'text-faint' : 'text-rose-500')}>
                           {k.status === 'active' ? (k.lastUsedAt ? `used ${relativeTime(k.lastUsedAt)}` : 'not used yet') : (k.lastError ?? 'invalid')}
                         </span>
+                        <KeyBudget k={k} canEdit={data.canEdit} disabled={busy !== null} onSave={(v) => act(k.id, () => api.updateProviderKey(k.id, { monthlyBudgetUsd: v }))} />
                         {data.canEdit && (
-                          <span className="ml-auto flex shrink-0 gap-1">
+                          <span className="flex shrink-0 gap-1">
                             <Button variant="ghost" size="sm" className="h-7" disabled={busy !== null} onClick={() => void act(k.id, () => api.verifyProviderKey(k.id))} data-testid="provider-key-verify">
                               Check
                             </Button>
@@ -500,6 +501,54 @@ function ProviderKeysTab() {
         </p>
       )}
     </>
+  );
+}
+
+/** This month's spend through a key and its optional monthly budget, editable by admins. */
+function KeyBudget({ k, canEdit, disabled, onSave }: { k: ProviderKeyInfo; canEdit: boolean; disabled: boolean; onSave: (v: number | null) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(k.monthlyBudgetUsd?.toString() ?? '');
+  const over = k.monthlyBudgetUsd !== null && k.spendThisMonthUsd >= k.monthlyBudgetUsd;
+  const label = `${formatUsd(k.spendThisMonthUsd)}${k.monthlyBudgetUsd !== null ? ` / ${formatUsd(k.monthlyBudgetUsd)}` : ''} this month`;
+  if (editing) {
+    const parsed = value.trim() === '' ? null : Math.round(Number(value) * 100) / 100;
+    const valid = parsed === null || (Number.isFinite(parsed) && parsed > 0);
+    return (
+      <span className="ml-auto flex items-center gap-1">
+        <span className="text-faint">$</span>
+        <input
+          className="h-7 w-20 rounded-lg border border-line bg-surface px-2 text-xs text-ink"
+          inputMode="decimal"
+          placeholder="No limit"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          aria-label="Monthly budget (USD)"
+          data-testid="provider-key-budget-input"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7"
+          disabled={!valid || disabled}
+          onClick={() => void onSave(parsed).then(() => setEditing(false))}
+          data-testid="provider-key-budget-save"
+        >
+          Save
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <span className="ml-auto flex items-center gap-1">
+      <span className={cn('whitespace-nowrap', over ? 'text-rose-500' : 'text-faint')} data-testid="provider-key-spend">
+        {over ? `Budget reached: ${label}` : label}
+      </span>
+      {canEdit && (
+        <Button variant="ghost" size="sm" className="h-7" disabled={disabled} onClick={() => setEditing(true)} data-testid="provider-key-budget">
+          {k.monthlyBudgetUsd === null ? 'Set budget' : 'Budget'}
+        </Button>
+      )}
+    </span>
   );
 }
 

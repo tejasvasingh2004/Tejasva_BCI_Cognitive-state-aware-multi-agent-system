@@ -18,6 +18,10 @@ export const ProviderKeyInfo = z.object({
   createdAt: z.string(),
   lastUsedAt: z.string().nullable(),
   lastVerifiedAt: z.string().nullable(),
+  /** Monthly spending cap for this key (USD), or null. */
+  monthlyBudgetUsd: z.number().nullable(),
+  /** Estimated spend through this key in the current UTC month. */
+  spendThisMonthUsd: z.number(),
 });
 export type ProviderKeyInfo = z.infer<typeof ProviderKeyInfo>;
 

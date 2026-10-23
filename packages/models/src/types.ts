@@ -1,3 +1,4 @@
+import type { ModelError } from './errors';
 import type {
   ChatMessage,
   JsonSchema,
@@ -30,6 +31,12 @@ export type ProviderState = { provider: string; model: string; content: unknown 
 /** A chat message as the gateway accepts it: the public contract plus optional provider state. */
 export type ModelMessage = ChatMessage & { providerState?: ProviderState };
 
+/**
+ * Checked before each model of the fallback chain is tried. Returning an error skips that model
+ * (the chain continues with the next one), e.g. when a spending limit is reached.
+ */
+export type ModelCallGuard = (target: { provider: string; ref: string; keyId?: string }) => Promise<ModelError | undefined>;
+
 export type ModelRequest = {
   /** `<provider>/<model>` reference. */
   model: string;
@@ -37,6 +44,7 @@ export type ModelRequest = {
   credentials?: Record<string, ProviderCredential>;
   /** Whether platform (server) keys may serve providers the tenant has no key for. Default true. */
   platformKeys?: boolean;
+  guard?: ModelCallGuard;
   /** Tried in order when the primary model fails before producing output. */
   fallbacks?: string[];
   messages: ModelMessage[];
@@ -67,6 +75,8 @@ export type ModelResponse = {
   attempts: number;
   /** Set when the response came from a fallback model. */
   fallbackFrom?: string;
+  /** The tenant key that served the call (BYOK); absent when a platform key did. */
+  keyId?: string;
   /** Attach to the assistant message when continuing a tool loop (see ProviderState). */
   providerState?: ProviderState;
 };
@@ -151,7 +161,7 @@ export interface ModelGateway {
   listModels(): ModelInfo[];
   defaultModel(): string | undefined;
   /** A view whose calls use a tenant's own provider keys (BYOK); gateways without it ignore tenant keys. */
-  scoped?(credentials: Record<string, ProviderCredential>, opts?: { platformKeys?: boolean }): ModelGateway;
+  scoped?(credentials: Record<string, ProviderCredential>, opts?: { platformKeys?: boolean; guard?: ModelCallGuard }): ModelGateway;
   complete(request: ModelRequest): Promise<ModelResponse>;
   stream(request: ModelRequest): AsyncIterable<ModelEvent>;
 }

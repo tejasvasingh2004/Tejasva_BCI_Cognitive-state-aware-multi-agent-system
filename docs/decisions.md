@@ -278,6 +278,30 @@ token and a test repository.
 - **Not yet:** marking a key invalid automatically when a run gets an authentication error, KMS
   implementations and per-key dollar budgets.
 
+## Dollar budgets
+
+- **Spend is the recorded cost of model calls.** Each `model_calls` row already carries its estimated
+  cost (catalogue list prices or `MODEL_PRICING`); it now also records the workspace and the provider
+  key that served it. Limits are UTC days and UTC calendar months. Calls to models without a known
+  price do not count and are reported as unpriced; self-hosted models cost 0.
+- **Postgres is the truth, Redis is the counter.** Checks happen before every model call, so they
+  read a Redis counter (micro-dollars, `INCRBY`) instead of summing rows. A missing counter (new
+  period, Redis restart, eviction) is seeded from Postgres on read; workers add a call's cost only to
+  counters that exist (a Lua `EXISTS`/`INCRBY`), after the row is stored, so a seed never counts a
+  call twice. A call recorded while its counter is being seeded can be missed until the counter
+  expires: limits are soft by about one call.
+- **Three enforcement points.** The API refuses new runs when a workspace limit is reached (429
+  `quota_exceeded` with the limit, spend and reset time). Workers pass a guard to the run's gateway
+  view that is checked before every model of the fallback chain: a reached workspace limit stops the
+  run (`spend_limit`); a key over its budget skips that provider, so the chain falls back to other
+  models. It never falls back to a platform key, which would move the tenant's spending onto the
+  platform without anyone deciding to. A single call can overshoot a limit; the next one is refused.
+- **Fresh on refusal.** Budgets are cached for 15 s per process; a refusal is confirmed against
+  freshly read budgets, so a raised limit applies at once on every server.
+- **Alerts are audit events now, webhooks next.** The first time per period that spend crosses the
+  alert threshold or the limit, the worker writes `budget.threshold_reached` or `budget.exceeded`
+  (de-duplicated with a Redis `SET NX` per limit and period). Webhooks will deliver the same events.
+
 ## Anthropic, OpenAI and Google providers
 
 - **Claude uses the official SDK, not an OpenAI-compatible shim.** The Messages API differs in ways

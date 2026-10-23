@@ -5,3 +5,4 @@ export * from './control';
 export * from './workspace-events';
 export * from './rate-limit';
 export * from './heartbeat';
+export * from './budgets';

@@ -37,6 +37,8 @@ export interface RunStore {
     fallbackFrom?: string;
     finishReason?: string;
     error?: string;
+    /** The workspace provider key that served the call (BYOK). */
+    providerKeyId?: string;
   }): Promise<void>;
   recordEvaluation(input: {
     runId: string;

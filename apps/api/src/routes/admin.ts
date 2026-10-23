@@ -4,14 +4,17 @@ import {
   AuditAction,
   CreateApiKeyBody,
   Scopes,
+  UpdateWorkspaceBudgetBody,
   UpdateWorkspaceSettingsBody,
+  budgetPeriod,
+  type WorkspaceBudget,
   UpsertAgentBody,
   UsageHistoryQuery,
   type AgentSpec,
   type WorkspaceUsage,
 } from '@neuroflow/contracts';
 import { UsageMeter } from '@neuroflow/bus';
-import { agentsRepo, auditRepo, authRepo, runsRepo, usageRepo, workspaceRepo } from '@neuroflow/db';
+import { agentsRepo, auditRepo, authRepo, budgetsRepo, runsRepo, usageRepo, workspaceRepo } from '@neuroflow/db';
 import { BUILTIN_AGENTS } from '@neuroflow/orchestrator';
 import { audit } from '../audit';
 import { requirePrincipal, requireScope } from '../auth';
@@ -99,6 +102,38 @@ export async function adminRoutes(app: FastifyInstance, deps: AppDeps) {
     const p = requireScope(req, Scopes.runsRead);
     const { days } = UsageHistoryQuery.parse(req.query);
     return usageRepo.history(deps.pool, p.workspaceId, { days });
+  });
+
+  // Dollar budgets: daily and monthly spending limits with an alert threshold. Spend is read from
+  // the same counters the run admission and workers check.
+  const budgetView = async (workspaceId: string, canEdit: boolean): Promise<WorkspaceBudget> => {
+    deps.budgets.invalidate(workspaceId);
+    const now = new Date();
+    const [{ budget }, todayUsd, monthUsd, unpricedCallsThisMonth] = await Promise.all([
+      deps.budgets.limits(workspaceId),
+      deps.budgets.spend({ scope: 'workspace_day', workspaceId }),
+      deps.budgets.spend({ scope: 'workspace_month', workspaceId }),
+      budgetsRepo.unpricedCalls(deps.pool, workspaceId, now),
+    ]);
+    return {
+      ...budget,
+      spend: { todayUsd: Math.round(todayUsd * 1e4) / 1e4, monthUsd: Math.round(monthUsd * 1e4) / 1e4, unpricedCallsThisMonth },
+      resets: { day: budgetPeriod('day', now).end.toISOString(), month: budgetPeriod('month', now).end.toISOString() },
+      canEdit,
+    };
+  };
+
+  app.get('/v1/workspace/budget', async (req) => {
+    const p = requireScope(req, Scopes.runsRead);
+    return budgetView(p.workspaceId, p.scopes.includes(Scopes.admin));
+  });
+
+  app.put('/v1/workspace/budget', async (req) => {
+    const p = requireScope(req, Scopes.admin);
+    const body = UpdateWorkspaceBudgetBody.parse(req.body);
+    await budgetsRepo.set(deps.pool, p.workspaceId, body, p.userId);
+    void audit(deps, req, { action: 'budget.updated', targetType: 'workspace', targetId: p.workspaceId, metadata: { ...body } });
+    return budgetView(p.workspaceId, true);
   });
 
   app.get('/v1/workspace/settings', async (req) => {

@@ -1,6 +1,6 @@
 import type { Principal } from '@neuroflow/contracts';
 import type { Pool, ProviderKeyVault } from '@neuroflow/db';
-import type { Redis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, UsageMeter } from '@neuroflow/bus';
+import type { BudgetService, Redis, RedisRateLimiter, RunControlPublisher, RunEventHub, RunQueue, UsageMeter } from '@neuroflow/bus';
 import type { CognitiveStateProvider } from '@neuroflow/cognitive';
 import type { MemoryService } from '@neuroflow/memory';
 import type { DefaultModelGateway } from '@neuroflow/models';
@@ -33,6 +33,8 @@ export type AppDeps = {
   limiter: RedisRateLimiter;
   /** Daily model-token usage per workspace. */
   usage: UsageMeter;
+  /** Dollar budgets: workspace limits are checked when a run is admitted (workers check every call). */
+  budgets: BudgetService;
   plans: PlanResolver;
   /** Unexpected errors (5xx, crashes) → error tracking; a no-op unless SENTRY_DSN is set. */
   errors: ErrorReporter;

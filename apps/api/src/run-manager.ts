@@ -1,5 +1,5 @@
 import type { AuditAction, PlanDecisionBody, Principal, RunRequest } from '@neuroflow/contracts';
-import { RunEventEmitter, runPriority, UsageMeter } from '@neuroflow/bus';
+import { RunEventEmitter, runPriority, spendLimitMessage, UsageMeter } from '@neuroflow/bus';
 import {
   auditRepo,
   codeApprovalsRepo,
@@ -265,6 +265,16 @@ export class RunManager {
         { plan, dailyTokens: limits.dailyTokens, tokensToday, resetsAt: resetsAt.toISOString() },
         false,
         { retryAfterMs: resetsAt.getTime() - Date.now() },
+      );
+    }
+    const spend = await this.deps.budgets.workspaceBlock(principal.workspaceId);
+    if (spend) {
+      throw new HttpError(
+        'quota_exceeded',
+        spendLimitMessage(spend),
+        { scope: spend.scope, limitUsd: spend.limitUsd, spendUsd: Math.round(spend.spendUsd * 100) / 100, resetsAt: spend.resetsAt.toISOString() },
+        false,
+        { retryAfterMs: spend.resetsAt.getTime() - Date.now() },
       );
     }
     if (backlog >= this.deps.config.MAX_QUEUE_BACKLOG) {
