@@ -1,0 +1,31 @@
+{
+  "topology": "2x2",
+  "mode": "gateway",
+  "offered": {
+    "callsPerSecond": 40,
+    "duration": "60s",
+    "model": "qwen/qwen3:8b"
+  },
+  "calls": {
+    "requests": 2401,
+    "okRate": 1,
+    "dropped": 0,
+    "failed": {
+      "http429": 0,
+      "http503": 0,
+      "http5xx": 0,
+      "other": 0
+    }
+  },
+  "overheadMs": {
+    "p50": 1.3,
+    "p95": 2.3,
+    "p99": 4.4,
+    "max": 55.3
+  },
+  "totalMs": {
+    "p50": 937.650676,
+    "p95": 960.167629
+  },
+  "gatePassed": true
+}

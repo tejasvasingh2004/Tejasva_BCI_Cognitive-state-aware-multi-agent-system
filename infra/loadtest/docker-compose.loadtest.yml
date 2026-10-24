@@ -29,6 +29,9 @@ services:
       MODEL_PROVIDER_CONCURRENCY: qwen=64
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       MAX_QUEUE_BACKLOG: "5000"
+      # The load test measures capacity, not plan limits: per-minute run creation is not capped
+      # (gateway-mode calls count as runs; 40 calls/s over 8 tenants exceeds the enterprise plan).
+      RUN_RATE_LIMIT_PER_MINUTE: "${LOADTEST_RUN_RATE_LIMIT:-100000}"
       LOG_LEVEL: warn
       OTEL_EXPORTER_OTLP_ENDPOINT: ""
       CODE_DATA_DIR: /tmp/neuroflow-code

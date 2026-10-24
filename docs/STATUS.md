@@ -164,7 +164,9 @@ a local commit on an agent branch. Push and draft PR on github.com need a token 
   the API process (no queue), with the same auth, quotas, budgets, workspace keys, retries and usage
   records (`apps/api/src/gateway-mode.ts`). **Gate passed:** overhead before the provider request
   p50 3 ms / p95 5–6 ms over 200 calls (target < 50 ms); time to first token 18 ms vs 127 ms on the
-  queued path (mock model) — `apps/api/test/integration/gateway-mode.test.ts`.
+  queued path (mock model) — `apps/api/test/integration/gateway-mode.test.ts`. Under load (k6,
+  40 calls/s, 60 s): 100 % successful, overhead p95 3.0 ms (1 API) / 2.3 ms (2 APIs) —
+  `infra/loadtest/`.
 - **Response cache** — opt-in exact-match cache per workspace, single-turn and tool-free only.
 - **Cache-friendly prompts** — stable system core first, volatile tail after; Claude cache
   breakpoints; cached prompt tokens recorded (migration 0012), billed at cache-read prices and

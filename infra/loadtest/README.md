@@ -31,13 +31,29 @@ MODE=gateway GATEWAY_RATE=40 infra/loadtest/run.sh      # gateway mode: overhead
 
 Requirements: Docker with Compose v2.24+, Node 22, `pnpm install`. Results are written to
 `infra/loadtest/results/<topology>.json` and `<topology>-balance.txt` (requests per API replica);
-gateway mode writes `gateway-<topology>.json` with NeuroFlow's own overhead measurement
+gateway mode writes `gateway-<topology>.json` (and `gateway-<topology>-balance.txt`) with NeuroFlow's own overhead measurement
 (`server-timing`) at p50 / p95 / p99, total time and whether the gate passed (real samples, > 99 %
 successful calls and p95 < 50 ms).
 
 The first gateway-mode run (2026-10-24) found a slot leak: with a provider concurrency limit, calls
 hung after the first 64. Fixed in the gateway (admissions are released before the final event and
 on any early exit); regression test in `packages/models/test/adaptive.test.ts`.
+
+## Gateway mode results (2026-10-24)
+
+Same laptop, mock model calls of about 0.9 s. Offered load: **40 gateway-mode calls/s for 60 s**
+(2 400 calls) across 8 tenants; per-minute run limits lifted for the test (gateway calls count as
+run creations, and 300/min per tenant exceeds the enterprise plan's 120).
+
+| | 1 API + 1 worker | 2 APIs + 2 workers |
+| --- | --- | --- |
+| Successful calls | 100 % (2 401) | 100 % (2 400) |
+| **Overhead p50 / p95 / p99** (arrival → provider request) | 1.4 / **3.0** / 9.9 ms | 1.3 / **2.3** / 4.4 ms |
+| Total p50 / p95 (incl. the mock model) | 939 / 963 ms | 938 / 960 ms |
+| Requests per API replica | 2 401 | 1 198 / 1 203 |
+
+The gate (overhead p95 < 50 ms) passes in both topologies, with a wide margin. Worker count does not
+matter here: gateway calls never touch the queue.
 
 ## Results (2026-10-22)
 

@@ -41,7 +41,10 @@ request's arrival to the provider request); JSON responses also include
 completed run, so it appears in usage, budgets and history.
 
 Measured on the integration stack with a mock model: overhead p50 3 ms, p95 5–6 ms over 200 calls;
-time to first token p50 18 ms in gateway mode vs 127 ms through the queued run path.
+time to first token p50 18 ms in gateway mode vs 127 ms through the queued run path. Under load
+(k6, `MODE=gateway infra/loadtest/run.sh`, 40 calls/s for 60 s behind a load balancer): 100 %
+successful calls, overhead p95 3.0 ms with one API and 2.3 ms with two
+([results](../infra/loadtest/README.md#gateway-mode-results-2026-10-24)).
 
 ## Response cache
 

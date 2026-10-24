@@ -19,6 +19,7 @@ TENANTS=${TENANTS:-8}
 export DURATION=${DURATION:-60s} READ_RATE=${READ_RATE:-100} RUN_RATE=${RUN_RATE:-5} GATEWAY_RATE=${GATEWAY_RATE:-40}
 MODE=${MODE:-runs}
 SCRIPT=$([ "$MODE" = gateway ] && echo gateway.js || echo load.js)
+PREFIX=$([ "$MODE" = gateway ] && echo gateway- || echo "")
 export MOCK_PORT=${MOCK_PORT:-11500} LB_PORT=${LB_PORT:-8088} LOADTEST_PG_PORT=${LOADTEST_PG_PORT:-5434}
 export WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
 K6_IMAGE=${K6_IMAGE:-grafana/k6:0.54.0}
@@ -85,11 +86,10 @@ for topo in $TOPOLOGIES; do
     "$K6_IMAGE" run --quiet "/scripts/$SCRIPT" || true
 
   log "Requests per API replica during the test"
-  "${COMPOSE[@]}" exec -T lb sh -c 'sort /var/log/nginx/upstream.log | uniq -c' | tee "$RESULTS/$topo-balance.txt"
+  "${COMPOSE[@]}" exec -T lb sh -c 'sort /var/log/nginx/upstream.log | uniq -c' | tee "$RESULTS/$PREFIX$topo-balance.txt"
 
   "${COMPOSE[@]}" stop api worker lb >/dev/null
 done
 
 log "Results"
-prefix=$([ "$MODE" = gateway ] && echo gateway- || echo "")
-for topo in $TOPOLOGIES; do echo "--- $topo"; cat "$RESULTS/$prefix$topo.json" 2>/dev/null || echo "(no result)"; done
+for topo in $TOPOLOGIES; do echo "--- $topo"; cat "$RESULTS/$PREFIX$topo.json" 2>/dev/null || echo "(no result)"; done
