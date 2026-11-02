@@ -289,6 +289,20 @@ const TIER_ORDER = { fast: 0, balanced: 1, strong: 2 } as const;
  */
 function choosePrimary(available: ModelInfo[], input: RouterInput, tightLatency: boolean, rationale: string[], taskClass: TaskSignals['taskClass']): ModelInfo {
   const byTier = (dir: 1 | -1) => [...available].sort((a, b) => dir * (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]))[0]!;
+  // Code runs plan, read, edit and test through tools: a small "fast" model answers with a to-do list
+  // and never calls a tool. When the default is such a model (or cannot use tools), a code run uses
+  // the strongest tool-capable model instead, the cheapest of that tier. A capable default is kept.
+  if (input.request.workspaceContext) {
+    const fallbackDefault = available.find((m) => m.ref === input.defaultModel) ?? available[0]!;
+    const capable = available.filter((m) => m.capabilities.tools !== false && m.tier !== 'fast');
+    if ((fallbackDefault.tier === 'fast' || fallbackDefault.capabilities.tools === false) && capable.length) {
+      const top = Math.max(...capable.map((m) => TIER_ORDER[m.tier]));
+      const price = (m: ModelInfo) => m.pricing?.outputPerMTok ?? Number.POSITIVE_INFINITY;
+      const best = capable.filter((m) => TIER_ORDER[m.tier] === top).sort((a, b) => price(a) - price(b))[0]!;
+      rationale.push(`Code run: ${best.ref} instead of the default ${fallbackDefault.ref}, which is too small for agentic coding`);
+      return best;
+    }
+  }
   const preference = input.cognitive?.modelPreference;
   if (tightLatency || preference === 'fast') {
     const m = byTier(1);

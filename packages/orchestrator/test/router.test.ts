@@ -256,3 +256,26 @@ describe('planExecution budgets and preferences', () => {
     ).toThrow(RoutingError);
   });
 });
+
+describe('model choice for code runs', () => {
+  const tiny = model('qwen/qwen3:0.6b', 'fast');
+  const strong = model('groq/openai/gpt-oss-120b', 'strong');
+  const mid = model('groq/openai/gpt-oss-20b', 'balanced');
+  const code = { workspaceContext: { codeWorkspaceId: '00000000-0000-4000-8000-000000000001', approvalMode: 'review' as const } };
+  const plan = (request: Record<string, unknown>, defaultModel = tiny.ref) =>
+    planExecution({ ...base, models: [tiny, mid, strong], defaultModel, availableTools: ['read_file'], request: { ...base.request, ...request } as never, lastUserMessage: 'Fix the failing test' });
+
+  it('uses the strongest tool-capable model when the default is a small local model', () => {
+    const p = plan(code);
+    expect(p.models[0]!.model).toBe('groq/openai/gpt-oss-120b');
+    expect(p.rationale.join(' ')).toContain('instead of the default qwen/qwen3:0.6b, which is too small');
+  });
+
+  it('keeps a capable default, honours an explicit choice, and leaves chat runs on the default', () => {
+    expect(plan(code, strong.ref).models[0]!.model).toBe(strong.ref);
+    // A balanced default is capable enough: it is not replaced by a (possibly expensive) strong model.
+    expect(plan(code, mid.ref).models[0]!.model).toBe(mid.ref);
+    expect(plan({ ...code, selectedModel: mid.ref }).models[0]!.model).toBe(mid.ref);
+    expect(plan({}).models[0]!.model).toBe(tiny.ref);
+  });
+});
